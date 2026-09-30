@@ -26,13 +26,18 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** —
 
 **Acceptance criteria:**
-- [ ] Next.js 16, React 19, TypeScript strict, `@/` path alias, Tailwind 4, shadcn/ui initialised with base components (button, input, dialog, dropdown, table, toast)
-- [ ] Folder skeleton: `src/app/(admin)`, `src/app/(sites)/render/[host]`, `src/modules`, `src/platform`, `src/blocks`, `src/themes`, `src/components`, `tests/`
-- [ ] ESLint with `no-restricted-imports` boundary rules: modules imported only via `index.ts`/`shared.ts`; `platform/db` only from repositories, queries and platform
-- [ ] Vitest (unit + integration projects) and Playwright configured, one smoke test each
-- [ ] `docker-compose.yml` with Postgres 17, MinIO and Mailpit; `npm run dev:services`
-- [ ] GitHub Actions: typecheck → lint → unit → integration (Postgres + MinIO services) → build → E2E smoke
-- [ ] `README.md` with local setup; `.env.example` with names and explanations only
+- [x] Next.js 16, React 19, TypeScript strict, `@/` path alias, Tailwind 4, shadcn/ui initialised with base components (button, input, dialog, dropdown, table, toast)
+  - *Done:* Next 16.3.7, React 19.3, TS 5.9 strict (+ `noUncheckedIndexedAccess`), shadcn `radix-nova`; toast is shadcn's `sonner`.
+- [x] Folder skeleton: `src/app/(admin)`, `src/app/(sites)/render/[host]`, `src/modules`, `src/platform`, `src/blocks`, `src/themes`, `src/components`, `tests/`
+  - *Note:* `platform/`, `blocks/` and `themes/` appear with their first real code (M1-1, M0-5, M4-4). The plan's folder-hygiene rule (§31) forbids empty placeholder folders.
+- [x] ESLint with `no-restricted-imports` boundary rules: modules imported only via `index.ts`/`shared.ts`; `platform/db` only from repositories, queries and platform
+  - *Clarified:* services must open transactions (`withTenant`, plan §5.3), so the rule protects the **raw client** (`@/platform/db/client`, private to `platform/`). `app/` and `components/` may not import `@/platform/db`, Drizzle or `pg` at all. Better Auth is restricted to `modules/auth`.
+- [x] Vitest (unit + integration projects) and Playwright configured, one smoke test each
+- [x] `docker-compose.yml` with Postgres 17, MinIO and Mailpit; `npm run dev:services`
+  - *Changed:* MinIO no longer publishes community images (`minio/minio` is gone from Docker Hub), so the S3 stand-in is **RustFS 1.0** (Apache-2.0, MinIO-compatible). Also added **PgBouncer in transaction mode** in front of Postgres, so local and CI runs exercise Neon's pooled-endpoint semantics (needed by M0-3).
+- [x] GitHub Actions: typecheck → lint → unit → integration (Postgres + MinIO services) → build → E2E smoke
+  - *Pending:* the workflow is written but hasn't run on GitHub yet (no remote). Every step passes locally.
+- [x] `README.md` with local setup; `.env.example` with names and explanations only
 
 **Likely files/modules:** `package.json`, `next.config.ts`, `eslint.config.mjs`, `vitest.config.ts`, `playwright.config.ts`, `docker-compose.yml`, `.github/workflows/ci.yml`
 

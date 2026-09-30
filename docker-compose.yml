@@ -1,0 +1,83 @@
+# Local services for development and integration tests.
+#
+#   npm run dev:services        # start (waits for health checks)
+#   npm run dev:services:down   # stop
+#
+# postgres   — Postgres 17 (Neon's default major). Roles forge_owner / forge_app
+#              are created by docker/postgres/init.sql on first start.
+# pgbouncer  — transaction-mode pooler in front of postgres, mirroring Neon's
+#              pooled endpoint. The app and the RLS tests connect through it
+#              (port 6432) so pooler semantics are exercised locally (ADR 0001).
+# storage    — S3-compatible object storage (RustFS; stands in for Cloudflare R2).
+# mailpit    — SMTP sink + web UI for development email.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: forge
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d forge"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.0-p0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      # Wildcard database entry: any database name is forwarded to postgres.
+      DB_NAME: "*"
+      AUTH_TYPE: scram-sha-256
+      AUTH_FILE: /etc/pgbouncer/userlist.txt
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "20"
+      # Same default as Neon's pooler; prepared statements work in transaction mode.
+      MAX_PREPARED_STATEMENTS: "100"
+      ADMIN_USERS: postgres
+    volumes:
+      - ./docker/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    ports:
+      - "6432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  storage:
+    # S3-compatible stand-in for Cloudflare R2. MinIO no longer publishes
+    # community images (minio/minio is gone from Docker Hub), so RustFS
+    # (Apache-2.0, MinIO-compatible API) is used locally instead.
+    image: rustfs/rustfs:1.0.0
+    environment:
+      RUSTFS_ACCESS_KEY: forge
+      RUSTFS_SECRET_KEY: forge-secret-key
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - storagedata:/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  pgdata:
+  storagedata:
