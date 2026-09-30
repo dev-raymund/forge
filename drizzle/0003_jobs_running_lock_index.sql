@@ -1,0 +1,1 @@
+CREATE INDEX "jobs_running_locked_until_idx" ON "jobs" USING btree ("locked_until") WHERE status = 'running';

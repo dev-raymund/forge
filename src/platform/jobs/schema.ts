@@ -5,10 +5,14 @@ import { id, oneOf, textEnum, timestamps } from "@/platform/db/columns";
 export const JOB_STATUSES = ["queued", "running", "succeeded", "failed", "dead", "canceled"] as const;
 
 /**
- * jobs — class: platform (no RLS). The runner sweeps across tenants; each job
- * payload carries its organization and the handler runs inside withTenant().
+ * jobs — class: platform (no RLS). The runner sweeps across tenants. A
+ * tenant-scoped job records its organization in `organization_id` (taken from
+ * the enqueuing transaction's RLS context, never from the payload) and its
+ * handler runs inside withTenant() for that organization (ADR 0005).
  * Scheduled publishing is a job with run_at (no scheduled_actions table, §4.1).
- * The runner itself arrives in M1-3.
+ *
+ * Statuses: queued → running → succeeded | queued (retry) | dead (attempts
+ * exhausted) | failed (permanent error, not retried) | canceled (by staff).
  */
 export const jobs = pgTable(
   "jobs",
@@ -30,6 +34,8 @@ export const jobs = pgTable(
   (t) => [
     oneOf("jobs_status_check", t.status, JOB_STATUSES),
     index("jobs_queued_run_at_idx").on(t.runAt).where(sql`status = 'queued'`),
+    // The reaper looks for expired locks every minute.
+    index("jobs_running_locked_until_idx").on(t.lockedUntil).where(sql`status = 'running'`),
     uniqueIndex("jobs_active_dedupe_unique")
       .on(t.dedupeKey)
       .where(sql`dedupe_key is not null and status in ('queued', 'running')`),

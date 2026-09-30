@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_CRON_SECRET } from "./tests/e2e/helpers/env";
 
 /**
  * E2E runs against a production build (`next build && next start`) by default,
@@ -36,6 +37,11 @@ export default defineConfig({
     url: `http://app.localhost:${PORT}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { ...process.env, APP_ORIGIN: `http://app.localhost:${PORT}`, SITES_ROOT_DOMAIN: "sites.localhost" },
+    env: {
+      ...process.env,
+      APP_ORIGIN: `http://app.localhost:${PORT}`,
+      SITES_ROOT_DOMAIN: "sites.localhost",
+      CRON_SECRET: E2E_CRON_SECRET,
+    },
   },
 });

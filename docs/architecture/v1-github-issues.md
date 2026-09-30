@@ -214,15 +214,15 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** M1-1
 
 **Acceptance criteria:**
-- [ ] `jobs` table (platform class) with `dedupe_key` partial unique index
-- [ ] `jobs.enqueue(tx, type, payload, { runAt?, dedupeKey?, maxAttempts? })` inside the caller's transaction; payloads validated by per-type Zod schemas in a registry
-- [ ] Runner: claims with `FOR UPDATE SKIP LOCKED`; exponential backoff with jitter; `dead` after max attempts; reaper for expired locks; stops at ~75% of the time budget
-- [ ] `/api/internal/cron` (every minute) and `/api/internal/cron/daily` (03:00) authenticated with `CRON_SECRET`; configured in `vercel.json`
-- [ ] `kickJobs()` helper using `after()`
+- [x] `jobs` table (platform class) with `dedupe_key` partial unique index — from M1-1; migration 0003 adds a partial index for the reaper
+- [x] `jobs.enqueue(tx, type, payload, { runAt?, dedupeKey?, maxAttempts? })` inside the caller's transaction; payloads validated by per-type Zod schemas in a registry — `type` is passed as its `defineJob()` definition (typed payload). Tenant jobs take the organization from the transaction's RLS context. The runner's registry is composed in `src/app/api/internal/cron/jobs.ts` (ADR 0005)
+- [x] Runner: claims with `FOR UPDATE SKIP LOCKED`; exponential backoff with jitter; `dead` after max attempts; reaper for expired locks; stops at ~75% of the time budget — plus fencing on `attempts`, `failed` for permanent errors, and a 900 s default claim
+- [x] `/api/internal/cron` (every minute) and `/api/internal/cron/daily` (03:00) authenticated with `CRON_SECRET`; configured in `vercel.json` — 404 without the secret. The daily route enqueues `jobs.cleanup` (retention, long-term §6.9)
+- [x] `kickJobs()` helper using `after()` — runs only the kicked job types, best effort
 
 **Likely files/modules:** `src/platform/jobs/*`, `src/app/api/internal/cron/*`, `vercel.json`
 
-**Testing:** integration with a fake clock: success, retry with backoff, dead-letter, concurrent runners never double-claim, dedupe.
+**Testing:** integration with a fake clock: success, retry with backoff, dead-letter, concurrent runners never double-claim, dedupe. ✔ `tests/integration/jobs.test.ts` (24 tests through PgBouncer, mutation-checked), `src/platform/jobs/definition.test.ts` (4), `tests/e2e/cron.spec.ts` (4).
 
 ### M1-4 · Email: provider interface, Resend adapter, templates, `email.send` job
 **Labels:** `area:platform` `type:infra`
@@ -653,12 +653,14 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Description:** The structural blocks.
 
-*From M0-5: button, columns, embed and spacer already exist in `spikes/editor/`. Still open: the concrete list of embed form providers (ADR 0003, gap 9) and top-level drop snapping (gap 4).*
+*From M0-5: button, columns, embed and spacer already exist in `spikes/editor/`. Decided 2026-10-01 (plan §6.1, §6.3):*
+- *Embeds: YouTube and Vimeo, plus a `generic` https iframe URL only after URL-safety validation (`platform/net/url-safety` must exist first). No provider-specific integrations.*
+- *Top-level drag snaps to the gaps between top-level blocks, with a visible insertion gap. Drops into containers keep ProseMirror's behaviour.*
 
 **Depends on:** M5-4
 
 **Acceptance criteria:**
-- [ ] Block registry entries (`schema`, Tiptap extension, NodeView, render) for `button`, `columns`/`column` (2–3, no nesting), `embed` (YouTube, Vimeo + allow-listed form providers; privacy URLs), `spacer`
+- [ ] Block registry entries (`schema`, Tiptap extension, NodeView, render) for `button`, `columns`/`column` (2–3, no nesting), `embed` (YouTube, Vimeo with privacy URLs; `generic` iframe URL after URL-safety validation), `spacer`
 - [ ] Properties side panel generated from each block's Zod schema
 - [ ] Drag handle reorder + Alt+↑/↓ + block menu (move, duplicate, delete)
 - [ ] `v` attribute + `migrate` scaffold per custom block

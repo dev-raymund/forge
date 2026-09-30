@@ -456,7 +456,7 @@ interface ContentTypeDefinition<F = Record<string, never>> {
 | Image | `image` (custom) | `mediaId`, `alt?` (override), `caption?`, `size` (`content` \| `wide` \| `full`), `link?` | `<figure><img srcset>` from variants |
 | Button | `button` (custom) | `label`, `href`, `style` (theme variant: `primary` \| `secondary`), `align`, `newTab` | `<a class>` |
 | Columns | `columns` → `column` (custom) | `count` 2–3, `ratio`, `stackOnMobile`; columns may contain any block **except** columns | CSS grid |
-| Video / embed | `embed` (custom) | `provider` (YouTube, Vimeo, allow-listed form providers), `url`, `aspect` | Sandboxed `<iframe>` with a privacy-enhanced URL |
+| Video / embed | `embed` (custom) | `provider` (`youtube`, `vimeo`, or `generic`), `url`, `aspect`. **Decided 2026-10-01:** YouTube and Vimeo get privacy-enhanced URLs; `generic` accepts an https URL only after it passes URL-safety validation (`platform/net/url-safety`); no provider-specific integrations and no unvalidated remote embeds in V1 | Sandboxed `<iframe>` (privacy-enhanced URL for YouTube/Vimeo) |
 | Spacer | `spacer` (custom) | `size` (`sm` \| `md` \| `lg` \| `xl`) | `<div>` with a theme spacing token |
 
 ### 6.2 Stored structure
@@ -498,7 +498,7 @@ interface ContentTypeDefinition<F = Record<string, never>> {
 | Capability | V1 implementation |
 |---|---|
 | Insert blocks | `/` slash menu + "+" button between blocks |
-| Reorder | Drag handle on each top-level block (Tiptap's drag-handle extension, or custom), plus keyboard (Alt+↑/↓) and "Move up/down" in the block menu |
+| Reorder | Drag handle on each top-level block (Tiptap's drag-handle extension), plus keyboard (Alt+↑/↓) and "Move up/down" in the block menu. **Decided 2026-10-01:** a top-level drag **snaps to the gaps between top-level blocks**, and the editor visibly marks the insertion gap. Drops into containers (quote, columns, other container nodes) keep ProseMirror's normal drop behaviour |
 | Block properties | Selecting a custom node opens a **side panel auto-generated from its Zod `attrs` schema** (UI hints in the schema metadata); inline toolbar for marks and links |
 | Entry settings | Sidebar tabs: *Page/Post* (slug, parent or categories/tags, template, excerpt, featured image, author) and *SEO* (§10) |
 | Autosave | Debounced 2 s after the last change, forced every 30 s. `saveDraft(entryId, expectedVersion, draft)`. Status shown ("Saved · 10:42"). Unsynced changes buffered in `localStorage` per entry + version |
@@ -780,6 +780,14 @@ REST, versioned from day one, on the app host (`/api/v1`). No GraphQL. **Site-bo
 
 **Best-effort `after()` only:** kicking the runner, updating `api_keys.last_used_at`.
 
+**Implementation details (M1-3, ADR 0005):**
+- Tenant jobs take their organization from the enqueuing `withTenant()` transaction, and handlers get a tenant transaction for that organization only.
+- The outcome is fenced on `attempts`, so delivery is at least once and handlers are idempotent.
+- The default claim is 900 s, longer than any Vercel function runs.
+- `dead` means attempts were exhausted; `failed` means a permanent error that is not retried.
+- `kickJobs()` runs only the job types just enqueued.
+- `jobs.cleanup` keeps finished jobs 14 days, and `dead`/`failed` jobs 30 days.
+
 **Webhook delivery** is deferred with webhooks (§17). The runner design already supports it.
 
 ---
@@ -793,7 +801,7 @@ REST, versioned from day one, on the app host (`/api/v1`). No GraphQL. **Site-bo
 | Third-party plugins / marketplace | DO NOT BUILD | Same; the later answer is webhooks + API + first-party integrations |
 | Real-time collaboration | DO NOT BUILD | Optimistic concurrency and a conflict dialog are enough; the ProseMirror model keeps it possible |
 | Comments | FUTURE | Spam and moderation burden; low demand from SMB sites |
-| Forms | SHOULD after V1 (first) | Real SMB need, but not in the V1 journey. Stopgap: embed allow-listed form providers |
+| Forms | SHOULD after V1 (first) | Real SMB need, but not in the V1 journey. Stopgap: the `generic` embed (URL-safety validated) |
 | Advanced analytics | FUTURE | V1 stores GA4/Plausible IDs; no dashboards |
 | External search engine | FUTURE | No V1 search feature beyond admin title search |
 | Redis | DO NOT BUILD (yet) | Postgres + Vercel WAF rate limits cover V1 |
