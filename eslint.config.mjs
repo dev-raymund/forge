@@ -64,14 +64,6 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // Schema files may reference other modules' tables for foreign keys, and
-    // the schema barrel re-exports every module's tables.
-    files: ["src/modules/*/schema.ts", "src/platform/db/schema.ts"],
-    rules: {
-      "no-restricted-imports": ["error", { patterns: [rawDbClient, betterAuth] }],
-    },
-  },
-  {
     files: ["src/modules/auth/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", { patterns: [moduleEntryOnly, rawDbClient] }],
@@ -81,6 +73,15 @@ const eslintConfig = defineConfig([
     files: ["src/platform/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", { patterns: [moduleEntryOnly, betterAuth] }],
+    },
+  },
+  {
+    // Must stay last: later blocks override earlier ones in flat config.
+    // Schema files may reference other modules' tables for foreign keys, and
+    // the schema barrel re-exports every module's tables.
+    files: ["src/modules/*/schema.ts", "src/platform/db/schema.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [rawDbClient, betterAuth] }],
     },
   },
 ]);

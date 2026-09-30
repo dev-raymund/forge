@@ -88,10 +88,13 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** M0-2
 
 **Acceptance criteria:**
-- [ ] Prototype `withTenant(ctx, fn)` using `set_config('app.org_id', …, true)` inside a transaction; `forge_app` cannot bypass RLS
-- [ ] Demonstrates the `nullif(current_setting(...), '')` behaviour on reused pooled connections
+- [x] Prototype `withTenant(ctx, fn)` using `set_config('app.org_id', …, true)` inside a transaction; `forge_app` cannot bypass RLS
+  - *Done:* implemented directly as production code (`src/platform/db/tenant.ts`) and proven by 58 integration tests through PgBouncer in transaction mode (`tests/integration/rls.test.ts`).
+- [x] Demonstrates the `nullif(current_setting(...), '')` behaviour on reused pooled connections
 - [ ] Latency measured on Vercel → Neon (p50/p95 for a 3-query transaction vs no transaction)
-- [ ] ADR `docs/adr/0001-rls-withtenant.md` with the decision: keep thin RLS, or use the fallback (§4.3 of the plan)
+  - *Partial:* measured locally through PgBouncer: +0.74 ms at p50 (`scripts/spikes/rls-latency.ts`). The Vercel → Neon run is **pending account access** (M0-2); the command is in ADR 0001.
+- [x] ADR `docs/adr/0001-rls-withtenant.md` with the decision: keep thin RLS, or use the fallback (§4.3 of the plan)
+  - *Decision:* keep thin RLS. Discoveries: the token lookups need a dedicated `forge_lookup` owner role, because FORCE binds the table owner too; the function-ownership grant needs a temporary `CREATE`; Neon roles must be created with SQL.
 
 **Likely files/modules:** `spikes/rls/*`, `docs/adr/`
 
@@ -161,12 +164,18 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** M0-3
 
 **Acceptance criteria:**
-- [ ] `getDb()` (lazy) with a `pg` Pool + `attachDatabasePool`; `withRetry` for transient errors on idempotent reads
-- [ ] `withTenant({ orgId, userId? }, fn)` opens a transaction, sets the context, and passes a typed `tx`; `withSystem(fn)` only for platform tables
-- [ ] Column helpers: `id()` (UUIDv7), `timestamps()`, `softDelete()`, `status(values)` (text + CHECK), `tenantColumns()`
-- [ ] `tenantTable()` adds the tenant columns, the composite FK to `sites`, `UNIQUE (site_id, id)`, and the RLS policy, and registers the table in the isolation-suite registry
-- [ ] Migration pipeline: `db:generate`, `db:migrate` (owner URL), custom SQL migration for roles/grants/`FORCE RLS`/`pg_trgm`; `db:push` blocked unless `DATABASE_URL` is local
-- [ ] Migration review checklist added to the PR template
+- [x] `getDb()` (lazy) with a `pg` Pool + `attachDatabasePool`; `withRetry` for transient errors on idempotent reads
+- [x] `withTenant({ orgId, userId? }, fn)` opens a transaction, sets the context, and passes a typed `tx`; `withSystem(fn)` only for platform tables
+  - *Named:* `withPlatform(fn)` (platform/identity tables) plus `withUser(userId, fn)` for membership lookups before an org is chosen (plan §4.3 membership class).
+- [x] Column helpers: `id()` (UUIDv7), `timestamps()`, `softDelete()`, `status(values)` (text + CHECK), `tenantColumns()`
+  - *Named:* `textEnum()` + `oneOf()` for status columns; `orgColumns()` / `siteColumns()` for tenant columns.
+- [x] `tenantTable()` adds the tenant columns, the composite FK to `sites`, `UNIQUE (site_id, id)`, and the RLS policy, and registers the table in the isolation-suite registry
+  - *Changed shape:* a single generic `tenantTable()` wrapper fights Drizzle's `pgTable` typing. Tables use plain `pgTable` with small helpers instead (`siteColumns()`, `siteForeignKey()`, `tenantPolicy()`). The registry is `src/platform/db/table-classes.ts`, and the isolation suite **diffs it against the live catalog**, so an unregistered or unprotected table fails CI. That's stronger than opt-in registration.
+- [x] Migration pipeline: `db:generate`, `db:migrate` (owner URL), custom SQL migration for roles/grants/`FORCE RLS`/`pg_trgm`; `db:push` blocked unless `DATABASE_URL` is local
+  - *Note:* roles themselves are environment setup (`docker/postgres/init.sql`, runbook), not migrations. Migrations grant to them.
+- [x] Migration review checklist added to the PR template
+
+**Also delivered here (per the implementation brief):** the full 24-table V1 schema (`drizzle/0001_v1_schema.sql`, `0002_rls_force_grants_lookups.sql`). The schema-level criteria of M3-1, M4-1, M5-1, M6-1, M8-3, M8-5, M10-1 and M11-1 are therefore met in advance. Their services, UI and behaviour stay in their milestones.
 
 **Likely files/modules:** `src/platform/db/*`, `drizzle.config.ts`, `drizzle/0000_*.sql`, `.github/pull_request_template.md`
 
@@ -362,6 +371,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M3-1 · Tenancy schema and RLS policies
 **Labels:** `area:tenancy` `type:feature` `risk:high`
 
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
+
 **Description:** The multi-tenant core tables.
 
 **Depends on:** M1-1, M1-6, M2-1
@@ -451,6 +462,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ### M4-1 · Sites schema, create site, subdomain, limits
 **Labels:** `area:sites` `type:feature`
+
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Sites and their default hostname.
 
@@ -543,6 +556,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ### M5-1 · Content schema
 **Labels:** `area:content` `type:feature` `risk:high`
+
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** The entry aggregate and terms.
 
@@ -689,6 +704,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ### M6-1 · Media schema and upload protocol
 **Labels:** `area:media` `type:feature`
+
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Direct-to-storage uploads with validation.
 
@@ -864,6 +881,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M8-3 · Menus
 **Labels:** `area:navigation` `type:feature`
 
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
+
 **Description:** Header and footer navigation.
 
 **Depends on:** M5-6
@@ -897,6 +916,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ### M8-5 · Redirects, auto-redirects, custom 404
 **Labels:** `area:seo` `type:feature`
+
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** URLs never break.
 
@@ -957,6 +978,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M10-1 · API keys, `withApi`, read endpoints
 **Labels:** `area:api` `type:feature`
 
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
+
 **Description:** Safe read access for other systems.
 
 **Depends on:** M5-6, M6-2
@@ -992,6 +1015,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ### M11-1 · Plans, limits, trial lifecycle
 **Labels:** `area:billing` `type:feature`
+
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Entitlements without Stripe.
 

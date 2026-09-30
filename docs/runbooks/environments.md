@@ -34,6 +34,8 @@ Hostnames are placeholders from the V1 plan. Substitute the real domains everywh
    ```sql
    CREATE ROLE forge_owner LOGIN PASSWORD '<generate>' NOSUPERUSER NOCREATEROLE NOBYPASSRLS;
    CREATE ROLE forge_app   LOGIN PASSWORD '<generate>' NOSUPERUSER NOCREATEROLE NOBYPASSRLS;
+   CREATE ROLE forge_lookup NOLOGIN NOSUPERUSER NOBYPASSRLS;   -- owns the token-lookup functions
+   GRANT forge_lookup TO forge_owner;
    ALTER DATABASE neondb OWNER TO forge_owner;   -- or the database you use
    ALTER SCHEMA public OWNER TO forge_owner;
    REVOKE ALL ON SCHEMA public FROM PUBLIC;

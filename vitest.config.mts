@@ -9,7 +9,11 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   resolve: {
-    alias: { "@": path.resolve(import.meta.dirname, "src") },
+    alias: {
+      "@": path.resolve(import.meta.dirname, "src"),
+      // The real package throws outside React Server Components.
+      "server-only": path.resolve(import.meta.dirname, "tests/setup/server-only-stub.ts"),
+    },
   },
   test: {
     projects: [
@@ -30,7 +34,9 @@ export default defineConfig({
           globalSetup: ["tests/setup/integration-global.ts"],
           setupFiles: ["tests/setup/integration-env.ts"],
           testTimeout: 30_000,
-          hookTimeout: 60_000,
+          hookTimeout: 120_000,
+          // One cloned database per worker (tests/setup/db-urls.ts).
+          maxWorkers: 4,
         },
       },
     ],

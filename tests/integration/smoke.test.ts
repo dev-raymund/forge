@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("integration test project", () => {
   it("reaches Postgres through the transaction-mode pooler as forge_app", async () => {
-    const client = new pg.Client({ connectionString: process.env.TEST_DATABASE_APP_URL });
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
     try {
       const { rows } = await client.query<{ role: string; bypass: boolean }>(

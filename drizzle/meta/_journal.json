@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790771596047,
+      "tag": "0000_rls_context_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790771669879,
+      "tag": "0001_v1_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790771670469,
+      "tag": "0002_rls_force_grants_lookups",
+      "breakpoints": true
+    }
+  ]
+}
