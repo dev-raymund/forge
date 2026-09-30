@@ -29,6 +29,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // D-27: Cache Components is the caching model for the site renderer.
   cacheComponents: true,
+  // The `cms` profile (ADR 0002); mirrored as CMS_CACHE_LIFE in src/platform/cache.
+  cacheLife: {
+    cms: { stale: 300, revalidate: 86_400, expire: 604_800 },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

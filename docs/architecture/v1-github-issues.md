@@ -107,15 +107,17 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Depends on:** M0-2
 
+**Status:** Proven locally on a production build. The Vercel preview run is pending the M0-2 accounts (runbook §5).
+
 **Acceptance criteria:**
-- [ ] Two test hosts render different content from the same route; direct `/render/*` requests 404
-- [ ] Publishing via a Server Action (`updateTag`) shows fresh content on the next request; a job-style route handler (`revalidateTag` with `expire: 0`) also works
-- [ ] Admin pattern under Cache Components (a static shell + authenticated data in `<Suspense>`) documented
-- [ ] ADR `0002-host-routing-and-caching.md` with the recommended `cacheLife` profile
+- [x] Two test hosts render different content from the same route; direct `/render/*` requests 404 — unknown hosts also return a real 404 status
+- [x] Publishing via a Server Action (`updateTag`) shows fresh content on the next request; a job-style route handler (`revalidateTag` with `expire: 0`) also works — locally; other sites' cache entries survive
+- [x] Admin pattern under Cache Components (a static shell + authenticated data in `<Suspense>`) documented — ADR 0002 decision 4; `/dev/cache` is the reference page
+- [x] ADR `0002-host-routing-and-caching.md` with the recommended `cacheLife` profile — `cms`: stale 5 min, revalidate 1 day, expire 7 days
 
 **Likely files/modules:** `spikes/rendering/*`, `src/proxy.ts` (prototype), `docs/adr/`
 
-**Testing:** a Playwright script against the preview deployment.
+**Testing:** a Playwright script against the preview deployment. ✔ `tests/e2e/rendering-spike.spec.ts` (9 tests) passes locally. The same spec runs against a deployment with `E2E_BASE_URL` (tenant hosts via `?__host=`). ☐ Preview run pending accounts.
 
 ### M0-5 · Spike S3: Tiptap custom nodes + closed renderer + drag reorder
 **Labels:** `area:editor` `type:spike` `risk:high`
@@ -285,20 +287,22 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Depends on:** M0-4, M1-2
 
+**Status:** Done, except the admin cookie-presence redirect, which needs the login page (M2-2).
+
 **Acceptance criteria:**
-- [ ] Host normalisation (lowercase, strip port and trailing dot)
-- [ ] Routing: app host → admin/API; anything else → rewrite to `/render/{host}{path}`
-- [ ] `x-request-id` assigned
+- [x] Host normalisation (lowercase, strip port and trailing dot) — plus IDN → punycode; malformed hosts → 404
+- [x] Routing: app host → admin/API; anything else → rewrite to `/render/{host}{path}` — decisions in the pure `decideRoute()` (`src/platform/routing/hosts.ts`); `APP_ORIGIN` missing → only `/api/health*` answers (503 otherwise)
+- [x] `x-request-id` assigned — on the forwarded request and the response
 - [ ] Guards:
-  - direct `/render/*` → 404 on every host
-  - `Next-Action` requests on non-app hosts → 404
-  - the admin cookie-presence redirect is UX only
-- [ ] Non-production host override (`?__host=`) for preview deployments
-- [ ] `platform/cache`: tag builders (`host`, `site`, `config`, `routes`, `entry`, `list`, `media`), `invalidate(events, mode)` using `updateTag` (actions) or `revalidateTag` (handlers/jobs), and the `cms` `cacheLife` profile
+  - [x] direct `/render/*` → 404 on every host
+  - [x] `Next-Action` requests on non-app hosts → 404
+  - [ ] the admin cookie-presence redirect is UX only — **deferred to M2-2**, when the login page and session cookie exist
+- [x] Non-production host override (`?__host=`) for preview deployments — ignored when `VERCEL_ENV=production`
+- [x] `platform/cache`: tag builders (`host`, `site`, `config`, `routes`, `entry`, `list`, `media`), `invalidate(events, mode)` using `updateTag` (actions) or `revalidateTag` (handlers/jobs), and the `cms` `cacheLife` profile — with the pure `tagsFor(event)` map; over-long `host:` tags are shortened to fit Next's 256-character limit
 
 **Likely files/modules:** `src/proxy.ts`, `src/platform/cache/*`
 
-**Testing:** a unit table of host → route decisions; E2E: a site host can't reach admin routes or actions.
+**Testing:** a unit table of host → route decisions; E2E: a site host can't reach admin routes or actions. ✔ `hosts.test.ts` (30 cases), `cache.test.ts` (10), `rendering-spike.spec.ts` (guards, request id, override).
 
 ---
 
@@ -327,6 +331,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Labels:** `area:auth` `type:feature`
 
 **Description:** The account screens.
+
+*From M1-7: add the admin cookie-presence redirect to `proxy.ts` (UX only; the real check stays in `requireUser()`).*
 
 **Depends on:** M2-1
 
@@ -510,6 +516,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Labels:** `area:rendering` `type:feature` `risk:high`
 
 **Description:** Serve sites by hostname with correct caching.
+
+*From M0-4: start from `spikes/rendering/queries.ts` and the current `/render/[host]/[[...path]]` page. Keep static params for both segments, resolve the host outside `<Suspense>` (real 404s), skip the database for the build placeholder, and delete the `/dev/cache` and `/api/dev/revalidate` spike routes (ADR 0002).*
 
 **Depends on:** M1-7, M4-1
 

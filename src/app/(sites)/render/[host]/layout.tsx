@@ -1,3 +1,5 @@
+import { BUILD_PLACEHOLDER_HOST } from "@/platform/routing/hosts";
+
 /**
  * Root layout #2: every tenant site (D-37). Reached only through the proxy
  * rewrite to /render/{host}/… — direct requests to /render/* are rejected by
@@ -8,7 +10,7 @@
 // time. Real hosts are unknown until requested, so a placeholder satisfies the
 // build and every real host renders on demand (ADR 0002).
 export function generateStaticParams() {
-  return [{ host: "__placeholder" }];
+  return [{ host: BUILD_PLACEHOLDER_HOST }];
 }
 
 export default function SiteRootLayout({ children }: { children: React.ReactNode }) {

@@ -94,3 +94,20 @@ Record the result in `docs/adr/0001-rls-withtenant.md`.
 - **Turnstile:** a widget for `app.forgecms.com` (sign-up) and one covering the sites domain (forms, later).
 - **Stripe:** test mode, product "Pro" with a monthly price → `STRIPE_PRICE_PRO`. The webhook endpoint is added in M11-2.
 - **Vercel API token:** scoped to the team/project, used only by the domains module (M9).
+
+## 5. Confirm the spikes on a preview deployment
+
+Once Vercel and a Neon preview branch exist, run the remaining checks against a preview. Each result goes into its ADR:
+
+1. **Migrate the preview branch:** `DATABASE_MIGRATION_URL=<direct owner URL> npm run db:migrate`.
+2. **RLS through Neon's pooler (ADR 0001):** §1b above.
+3. **Host routing and tag invalidation on Vercel (ADR 0002).** This requires the preview env to have `APP_ORIGIN` = the preview URL and a `CRON_SECRET`. Create a protection-bypass secret in the Vercel project settings.
+   ```sh
+   E2E_BASE_URL=https://<preview>.vercel.app \
+   DATABASE_URL=<Neon POOLED forge_app URL of the preview branch> \
+   CRON_SECRET=<preview cron secret> \
+   VERCEL_AUTOMATION_BYPASS_SECRET=<bypass secret> \
+   npx playwright test tests/e2e/rendering-spike.spec.ts
+   ```
+   The spec seeds its own tenant sites and reaches them through `?__host=`.
+4. **Sentry (M1-2):** the curl in §4.

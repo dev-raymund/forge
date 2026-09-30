@@ -38,6 +38,11 @@ jobs:
       - name: Integration tests
         run: npm run test:integration
 
+      - name: Migrate the app database (E2E seeds tenant sites into it)
+        run: npm run db:migrate
+        env:
+          DATABASE_MIGRATION_URL: postgres://forge_owner:forge_owner@localhost:5432/forge
+
       - name: Build
         run: npm run build
 
