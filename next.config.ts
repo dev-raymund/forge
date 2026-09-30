@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 /**
@@ -33,4 +34,13 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Source maps are uploaded to Sentry only when SENTRY_AUTH_TOKEN is set (CI on
+// Vercel); local and PR builds skip it and make no Sentry network calls.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+  telemetry: false,
+  silent: !process.env.CI,
+});

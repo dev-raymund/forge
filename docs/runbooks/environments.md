@@ -86,7 +86,11 @@ Record the result in `docs/adr/0001-rls-withtenant.md`.
 ## 4. Resend, Sentry, Turnstile, Stripe
 
 - **Resend:** add the sending domain and publish SPF, DKIM and DMARC. `EMAIL_FROM` uses that domain.
-- **Sentry:** a Next.js project; DSN into `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN`; auth token for source maps.
+- **Sentry:** a Next.js project; DSN into `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN`; `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` for source-map upload during the Vercel build. To verify from a preview (M1-2), with `CRON_SECRET` set:
+  ```sh
+  curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<preview-host>/api/internal/sentry-test
+  ```
+  The response carries the `requestId` and `sentryEventId`. The event appears in Sentry tagged with `requestId` and `module`, and with the commit SHA as its release.
 - **Turnstile:** a widget for `app.forgecms.com` (sign-up) and one covering the sites domain (forms, later).
 - **Stripe:** test mode, product "Pro" with a monthly price → `STRIPE_PRICE_PRO`. The webhook endpoint is added in M11-2.
 - **Vercel API token:** scoped to the team/project, used only by the domains module (M9).

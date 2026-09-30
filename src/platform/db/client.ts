@@ -2,6 +2,7 @@ import "server-only";
 import { attachDatabasePool } from "@vercel/functions";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { env } from "@/platform/config/env";
 import * as schema from "./schema";
 
 /**
@@ -24,15 +25,12 @@ let db: Database | undefined;
 
 export function getPool(): pg.Pool {
   if (pool) return pool;
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error(
-      "DATABASE_URL is not set. Locally, copy .env.example to .env.local and run `npm run dev:services`.",
-    );
-  }
+  // Throws a ConfigError naming the variable (locally: copy .env.example to
+  // .env.local and run `npm run dev:services`).
+  const { DATABASE_URL, DATABASE_POOL_MAX } = env("database");
   pool = new pg.Pool({
-    connectionString,
-    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    connectionString: DATABASE_URL,
+    max: DATABASE_POOL_MAX,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
   });

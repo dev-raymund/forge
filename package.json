@@ -23,6 +23,7 @@
     "db:check": "drizzle-kit check"
   },
   "dependencies": {
+    "@sentry/nextjs": "11.1.0",
     "@tiptap/core": "3.31.3",
     "@tiptap/extension-blockquote": "3.31.3",
     "@tiptap/extension-document": "3.31.3",

@@ -191,16 +191,18 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Depends on:** M0-1
 
+**Status:** Done locally. The Sentry check from a preview is pending the Sentry project and Vercel deployment (M0-2).
+
 **Acceptance criteria:**
-- [ ] `platform/config/env.ts`: Zod-validated, read lazily; importing a module never throws on a missing variable
-- [ ] `AppError` kinds (`NotFound`, `Forbidden`, `Validation`, `Conflict`, `LimitExceeded`, `RateLimited`, `Unavailable`) + mappers to `ActionResult` and `problem+json`
-- [ ] JSON logger with `requestId`, `orgId`, `siteId`, `actor`, `module`; request ID from the proxy header, available via AsyncLocalStorage for logging only
-- [ ] Sentry server + client with release = commit SHA, tenant IDs as tags, PII scrubbing
-- [ ] `/api/health` (liveness) and `/api/health/ready` (DB ping + env groups)
+- [x] `platform/config/env.ts`: Zod-validated, read lazily; importing a module never throws on a missing variable — variables are grouped by feature. `REQUIRED_ENV_GROUPS` is `core` + `database` today; each issue adds its group when shipped code starts reading it. The DB pool reads `env("database")`
+- [x] `AppError` kinds (`NotFound`, `Forbidden`, `Validation`, `Conflict`, `LimitExceeded`, `RateLimited`, `Unavailable`) + mappers to `ActionResult` and `problem+json` — problem `type` is `urn:forge:problem:<kind>`; LimitExceeded → 402, Validation → 422 with `errors[]`; unexpected errors → a generic 500 / "Reference: {requestId}"
+- [x] JSON logger with `requestId`, `orgId`, `siteId`, `actor`, `module`; request ID from the proxy header, available via AsyncLocalStorage for logging only — redacts secrets and emails; drops driver `detail`. `assignRequestId()` is ready for the proxy (M1-7): it reuses `x-vercel-id`, otherwise mints a UUIDv7, and ignores client-supplied ids
+- [x] Sentry server + client with release = commit SHA, tenant IDs as tags, PII scrubbing — `@sentry/nextjs` 11.1.0 (`dataCollection` off + `beforeSend` scrub). The client SDK loads lazily on the admin surface only, so public sites ship no Sentry JS. Source maps upload only when `SENTRY_AUTH_TOKEN` is set
+- [x] `/api/health` (liveness) and `/api/health/ready` (DB ping + env groups) — per-group `ok`/`missing`/`invalid`, no variable names; 503 when not ready
 
 **Likely files/modules:** `src/platform/config/*`, `src/platform/observability/*`, `src/platform/errors.ts`, `src/app/api/health/*`
 
-**Testing:** unit tests for error mapping and env parsing; a test error visible in Sentry from preview.
+**Testing:** unit tests for error mapping and env parsing; a test error visible in Sentry from preview. ✔ Unit: env, errors, logger, scrub, request id, readiness, bearer. Integration: DB ping through PgBouncer. E2E: readiness, sentry-test 404. ☐ Sentry from preview: `POST /api/internal/sentry-test` with the cron secret (runbook §4), pending accounts.
 
 ### M1-3 · Job queue: table, enqueue, runner, cron routes
 **Labels:** `area:platform` `type:infra`

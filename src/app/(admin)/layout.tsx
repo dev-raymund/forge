@@ -13,7 +13,8 @@ export const metadata: Metadata = {
 
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // data-surface lets instrumentation-client.ts load Sentry on the admin only.
+    <html lang="en" data-surface="admin">
       <body className="min-h-dvh bg-background text-foreground antialiased">{children}</body>
     </html>
   );

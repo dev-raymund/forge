@@ -13,7 +13,7 @@ export function generateStaticParams() {
 
 export default function SiteRootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-surface="site">
       <body>{children}</body>
     </html>
   );
