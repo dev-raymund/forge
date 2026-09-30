@@ -28,6 +28,6 @@ export default defineConfig({
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { ...process.env, APP_HOST: `app.localhost`, SITES_ROOT_DOMAIN: `sites.localhost` },
+    env: { ...process.env, APP_ORIGIN: `http://app.localhost:${PORT}`, SITES_ROOT_DOMAIN: "sites.localhost" },
   },
 });

@@ -74,6 +74,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
   | Observability | `SENTRY_DSN`, `SENTRY_AUTH_TOKEN` |
   | Staff | `PLATFORM_ADMIN_EMAILS` |
 
+**Status (2026-09-30):** *Partially done.* The repository side is complete: `vercel.json` crons, `.env.example`, and [`docs/runbooks/environments.md`](../runbooks/environments.md) with exact provisioning steps. **Every account item above is pending the owner.** This session had no credentials for Vercel, Neon, R2, Resend, Sentry, Stripe or Turnstile, no domain purchases, and no GitHub remote to connect Vercel to. Runbook discovery: create `forge_app` and `forge_owner` **with SQL, not the Neon console**. Console-, CLI- and API-created roles join `neon_superuser`.
+
 **Likely files/modules:** `vercel.json` (crons), `.env.example`, `docs/runbooks/environments.md`
 
 **Testing:** a preview deployment answers on the app host and on a `*.forge-host.com` test subdomain.
