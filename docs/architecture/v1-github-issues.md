@@ -9,7 +9,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Global acceptance criteria.** These apply to every issue and are not repeated below:
 - Typecheck, lint (including module-boundary rules) and all tests pass in CI.
-- Every new tenant table uses `tenantTable()`, has RLS + FORCE, and is covered by the isolation suite.
+- Every new tenant table uses the tenant column and policy helpers (`orgColumns()`/`siteColumns()`, `tenantPolicy()`; `tenantTable()` was replaced in M1-1), is classified in `src/platform/db/table-classes.ts`, has RLS + FORCE, and is covered by the isolation suite.
 - Every mutation checks permissions in the service and writes an audit row in the same transaction.
 - No DB access outside repositories, queries or `platform/db`. No business logic in `app/`.
 - New migrations are generated, reviewed and backward-compatible.
