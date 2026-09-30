@@ -11,7 +11,8 @@ import nextTs from "eslint-config-next/typescript";
  * 2. The raw database client (`@/platform/db/client`) is private to
  *    `platform/`. Services and queries use `withTenant()` from `@/platform/db`.
  * 3. `app/` and `components/` never touch the database or Drizzle directly.
- * 4. Only `modules/auth` talks to Better Auth (D-07).
+ * 4. Only `modules/auth` talks to Better Auth (D-07), and only it may take the
+ *    identity-table handle Better Auth needs (`@/platform/db/identity`, ADR 0004).
  */
 const moduleEntryOnly = {
   group: ["@/modules/*/*", "!@/modules/*/shared"],
@@ -21,6 +22,10 @@ const moduleEntryOnly = {
 const rawDbClient = {
   group: ["@/platform/db/client", "@/platform/db/client.*"],
   message: "The raw DB client is private to platform/. Use withTenant() from @/platform/db.",
+};
+const identityDb = {
+  group: ["@/platform/db/identity", "@/platform/db/identity.*"],
+  message: "The identity DB handle is for Better Auth in modules/auth only (ADR 0004).",
 };
 const betterAuth = {
   group: ["better-auth", "better-auth/*"],
@@ -50,7 +55,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [moduleEntryOnly, rawDbClient, betterAuth] },
+        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth] },
       ],
     },
   },
@@ -59,7 +64,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [moduleEntryOnly, rawDbClient, betterAuth, noDbInUi] },
+        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, noDbInUi] },
       ],
     },
   },
@@ -81,7 +86,7 @@ const eslintConfig = defineConfig([
     // the schema barrel re-exports every module's tables.
     files: ["src/modules/*/schema.ts", "src/platform/db/schema.ts"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [rawDbClient, betterAuth] }],
+      "no-restricted-imports": ["error", { patterns: [rawDbClient, identityDb, betterAuth] }],
     },
   },
 ]);

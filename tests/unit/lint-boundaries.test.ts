@@ -58,4 +58,12 @@ describe("module boundaries", () => {
     expect(outside).toHaveLength(1);
     expect(inside).toHaveLength(0);
   });
+
+  it("gives the identity DB handle to modules/auth only", async () => {
+    const code = `import { identityDb } from "@/platform/db/identity";\nexport const d = identityDb;\n`;
+    expect(await restrictedImports(code, "src/modules/content/entry.service.ts")).toHaveLength(1);
+    // app/ also trips the no-DB-in-UI rule, so expect at least one error there.
+    expect((await restrictedImports(code, "src/app/(admin)/example.ts")).length).toBeGreaterThan(0);
+    expect(await restrictedImports(code, "src/modules/auth/auth.ts")).toHaveLength(0);
+  });
 });

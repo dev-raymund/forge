@@ -143,14 +143,14 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** M0-1
 
 **Acceptance criteria:**
-- [ ] Sign-up/login/logout against local Postgres using mapped tables
-- [ ] ID generation produces UUIDv7 (or the ADR documents the fallback)
-- [ ] Session revocation takes effect on the next request
-- [ ] ADR `0004-auth.md`
+- [x] Sign-up/login/logout against local Postgres using mapped tables — through PgBouncer as `forge_app`; better-auth 1.7.6 pinned
+- [x] ID generation produces UUIDv7 (or the ADR documents the fallback) — native, via `advanced.database.generateId`; no fallback needed
+- [x] Session revocation takes effect on the next request
+- [x] ADR `0004-auth.md` — also records the `identityDb()` seam, the 30-day absolute-lifetime hook, and notes for M2-1 and M2-4
 
 **Likely files/modules:** `spikes/auth/*`
 
-**Testing:** integration test in the spike.
+**Testing:** integration test in the spike. ✔ `spikes/auth/auth.integration.test.ts` (16 tests), which also covers password hashing, the verification flow, cookie attributes and Google OAuth readiness
 
 ---
 
@@ -307,6 +307,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Description:** Production Better Auth setup per ADR 0004.
 
+*From M0-6: the tables and migration were delivered in M1-1. Start from `spikes/auth/auth.ts` and use `identityDb()` for the adapter. Mind the Cache Components note in ADR 0004 (discovery 9).*
+
 **Depends on:** M0-6, M1-1, M1-4
 
 **Acceptance criteria:**
@@ -354,6 +356,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Labels:** `area:auth` `type:feature`
 
 **Description:** Self-service account management plus abuse controls.
+
+*From M0-6: Better Auth's limiter uses in-memory storage by default, which is per instance on Vercel. The WAF rule is the real control (ADR 0004, discovery 8).*
 
 **Depends on:** M2-2, M1-5
 
