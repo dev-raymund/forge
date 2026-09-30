@@ -3,7 +3,9 @@ import { defineConfig } from "vitest/config";
 
 /**
  * Two projects (D-31):
- *  - unit:        fast, pure, no I/O. Colocated `*.test.ts(x)` under src/ + tests/unit.
+ *  - unit:        fast, pure, no I/O. Colocated `*.test.ts(x)` under src/ + tests/unit
+ *                 (+ spike unit tests). DOM tests opt in per file with
+ *                 `// @vitest-environment happy-dom`.
  *  - integration: real Postgres (through PgBouncer, like Neon's pooled endpoint),
  *                 real migrations and RLS. Requires `npm run dev:services`.
  */
@@ -22,7 +24,20 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
-          include: ["src/**/*.test.{ts,tsx}", "tests/unit/**/*.test.{ts,tsx}"],
+          include: ["src/**/*.test.{ts,tsx}", "tests/unit/**/*.test.{ts,tsx}", "spikes/**/*.test.{ts,tsx}"],
+          exclude: ["**/node_modules/**", "spikes/**/*.integration.test.ts"],
+          // DOM tests parse hostile HTML: never let happy-dom fetch or run what it references.
+          environmentOptions: {
+            happyDOM: {
+              settings: {
+                disableIframePageLoading: true,
+                disableJavaScriptFileLoading: true,
+                disableJavaScriptEvaluation: true,
+                disableCSSFileLoading: true,
+                handleDisabledFileLoadingAsSuccess: true,
+              },
+            },
+          },
         },
       },
       {

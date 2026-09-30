@@ -125,15 +125,15 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** M0-1
 
 **Acceptance criteria:**
-- [ ] Columns (2–3) with blocks inside; nested columns prevented by the schema
-- [ ] Top-level blocks reorder by drag handle and Alt+↑/↓; undo works across reorder
-- [ ] Every top-level node gets a stable `id` attribute that survives copy/paste (duplicates re-IDed)
-- [ ] The server renderer outputs only allow-listed elements; pasted `<script>`/`onerror` HTML is dropped
-- [ ] ADR `0003-editor.md`: chosen extensions (open-source only), known gaps, estimate for Phase 5
+- [x] Columns (2–3) with blocks inside; nested columns prevented by the schema — in the editor schema, the Zod contract and the renderer
+- [x] Top-level blocks reorder by drag handle and Alt+↑/↓; undo works across reorder — headless tests and real Chromium (Tiptap's drag handle)
+- [x] Every top-level node gets a stable `id` attribute that survives copy/paste (duplicates re-IDed) — UUIDv7 via UniqueID. Cut/paste gives moved blocks new ids (ADR 0003, gap 3)
+- [x] The server renderer outputs only allow-listed elements; pasted `<script>`/`onerror` HTML is dropped — 31-payload corpus, plus a paste guard for custom-node attributes
+- [x] ADR `0003-editor.md`: chosen extensions (open-source only), known gaps, estimate for Phase 5
 
 **Likely files/modules:** `spikes/editor/*`
 
-**Testing:** a Vitest renderer test with an XSS payload list; manual editor script.
+**Testing:** a Vitest renderer test with an XSS payload list; manual editor script. ✔ `spikes/editor/*.test.ts(x)` (75 unit), `save-draft.integration.test.ts` (5), `tests/e2e/editor-spike.spec.ts` (6, real Chromium). The manual page is `/dev/editor` (never served on Vercel production). Also covers document JSON, validation, autosave and version conflicts.
 
 ### M0-6 · Spike S4: Better Auth on our schema with UUIDv7
 **Labels:** `area:auth` `type:spike`
@@ -623,6 +623,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Description:** The Tiptap editor per ADR 0003.
 
+*From M0-5: start from `spikes/editor/`. Carry over the paste guard, the columns normalizer and the client-only (`ssr: false`) loading. Add client-side id dedupe before save (ADR 0003, gap 3).*
+
 **Depends on:** M0-5, M5-3
 
 **Acceptance criteria:**
@@ -640,6 +642,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Labels:** `area:editor` `type:feature`
 
 **Description:** The structural blocks.
+
+*From M0-5: button, columns, embed and spacer already exist in `spikes/editor/`. Still open: the concrete list of embed form providers (ADR 0003, gap 9) and top-level drop snapping (gap 4).*
 
 **Depends on:** M5-4
 
