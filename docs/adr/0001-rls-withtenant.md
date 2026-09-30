@@ -21,19 +21,19 @@ Can organization A be kept from reading organization B's rows by Postgres itself
 
 ## Evidence
 
-`npm run test:integration` runs `tests/integration/rls.test.ts`: **58 tests, all passing** (2026-09-30, local). Each claim below is a test that runs through the pooler:
+`npm run test:integration` runs `tests/integration/rls.test.ts` and the M1-6 suite `tests/integration/isolation.test.ts`: **all passing** (2026-09-30, local). Each claim below is a test that runs through the pooler:
 
 | Claim | Test |
 |---|---|
-| A sees only A's rows **with no WHERE clause**, for every tenant/membership table | `isolation with the WHERE clause omitted` (17 tables) |
-| No tenant context → zero rows, inside a transaction and outside one | same block (17 tables + raw pooled query) |
+| A sees only A's rows **with no WHERE clause**, for every tenant/membership table | `isolation.test.ts` → `registered tenant reads…` (17 tables) |
+| No tenant context → zero rows, inside a transaction and outside one | `rls.test.ts` → `isolation with the WHERE clause omitted` (17 tables + raw pooled query) |
 | A user-only context lists that user's organizations and no tenant data | `a user-only context…` |
 | Inserting or moving a row into another organization fails (`42501`, WITH CHECK) | `writes are checked too` |
 | UPDATE/DELETE aimed at B's ids from A's context affect 0 rows | same block |
 | Cross-site and cross-org references fail at the database (`23503`) | `composite foreign keys…` |
 | 60 interleaved concurrent A / B / no-context transactions never see each other's rows | `tenant context never leaks across pooled connections` |
 | Runtime role cannot bypass RLS or assume the lookup role | `runtime role` |
-| Every table is classified; exactly the tenant/membership classes have RLS + FORCE | `classification` |
+| Every table is classified; exactly the tenant/membership classes have RLS + FORCE; an unclassified table with `organization_id` is caught | `isolation.test.ts` → `catalog coverage` |
 | `audit_logs` rejects UPDATE/DELETE; `entry_revisions` rejects UPDATE | `append-only tables` |
 
 **Latency** (`npx tsx scripts/spikes/rls-latency.ts`, 300 iterations, local Docker):

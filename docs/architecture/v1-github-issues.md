@@ -259,20 +259,22 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Depends on:** M1-1
 
+**Status:** Partially done. The two helpers below are deferred until the things they test exist; nothing in them blocks M2.
+
 **Acceptance criteria:**
-- [ ] Integration DB per Vitest worker (template database clone), migrations applied once
-- [ ] Factories: user, org (+ membership), site, entry, media, term
-- [ ] Isolation suite:
-  - reads the `tenantTable()` registry
+- [x] Integration DB per Vitest worker (template database clone), migrations applied once — `tests/setup/integration-global.ts` migrates `forge_test_template` once, then clones `forge_test_w1..4`
+- [x] Factories: user, org (+ membership), site, entry, media, term — `tests/fixtures/factories.ts`; the term is created by `createPublishedEntry`, and `createTenantGraph` fills every tenant table
+- [x] Isolation suite (`tests/integration/isolation.test.ts`):
+  - reads the table-class registry (`src/platform/db/table-classes.ts`, which replaced `tenantTable()`, see M1-1) and diffs it against the live catalog (`tests/isolation/coverage.ts`)
   - asserts RLS enabled + forced for each table
   - seeds orgs A and B
-  - runs registered repository read functions under A's context and asserts no B rows
-- [ ] Helper to register actions and route handlers for "B's IDs → 404" checks
-- [ ] Captured-email helper for E2E (reads the capture adapter or Mailpit)
+  - runs registered read functions (`tests/isolation/tenant-reads.ts`) under A's context and asserts no B rows. It starts with one no-WHERE read per tenant table; repository reads are added there as they land.
+- [ ] Helper to register actions and route handlers for "B's IDs → 404" checks — **deferred to the first action/route handler (M2)**; its shape depends on the action wrapper and session helpers
+- [ ] Captured-email helper for E2E (reads the capture adapter or Mailpit) — **deferred to M1-4**, which creates the capture adapter
 
 **Likely files/modules:** `tests/setup/*`, `tests/isolation/*`, `tests/fixtures/*`
 
-**Testing:** the suite fails if a table is created without RLS (a fixture proves it).
+**Testing:** the suite fails if a table is created without RLS (a fixture proves it). ✔ `detects an unprotected tenant table` creates a table with `organization_id` and no RLS as the owner and asserts the audit reports it.
 
 ### M1-7 · `proxy.ts` host routing, guards and cache primitives
 **Labels:** `area:rendering` `type:infra`

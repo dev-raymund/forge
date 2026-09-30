@@ -4,7 +4,7 @@ import pg from "pg";
 import { uuidv7 } from "uuidv7";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as t from "@/platform/db/schema";
-import { TABLE_CLASSES, tablesOfClass, type TableName } from "@/platform/db/table-classes";
+import { tablesOfClass, type TableName } from "@/platform/db/table-classes";
 import { withPlatform, withTenant, withUser, type Tx } from "@/platform/db/tenant";
 import { getPool } from "@/platform/db/client";
 import { dbError, PG } from "../fixtures/db-error";
@@ -67,45 +67,9 @@ describe("runtime role", () => {
   });
 });
 
-describe("classification", () => {
-  it("every table in the schema is classified, and nothing classified is missing", async () => {
-    const { rows } = await getPool().query<{ name: string }>(
-      `select tablename as name from pg_tables where schemaname = 'public' order by 1`,
-    );
-    expect(rows.map((r) => r.name).sort()).toEqual(Object.keys(TABLE_CLASSES).sort());
-  });
-
-  it("tenant and membership tables have RLS enabled AND forced; others have none", async () => {
-    const { rows } = await getPool().query<{ name: string; rls: boolean; force: boolean }>(`
-      select c.relname as name, c.relrowsecurity as rls, c.relforcerowsecurity as force
-      from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r'`);
-    for (const row of rows) {
-      const cls = TABLE_CLASSES[row.name as TableName];
-      const protectedClass = cls === "tenant" || cls === "membership";
-      expect({ table: row.name, rls: row.rls, force: row.force }).toEqual({
-        table: row.name,
-        rls: protectedClass,
-        force: protectedClass,
-      });
-    }
-  });
-
-  it("every tenant table carries organization_id", async () => {
-    const { rows } = await getPool().query<{ table_name: string }>(
-      `select table_name from information_schema.columns where table_schema = 'public' and column_name = 'organization_id'`,
-    );
-    const withOrg = new Set(rows.map((r) => r.table_name));
-    for (const table of tablesOfClass("tenant")) expect(withOrg.has(table), table).toBe(true);
-  });
-});
-
 describe("isolation with the WHERE clause omitted", () => {
-  it.each(tenantTables)("%s: tenant A sees only its own rows", async (table) => {
-    const seen = await orgIdsVisible(table, { orgId: A.org.id, userId: A.user.id });
-    expect(seen.length, `${table} should have fixture rows for A`).toBeGreaterThan(0);
-    expect(new Set(seen)).toEqual(new Set([A.org.id]));
-  });
+  // "Tenant A sees only its own rows" for every table lives in isolation.test.ts
+  // (the M1-6 suite), which also runs every registered repository read.
 
   it.each(tenantTables)("%s: no tenant context means no rows at all", async (table) => {
     expect(await orgIdsVisible(table)).toEqual([]);
