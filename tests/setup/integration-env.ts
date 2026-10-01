@@ -13,6 +13,10 @@ if (poolId < 1 || poolId > INTEGRATION_WORKERS) {
 const database = workerDbName(poolId);
 
 process.env.DATABASE_URL = appUrl(database);
+// The one app origin (ADR 0006): email links must point here.
+process.env.APP_ORIGIN = "http://localhost:3000";
+// Nothing may leave the machine in tests; suites that inspect email install a capture provider.
+process.env.EMAIL_PROVIDER = "console";
 process.env.TEST_WORKER_DATABASE = database;
 process.env.TEST_WORKER_OWNER_URL = ownerUrl(database);
 process.env.TEST_WORKER_APP_DIRECT_URL = appDirectUrl(database);

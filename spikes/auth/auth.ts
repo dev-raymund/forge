@@ -16,13 +16,19 @@ const DAY = 60 * 60 * 24;
 export const SESSION_IDLE_SECONDS = 7 * DAY;
 export const SESSION_ABSOLUTE_SECONDS = 30 * DAY;
 
-export type VerificationMail = { email: string; url: string; token: string };
+export type VerificationMail = { userId: string; email: string; url: string; token: string };
 
 export type SpikeAuthOptions = {
   baseURL: string;
   secret: string;
-  /** Stand-in for the `email.send` job (M1-4). */
+  /**
+   * Better Auth's email hooks. Production wiring (M1-4, used by M2-1):
+   * `sendEmailSoon({ template: "verify-email" | "reset-password", userId, url })`
+   * from `@/platform/email`, which queues `email.send`. Better Auth keeps owning the
+   * tokens; delivery happens later in the job and can't fail the auth request.
+   */
   sendVerificationEmail: (mail: VerificationMail) => Promise<void>;
+  sendPasswordResetEmail?: (mail: VerificationMail) => Promise<void>;
   google?: { clientId: string; clientSecret: string };
 };
 
@@ -50,12 +56,20 @@ export function createSpikeAuth(options: SpikeAuthOptions) {
       minPasswordLength: 12,
       // Verification gates publishing, inviting and domains (§12), not login.
       requireEmailVerification: false,
+      resetPasswordTokenExpiresIn: 60 * 60, // plan §12: 60 min, single use
+      revokeSessionsOnPasswordReset: true, // plan §12
+      ...(options.sendPasswordResetEmail
+        ? {
+            sendResetPassword: async ({ user, url, token }: { user: { id: string; email: string }; url: string; token: string }) =>
+              options.sendPasswordResetEmail!({ userId: user.id, email: user.email, url, token }),
+          }
+        : {}),
     },
 
     emailVerification: {
       sendOnSignUp: true,
       sendVerificationEmail: async ({ user, url, token }) =>
-        options.sendVerificationEmail({ email: user.email, url, token }),
+        options.sendVerificationEmail({ userId: user.id, email: user.email, url, token }),
     },
 
     socialProviders: options.google ? { google: options.google } : {},

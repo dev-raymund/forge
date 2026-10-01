@@ -821,6 +821,7 @@ REST, versioned from day one, on the app host (`/api/v1`). No GraphQL. **Site-bo
 - `dead` means attempts were exhausted; `failed` means a permanent error that is not retried.
 - `kickJobs()` runs only the job types just enqueued.
 - `jobs.cleanup` keeps finished jobs 14 days, and `dead`/`failed` jobs 30 days.
+- `email.send` (M1-4, ADR 0007): recipients come from records, the sender from `EMAIL_FROM`, and the idempotency key is the job id. It uses the `inherit` scope, and its links are redacted from the payload once finished. Providers: Resend (production), Mailpit (local), console (default elsewhere), capture (tests).
 
 **Webhook delivery** is deferred with webhooks (§17). The runner design already supports it.
 

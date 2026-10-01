@@ -232,13 +232,19 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** M1-3
 
 **Acceptance criteria:**
-- [ ] `EmailProvider` interface; Resend adapter using the idempotency key = job ID; console/Mailpit adapter for dev; capture adapter for tests
-- [ ] React Email base layout + templates: verify email, reset password, invitation, trial ending, payment failed
-- [ ] `email.send` job; failures are retried and never throw into the caller; configuration faults are logged with an explanation
+- [x] `EmailProvider` interface; Resend adapter using the idempotency key = job ID; console/Mailpit adapter for dev; capture adapter for tests — Resend over its HTTP API (no SDK). Mailpit via its HTTP API (local inbox). Console logs subject only. Messages have no `from`: the sender is `EMAIL_FROM` (ADR 0007)
+- [x] React Email base layout + templates: verify email, reset password, invitation, trial ending, payment failed — typed props, escaped, no logic
+- [x] `email.send` job; failures are retried and never throw into the caller; configuration faults are logged with an explanation
+  - Recipients are resolved from records (user, invitation under RLS, owners); links must be on `APP_ORIGIN`.
+  - New queue scope `inherit`; one-time links are redacted from the payload once finished.
+  - Better Auth's verify and reset hooks queue it (`sendEmailSoon`).
 
 **Likely files/modules:** `src/platform/email/*`
 
-**Testing:** unit tests for template rendering; integration: an enqueued email is delivered to the capture adapter exactly once despite a retry.
+**Testing:** unit tests for template rendering; integration: an enqueued email is delivered to the capture adapter exactly once despite a retry. ✔
+- `providers.test.ts` and `templates.test.tsx` (24).
+- `tests/integration/email.test.ts` (15): exactly-once despite a retry, retries, permanent and configuration failures, tenant isolation, redaction, Better Auth sign-up and reset.
+- `tests/e2e/email.spec.ts` (2): via Mailpit.
 
 ### M1-5 · Storage driver: interface + S3-compatible adapter
 **Labels:** `area:platform` `type:infra`
@@ -276,7 +282,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
   - seeds orgs A and B
   - runs registered read functions (`tests/isolation/tenant-reads.ts`) under A's context and asserts no B rows. It starts with one no-WHERE read per tenant table; repository reads are added there as they land.
 - [ ] Helper to register actions and route handlers for "B's IDs → 404" checks — **deferred to the first action/route handler (M2)**; its shape depends on the action wrapper and session helpers
-- [ ] Captured-email helper for E2E (reads the capture adapter or Mailpit) — **deferred to M1-4**, which creates the capture adapter
+- [x] Captured-email helper for E2E (reads the capture adapter or Mailpit) — delivered with M1-4: `tests/e2e/helpers/mailbox.ts` (Mailpit), and `CaptureEmailProvider` for integration tests
 
 **Likely files/modules:** `tests/setup/*`, `tests/isolation/*`, `tests/fixtures/*`
 
@@ -323,6 +329,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Description:** Production Better Auth setup per ADR 0004.
 
 *From M0-6: the tables and migration were delivered in M1-1. Start from `spikes/auth/auth.ts` and use `identityDb()` for the adapter. Mind the Cache Components note in ADR 0004 (discovery 9).*
+
+*From M1-4: wire Better Auth's `sendVerificationEmail` and `sendResetPassword` hooks to `sendEmailSoon({ template, userId, url })` from `@/platform/email`, exactly as `tests/integration/email.test.ts` does. Delete the `/api/dev/email` dev route once real sign-up exists.*
 
 **Depends on:** M0-6, M1-1, M1-4
 

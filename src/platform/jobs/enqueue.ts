@@ -21,7 +21,8 @@ export type EnqueueResult = { id: string; deduplicated: boolean };
  *
  * Tenant jobs take their organization from the transaction's RLS context
  * (`app_current_org_id()`), so the organization can't come from user input and
- * must be enqueued inside `withTenant()`. Platform jobs have no organization.
+ * must be enqueued inside `withTenant()`. `inherit` jobs take it when the
+ * transaction has one. Platform jobs have no organization.
  */
 export async function enqueue<P>(
   tx: Tx,
@@ -34,10 +35,10 @@ export async function enqueue<P>(
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new Error("maxAttempts must be a positive integer");
 
   let orgId: string | null = null;
-  if (job.scope === "tenant") {
+  if (job.scope !== "platform") {
     const { rows } = await tx.execute<{ org: string | null }>(sql`select app_current_org_id() as org`);
     orgId = rows[0]?.org ?? null;
-    if (!orgId) throw new Error(`Tenant job "${job.type}" must be enqueued inside withTenant()`);
+    if (job.scope === "tenant" && !orgId) throw new Error(`Tenant job "${job.type}" must be enqueued inside withTenant()`);
   }
 
   const inserted = await tx.execute<{ id: string }>(sql`
@@ -58,12 +59,12 @@ export async function enqueue<P>(
   return { id: existingId, deduplicated: true };
 }
 
-/** For adapters without a business transaction (cron routes): a platform job in its own transaction. */
+/** For adapters without a business transaction (cron routes): a platform (or tenant-less `inherit`) job in its own transaction. */
 export async function enqueuePlatformJob<P>(
   job: JobDefinition<P>,
   payload: P,
   options?: EnqueueOptions,
 ): Promise<EnqueueResult> {
-  if (job.scope !== "platform") throw new Error(`"${job.type}" is a tenant job; enqueue it inside withTenant()`);
+  if (job.scope === "tenant") throw new Error(`"${job.type}" is a tenant job; enqueue it inside withTenant()`);
   return withPlatform((tx) => enqueue(tx, job, payload, options));
 }

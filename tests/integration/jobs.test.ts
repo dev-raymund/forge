@@ -335,6 +335,48 @@ describe("tenant jobs", () => {
   });
 });
 
+describe("inherit scope and payload redaction", () => {
+  it("an inherit job takes the transaction's tenant when there is one, and none otherwise", async () => {
+    const seen: (string | null)[] = [];
+    const job = defineJob({
+      type: `test.inherit_${suffix()}`,
+      scope: "inherit",
+      payload: z.object({}),
+      run: async (_p, ctx) => {
+        seen.push(ctx.orgId);
+        if (ctx.orgId) await ctx.withTenant(async (tx) => tx.execute(sql`select 1`));
+      },
+    });
+    const inTenant = await withTenant({ orgId: A.org.id }, (tx) => enqueue(tx, job, {}));
+    const outside = await enqueuePlatformJob(job, {});
+    expect((await row(inTenant.id)).organizationId).toBe(A.org.id);
+    expect((await row(outside.id)).organizationId).toBeNull();
+    expect(await runJobs({ registry: createJobRegistry([job]), budgetMs: 10_000 })).toMatchObject({ succeeded: 2 });
+    expect(seen.sort()).toEqual([A.org.id, null].sort());
+  });
+
+  it("redactOnFinish replaces the stored payload when a job finishes, including when it dies", async () => {
+    const clock = fakeClock();
+    const job = defineJob({
+      type: `test.redact_${suffix()}`,
+      scope: "platform",
+      maxAttempts: 2,
+      payload: z.object({ link: z.string() }),
+      redactOnFinish: () => ({ link: "[redacted]" }),
+      run: async () => {
+        throw new Error("down");
+      },
+    });
+    const { id } = await enqueuePlatformJob(job, { link: "https://x/secret" });
+    const registry = createJobRegistry([job]);
+    await runJobs({ registry, budgetMs: 10_000, now: clock.now, random: fixedRandom });
+    expect((await row(id)).payload).toEqual({ link: "https://x/secret" }); // still needed for the retry
+    clock.advance(3_600);
+    await runJobs({ registry, budgetMs: 10_000, now: clock.now, random: fixedRandom });
+    expect(await row(id)).toMatchObject({ status: "dead", payload: { link: "[redacted]" } });
+  });
+});
+
 describe("transaction boundaries (through the pooler)", () => {
   it("a rolled-back business transaction leaves no job", async () => {
     const { job } = recordingJob();

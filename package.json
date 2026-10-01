@@ -23,6 +23,8 @@
     "db:check": "drizzle-kit check"
   },
   "dependencies": {
+    "@react-email/components": "1.0.12",
+    "@react-email/render": "2.1.0",
     "@sentry/nextjs": "11.1.0",
     "@tiptap/core": "3.31.3",
     "@tiptap/extension-blockquote": "3.31.3",

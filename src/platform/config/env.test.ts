@@ -70,7 +70,19 @@ describe("envStatus()", () => {
   });
 
   it("requires only the groups shipped code reads today", () => {
-    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database"]);
+    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "email"]);
+  });
+
+  it("email: nothing needed locally; Resend (explicit, or the Vercel production default) needs a key and a sender", () => {
+    expect(envStatus({ ...base }).email).toBe("ok");
+    expect(envStatus({ ...base, EMAIL_PROVIDER: "mailpit" }).email).toBe("ok");
+    expect(envStatus({ ...base, VERCEL_ENV: "production" }).email).toBe("invalid");
+    expect(envStatus({ ...base, EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x" }).email).toBe("invalid");
+    expect(
+      envStatus({ ...base, VERCEL_ENV: "production", RESEND_API_KEY: "re_x", EMAIL_FROM: "Forge <no-reply@cms.example.com>" }).email,
+    ).toBe("ok");
+    expect(envStatus({ ...base, EMAIL_FROM: "not an address" }).email).toBe("invalid");
+    expect(envStatus({ ...base, EMAIL_FROM: "Evil\r\nBcc: x@y.com <a@b.com>" }).email).toBe("invalid");
   });
 });
 

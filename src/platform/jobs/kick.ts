@@ -13,11 +13,15 @@ import { runJobs } from "./runner";
  * Call from Server Actions and route handlers (adapters), never from services.
  */
 export function kickJobs(definitions: readonly JobDefinition[], options: { budgetMs?: number } = {}) {
-  after(async () => {
-    try {
-      await runJobs({ registry: createJobRegistry(definitions), budgetMs: options.budgetMs ?? 10_000 });
-    } catch (err) {
-      reportError(err, { module: "jobs" }, { phase: "kick" });
-    }
-  });
+  try {
+    after(async () => {
+      try {
+        await runJobs({ registry: createJobRegistry(definitions), budgetMs: options.budgetMs ?? 10_000 });
+      } catch (err) {
+        reportError(err, { module: "jobs" }, { phase: "kick" });
+      }
+    });
+  } catch {
+    // Not inside a request (scripts, tests): nothing to kick; the cron runner delivers the jobs.
+  }
 }

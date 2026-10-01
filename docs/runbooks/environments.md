@@ -102,7 +102,10 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
 
 ## 5. Resend, Sentry, Turnstile, Stripe
 
-- **Resend:** add `cms.forgelinetechnologies.com` as the sending domain. Publish its SPF, DKIM and DMARC records; these are DNS records only and add no website. Then set `EMAIL_FROM`, e.g. `Forge <no-reply@cms.forgelinetechnologies.com>`.
+- **Resend:** add `cms.forgelinetechnologies.com` as the sending domain. Publish its SPF, DKIM and DMARC records; these are DNS records only and add no website.
+  - **Production:** set `RESEND_API_KEY` and `EMAIL_FROM`, e.g. `Forge <no-reply@cms.forgelinetechnologies.com>`. Resend is the default provider there.
+  - **Previews:** leave email unset; the console provider logs instead of sending. To send from a preview, set `EMAIL_PROVIDER=resend` plus the key for that environment.
+  - Readiness reports the `email` group as invalid on production until both are set (ADR 0007).
 - **Sentry:** a Next.js project; DSN into `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN`; `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` for source-map upload during the Vercel build. To verify (M1-2), with `CRON_SECRET` set:
   ```sh
   curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://cms.forgelinetechnologies.com/api/internal/sentry-test

@@ -132,7 +132,7 @@ async function execute(job: ClaimedJob, definition: JobDefinition, options: RunO
     job: { id: job.id, type: job.type, attempt: job.attempts, maxAttempts: job.max_attempts },
     orgId,
     withTenant: (work) => {
-      if (!orgId) throw new PermanentJobError(`"${job.type}" is a platform job and has no tenant`);
+      if (!orgId) throw new PermanentJobError(`"${job.type}" has no organization, so it has no tenant access`);
       return withTenant({ orgId }, work);
     },
     log: logger.child({ module: "jobs", ...(orgId ? { orgId } : {}) }),
@@ -149,16 +149,28 @@ async function execute(job: ClaimedJob, definition: JobDefinition, options: RunO
   }
 }
 
+/** The payload to store once the job is finished: the definition's redaction, if any. */
+function finishedPayload(job: ClaimedJob, definition: JobDefinition): string | null {
+  if (!definition.redactOnFinish) return null;
+  try {
+    return JSON.stringify(definition.redactOnFinish(job.payload));
+  } catch {
+    return JSON.stringify({ redacted: true }); // a payload too broken to redact keeps nothing
+  }
+}
+
 /** Writes the outcome if the job is still this claim. Returns false when the claim was lost. */
-async function record(job: ClaimedJob, outcome: Outcome, now?: () => Date): Promise<boolean> {
+async function record(job: ClaimedJob, definition: JobDefinition, outcome: Outcome, now?: () => Date): Promise<boolean> {
   const t = at(now);
+  const redacted = outcome.status === "queued" ? null : finishedPayload(job, definition);
+  const payload = redacted === null ? sql`payload` : sql`${redacted}::jsonb`;
   const { rows } = await withPlatform((tx) => {
     const fence = sql`id = ${job.id} and status = 'running' and attempts = ${job.attempts}`;
     switch (outcome.status) {
       case "succeeded":
         return tx.execute(sql`
           update jobs set status = 'succeeded', finished_at = coalesce(${t}::timestamptz, now()),
-            locked_until = null, last_error = null, updated_at = now()
+            locked_until = null, last_error = null, payload = ${payload}, updated_at = now()
           where ${fence} returning id`);
       case "queued":
         return tx.execute(sql`
@@ -169,7 +181,7 @@ async function record(job: ClaimedJob, outcome: Outcome, now?: () => Date): Prom
       default:
         return tx.execute(sql`
           update jobs set status = ${outcome.status}, finished_at = coalesce(${t}::timestamptz, now()),
-            locked_until = null, last_error = ${outcome.error}, updated_at = now()
+            locked_until = null, last_error = ${outcome.error}, payload = ${payload}, updated_at = now()
           where ${fence} returning id`);
     }
   });
@@ -207,7 +219,7 @@ export async function runJobs(options: RunOptions): Promise<RunSummary> {
     const fields = { jobId: job.id, jobType: job.type, attempt: job.attempts };
     const started = performance.now();
     const outcome = await withLogContext(logContext, () => execute(job, definition, options));
-    const recorded = await record(job, outcome, options.now);
+    const recorded = await record(job, definition, outcome, options.now);
     const durationMs = Math.round(performance.now() - started);
 
     await withLogContext(logContext, async () => {

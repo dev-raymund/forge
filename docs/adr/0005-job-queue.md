@@ -57,6 +57,12 @@ This ADR records the details the implementation had to settle. No Redis or exter
 12. **Dedupe.** While a job with the same `dedupe_key` is `queued` or `running`, `enqueue` returns the existing id (`deduplicated: true`) and writes nothing. After it finishes, the key is free again, so handlers must read current state when they run.
 13. **Reaper index.** `jobs_running_locked_until_idx` (partial, `status = 'running'`) is added in migration 0003, because the reaper runs every minute.
 
+## Additions in M1-4 (ADR 0007)
+
+- **Scope `inherit`:** the job takes the enqueuing transaction's organization when it has one, otherwise none. The organization still never comes from the payload; `ctx.withTenant` fails permanently without one. Used by `email.send`.
+- **`redactOnFinish(payload)`:** an optional definition hook. When a job finishes (succeeded, dead or failed), its return value replaces the stored payload in the same fenced update, so one-time links don't linger in the table. Retries keep the original.
+- **`kickJobs()` outside a request** (scripts, tests, Better Auth hooks called directly) is a no-op instead of throwing. The cron runner delivers.
+
 ## Triggers on the free V1 deployment (ADR 0006)
 
 Vercel Hobby allows only daily crons, and a per-minute schedule fails deployment. So:

@@ -55,3 +55,17 @@ export async function setTaglineWithoutInvalidation(site: SeededSite, tagline: s
     ]),
   );
 }
+
+/** A user row (identity table: no tenant context needed), e.g. an email recipient. */
+export async function seedUser(name = "E2E User"): Promise<{ id: string; email: string }> {
+  const id = uuidv7();
+  const email = `e2e-${randomBytes(4).toString("hex")}@example.test`;
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    await client.query("insert into users (id, name, email, email_verified) values ($1, $2, $3, false)", [id, name, email]);
+  } finally {
+    await client.end();
+  }
+  return { id, email };
+}

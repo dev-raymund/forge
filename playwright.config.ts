@@ -39,6 +39,8 @@ export default defineConfig({
       ...process.env,
       APP_ORIGIN: `http://localhost:${PORT}`,
       CRON_SECRET: E2E_CRON_SECRET,
+      // Email goes to the local Mailpit inbox (docker-compose); never a real service.
+      EMAIL_PROVIDER: "mailpit",
     },
   },
 });

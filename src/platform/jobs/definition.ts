@@ -9,15 +9,23 @@ import type { TenantTx } from "@/platform/db/tenant";
  * module's definitions into the runner's registry.
  */
 
-export type JobScope = "tenant" | "platform";
+/**
+ * Where a job's organization comes from (always the enqueuing transaction,
+ * never the payload):
+ * - `tenant`: required; enqueue must happen inside withTenant().
+ * - `platform`: none.
+ * - `inherit`: the enqueuing transaction's tenant if it has one, otherwise none
+ *   (e.g. `email.send`: invitations are tenant emails, sign-up emails are not).
+ */
+export type JobScope = "tenant" | "platform" | "inherit";
 
 export type JobContext = {
   job: { id: string; type: string; attempt: number; maxAttempts: number };
-  /** The job's organization (tenant jobs), from the enqueuing transaction. Null for platform jobs. */
+  /** The job's organization, from the enqueuing transaction. Null for platform jobs and tenant-less `inherit` jobs. */
   orgId: string | null;
   /**
    * A tenant transaction for THIS job's organization only (RLS enforced).
-   * Throws for platform jobs. Keep network calls outside it.
+   * Throws (permanent failure) when the job has no organization. Keep network calls outside it.
    */
   withTenant: <T>(work: (tx: TenantTx) => Promise<T>) => Promise<T>;
   log: Logger;
@@ -44,6 +52,12 @@ export type JobDefinition<P = unknown> = {
   // Method syntax on purpose: definitions with specific payloads must fit the
   // registry's `JobDefinition<unknown>`; the runner re-validates every payload.
   run(payload: P, ctx: JobContext): Promise<void>;
+  /**
+   * Called when the job finishes (succeeded, dead or failed). The returned
+   * value replaces the stored payload, so secrets such as one-time links
+   * don't linger in the jobs table after they're no longer needed.
+   */
+  redactOnFinish?(payload: P): unknown;
 };
 
 export function defineJob<P>(definition: JobDefinition<P>): JobDefinition<P> {

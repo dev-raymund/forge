@@ -23,6 +23,15 @@ const csv = z
   );
 const hostname = z.string().regex(/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/);
 
+export const EMAIL_PROVIDERS = ["resend", "mailpit", "console"] as const;
+export type EmailProviderName = (typeof EMAIL_PROVIDERS)[number];
+const SENDER = /^(?:[^<>\r\n]{1,100} <[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)$/;
+
+/** Resend on Vercel production unless set explicitly; a non-sending provider everywhere else. */
+export function resolveEmailProvider(v: { EMAIL_PROVIDER?: EmailProviderName; VERCEL_ENV?: string }): EmailProviderName {
+  return v.EMAIL_PROVIDER ?? (v.VERCEL_ENV === "production" ? "resend" : "console");
+}
+
 const schemas = {
   core: z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -53,7 +62,25 @@ const schemas = {
     .refine((v) => !!v.GOOGLE_CLIENT_ID === !!v.GOOGLE_CLIENT_SECRET, {
       message: "Google OAuth needs both the client id and the secret",
     }),
-  email: z.object({ RESEND_API_KEY: secret(1), EMAIL_FROM: z.string().min(3) }),
+  /**
+   * Transactional email (M1-4). The provider defaults to `resend` on Vercel
+   * production and to `console` elsewhere; local development sets `mailpit`.
+   * Only `resend` needs credentials, and only it may send real email.
+   */
+  email: z
+    .object({
+      EMAIL_PROVIDER: z.enum(EMAIL_PROVIDERS).optional(),
+      /** The platform sender, e.g. `Forge <no-reply@cms.forgelinetechnologies.com>`. Never caller-controlled. */
+      EMAIL_FROM: z.string().regex(SENDER, "Expected `Name <address@domain>` or `address@domain`").optional(),
+      RESEND_API_KEY: z.string().min(1).optional(),
+      MAILPIT_URL: z.url().optional(),
+      VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
+    })
+    .superRefine((v, ctx) => {
+      if (resolveEmailProvider(v) !== "resend") return;
+      if (!v.RESEND_API_KEY) ctx.addIssue({ code: "custom", path: ["RESEND_API_KEY"], message: "Required for Resend" });
+      if (!v.EMAIL_FROM) ctx.addIssue({ code: "custom", path: ["EMAIL_FROM"], message: "Required for Resend" });
+    }),
   storage: z.object({
     STORAGE_BUCKET: secret(1),
     STORAGE_ENDPOINT: z.url(),
@@ -78,7 +105,7 @@ export type EnvGroupStatus = "ok" | "missing" | "invalid";
 export const ENV_GROUPS = Object.keys(schemas) as EnvGroup[];
 
 /** Groups that shipped code reads today; readiness fails if any is not "ok". */
-export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database"];
+export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "email"];
 
 export class ConfigError extends Error {
   constructor(
