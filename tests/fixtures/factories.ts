@@ -55,7 +55,7 @@ export async function createSite(orgId: string, userId: string, slug = `site-${u
     await tx.insert(t.domains).values({
       organizationId: orgId,
       siteId: site!.id,
-      hostname: `${slug}.sites.localhost`,
+      hostname: slug, // the site's platform address: /s/{slug} in V1, {slug}.<sites domain> later (ADR 0006)
       kind: "subdomain",
       isPrimary: true,
       status: "active",

@@ -10,6 +10,8 @@
 
 > **What gets built first:** the first release is defined in **[v1-build-plan.md](v1-build-plan.md)** (with [v1-github-issues.md](v1-github-issues.md)). This document is the long-term target. Where the two differ, the V1 plan governs what is built now, and this document governs what V1 must not make impossible. §37–§38 below are superseded by the V1 plan for sequencing.
 
+> **Deployment (2026-10-01):** this document's separate admin, sites, API and media hosts, custom domains (Vercel for Platforms / Domains API) and per-minute Vercel crons are the **future production deployment** and **post-V1 infrastructure**. V1 runs on one host, `cms.forgelinetechnologies.com`, on free tiers, with tenant sites at `/s/{address}`. See [v1-build-plan.md §0](v1-build-plan.md) and [ADR 0006](../adr/0006-v1-single-host-deployment.md).
+
 **How to read this document.** It is organised in the 40 sections requested, plus a closing answer (§41). Every significant choice is recorded as a numbered decision (**D-01 … D-40**) in the form *Decision → Reason → Tradeoff → Reconsider when*. GitHub issues and PRs should cite decision numbers. To change a decision, edit it here or supersede it with an ADR in `docs/adr/`. Don't let the code quietly diverge from it.
 
 Small code, SQL and type snippets are **illustrative contracts**, not implementation.

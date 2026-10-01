@@ -16,10 +16,20 @@ npm install
 cp .env.example .env.local        # local defaults work with docker-compose
 npm run dev:services              # Postgres 17, PgBouncer (transaction mode), RustFS (S3), Mailpit
 npm run db:migrate                # apply migrations as forge_owner (direct connection)
-npm run dev                       # http://app.localhost:3000
+npm run dev                       # http://localhost:3000
 ```
 
-Tenant sites are served on `*.sites.localhost` (browsers resolve `*.localhost` to loopback), e.g. `http://acme.sites.localhost:3000`.
+One origin serves everything, as in the V1 deployment (`cms.forgelinetechnologies.com`, ADR 0006):
+
+| URL | What |
+|---|---|
+| `/login`, `/{orgSlug}/…` | Admin |
+| `/api/v1/…` | REST API |
+| `/s/{address}/…` | Tenant sites, e.g. `http://localhost:3000/s/acme/about` |
+| `/media/…` | Media (from M6) |
+| `/api/internal/cron`, `/api/internal/cron/daily` | Job runner (needs `Bearer $CRON_SECRET`) |
+
+Tenant sites on their own hosts (platform subdomains, custom domains) are post-V1 and switched on with `HOST_ROUTING_ENABLED`.
 
 ## Scripts
 

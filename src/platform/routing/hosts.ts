@@ -1,16 +1,54 @@
 /**
- * Host classification and request routing for `proxy.ts` (plan §20, D-02).
+ * Request routing for `proxy.ts` (plan §19–20, ADR 0002, ADR 0006).
  * Pure: no Next.js, no env access, so the decision table is unit tested.
  *
+ * Two ways to address a tenant site, one renderer:
+ *  - **path mode** (V1 deployment, always on): `/s/{address}/…` on any host.
+ *    `{address}` is the site's platform address label (`domains` row of kind
+ *    `subdomain`, globally unique).
+ *  - **host mode** (post-V1, `HOST_ROUTING_ENABLED`): every host other than the
+ *    app host is a tenant site (`{address}.{SITES_ROOT_DOMAIN}` or a custom domain).
+ *
  * The proxy is NOT a security boundary for tenant data (RLS and services are).
- * It is where hosts are normalised, surfaces are separated, and internal paths
- * are kept internal.
+ * It separates the admin from public site pages and keeps internal paths internal.
  */
 
 export const RENDER_PREFIX = "/render";
-/** The one `[host]` value generateStaticParams returns (Cache Components needs one at build). */
-export const BUILD_PLACEHOLDER_HOST = "__placeholder";
+export const SITE_PATH_PREFIX = "/s";
+/** The one `[site]` value generateStaticParams returns (Cache Components needs one at build). */
+export const BUILD_PLACEHOLDER_SITE = "__placeholder";
 export const HOST_OVERRIDE_PARAM = "__host";
+
+/** A site's platform address: a DNS-label-shaped slug, so it can become `{address}.sites.example.com` later. */
+const ADDRESS = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+export const isSiteAddress = (value: string) => ADDRESS.test(value) && !value.includes("--");
+
+// ── Site locators: how the internal renderer route identifies a site ─────────
+
+export type SiteLocator = { kind: "address"; address: string } | { kind: "host"; hostname: string };
+
+/** `/render/{locator}/…` segment: `address~acme` or `host~client.com` (`~` never occurs in either). */
+export function encodeSiteLocator(locator: SiteLocator): string {
+  return locator.kind === "address" ? `address~${locator.address}` : `host~${locator.hostname}`;
+}
+
+export function decodeSiteLocator(segment: string): SiteLocator | null {
+  const [kind, value, extra] = decodeURIComponent(segment).split("~");
+  if (extra !== undefined || !value) return null;
+  if (kind === "address") return isSiteAddress(value) ? { kind, address: value } : null;
+  if (kind === "host") {
+    const hostname = normalizeHost(value);
+    return hostname ? { kind, hostname } : null;
+  }
+  return null;
+}
+
+/** Where a site's public pages live, for links, canonical URLs and sitemaps. */
+export function siteBasePath(locator: SiteLocator): string {
+  return locator.kind === "address" ? `${SITE_PATH_PREFIX}/${locator.address}` : "";
+}
+
+// ── Hosts ────────────────────────────────────────────────────────────────────
 
 /**
  * Lowercase, strip port and trailing dot, IDN → punycode (WHATWG URL does the
@@ -19,7 +57,7 @@ export const HOST_OVERRIDE_PARAM = "__host";
 export function normalizeHost(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const candidate = raw.trim().toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
-  if (!candidate || candidate.length > 253 || /[\s/?#@\\]/.test(candidate)) return null;
+  if (!candidate || candidate.length > 253 || /[\s/?#@\\~]/.test(candidate)) return null;
   try {
     const { hostname } = new URL(`http://${candidate}`);
     if (hostname.startsWith("[")) return null; // IPv6 literals are never tenant hosts
@@ -29,58 +67,85 @@ export function normalizeHost(raw: string | null | undefined): string | null {
   }
 }
 
+/** In host mode: `{address}.{sitesRootDomain}` → address locator; any other host → custom-domain locator. */
+export function locatorForHost(host: string, sitesRootDomain: string | null): SiteLocator {
+  if (sitesRootDomain && host.endsWith(`.${sitesRootDomain}`)) {
+    const address = host.slice(0, -(sitesRootDomain.length + 1));
+    if (isSiteAddress(address)) return { kind: "address", address };
+  }
+  return { kind: "host", hostname: host };
+}
+
+// ── The decision ─────────────────────────────────────────────────────────────
+
 export type RouteInput = {
   host: string | null;
   pathname: string;
   search: string;
   /** Present on Server Action requests. */
   nextAction: boolean;
-  /** Normalised host of APP_ORIGIN; null when not configured. */
+  /** Normalised host of APP_ORIGIN; needed only in host mode. */
   appHost: string | null;
-  /** `?__host=` is honoured only outside production. */
+  /** Post-V1: tenant sites on their own hosts. Off in the V1 deployment. */
+  hostRouting: boolean;
+  /** Host mode only: the root under which `{address}.{root}` hosts live. */
+  sitesRootDomain: string | null;
+  /** `?__host=` (host mode only) is honoured only outside production. */
   overrideAllowed: boolean;
 };
 
 export type RouteDecision =
   | { kind: "app" }
-  | { kind: "site"; host: string; rewrite: string }
-  | { kind: "not-found"; reason: "render-path" | "action-on-site-host" | "bad-host" }
+  | { kind: "site"; locator: SiteLocator; rewrite: string }
+  | { kind: "not-found"; reason: "render-path" | "action-on-site" | "bad-host" | "bad-address" }
   | { kind: "unavailable"; reason: "app-host-not-configured" };
 
 const HEALTH = /^\/api\/health(\/|$)/;
 
+function site(locator: SiteLocator, rest: string, search: string, nextAction: boolean): RouteDecision {
+  // Public site pages are read-only: admin Server Actions never run on them.
+  if (nextAction) return { kind: "not-found", reason: "action-on-site" };
+  const path = rest === "/" ? "" : rest;
+  return { kind: "site", locator, rewrite: `${RENDER_PREFIX}/${encodeSiteLocator(locator)}${path}${search}` };
+}
+
 export function decideRoute(input: RouteInput): RouteDecision {
-  // Internal renderer paths are reachable only through the rewrite below.
+  // Internal renderer paths are reachable only through the rewrites below.
   if (input.pathname === RENDER_PREFIX || input.pathname.startsWith(`${RENDER_PREFIX}/`)) {
     return { kind: "not-found", reason: "render-path" };
   }
 
-  if (!input.appHost) {
-    // Misconfigured: keep health answering (readiness reports the bad env group).
-    return HEALTH.test(input.pathname) ? { kind: "app" } : { kind: "unavailable", reason: "app-host-not-configured" };
-  }
-
-  let host = input.host;
-  let search = input.search;
-  if (input.overrideAllowed) {
-    const params = new URLSearchParams(input.search);
-    const override = params.get(HOST_OVERRIDE_PARAM);
-    if (override !== null) {
-      const normalized = normalizeHost(override);
-      if (!normalized) return { kind: "not-found", reason: "bad-host" };
-      host = normalized;
-      params.delete(HOST_OVERRIDE_PARAM);
-      const rest = params.toString();
-      search = rest ? `?${rest}` : "";
+  if (input.hostRouting) {
+    if (!input.appHost) {
+      // Misconfigured: keep health answering (readiness reports the bad env group).
+      return HEALTH.test(input.pathname) ? { kind: "app" } : { kind: "unavailable", reason: "app-host-not-configured" };
+    }
+    let host = input.host;
+    let search = input.search;
+    if (input.overrideAllowed) {
+      const params = new URLSearchParams(input.search);
+      const override = params.get(HOST_OVERRIDE_PARAM);
+      if (override !== null) {
+        const normalized = normalizeHost(override);
+        if (!normalized) return { kind: "not-found", reason: "bad-host" };
+        host = normalized;
+        params.delete(HOST_OVERRIDE_PARAM);
+        const rest = params.toString();
+        search = rest ? `?${rest}` : "";
+      }
+    }
+    if (!host) return { kind: "not-found", reason: "bad-host" };
+    if (host !== input.appHost) {
+      return site(locatorForHost(host, input.sitesRootDomain), input.pathname, search, input.nextAction);
     }
   }
 
-  if (!host) return { kind: "not-found", reason: "bad-host" };
-  if (host === input.appHost) return { kind: "app" };
+  // Path mode (always available on the app host): /s/{address}/…
+  if (input.pathname === SITE_PATH_PREFIX || input.pathname.startsWith(`${SITE_PATH_PREFIX}/`)) {
+    const [, , address = "", ...rest] = input.pathname.split("/");
+    if (!isSiteAddress(address)) return { kind: "not-found", reason: "bad-address" };
+    return site({ kind: "address", address }, `/${rest.join("/")}`, input.search, input.nextAction);
+  }
 
-  // Tenant site host (subdomain or custom domain; unknown hosts get the
-  // platform 404 from the renderer). Admin Server Actions never run here.
-  if (input.nextAction) return { kind: "not-found", reason: "action-on-site-host" };
-  const path = input.pathname === "/" ? "" : input.pathname;
-  return { kind: "site", host, rewrite: `${RENDER_PREFIX}/${encodeURIComponent(host)}${path}${search}` };
+  return { kind: "app" };
 }

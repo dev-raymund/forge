@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { ConfigError, env, envStatus, REQUIRED_ENV_GROUPS, resetEnvCache } from "./env";
+import { ConfigError, env, envStatus, mediaPublicBaseUrl, REQUIRED_ENV_GROUPS, resetEnvCache } from "./env";
 
 const base = {
-  APP_ORIGIN: "https://app.forge.test",
-  SITES_ROOT_DOMAIN: "sites.forge.test",
+  APP_ORIGIN: "https://cms.forgelinetechnologies.com",
   DATABASE_URL: "postgres://forge_app:pw@db.example:5432/forge",
 };
 
@@ -36,6 +35,30 @@ describe("env()", () => {
     const auth = { BETTER_AUTH_SECRET: "x".repeat(32), BETTER_AUTH_URL: "https://app.forge.test" };
     expect(() => env("auth", { ...auth, GOOGLE_CLIENT_ID: "id" })).toThrow(ConfigError);
     expect(env("auth", { ...auth, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "s" }).GOOGLE_CLIENT_ID).toBe("id");
+  });
+});
+
+describe("V1 single-host deployment", () => {
+  it("needs only APP_ORIGIN: host routing is off and no sites domain is required", () => {
+    expect(env("core", base)).toMatchObject({ HOST_ROUTING_ENABLED: false, SITES_ROOT_DOMAIN: undefined });
+    expect(env("core", { ...base, HOST_ROUTING_ENABLED: "true", SITES_ROOT_DOMAIN: "sites.example.com" })).toMatchObject({
+      HOST_ROUTING_ENABLED: true,
+      SITES_ROOT_DOMAIN: "sites.example.com",
+    });
+  });
+
+  it("derives APP_ORIGIN from the branch URL on Vercel previews when it is not set", () => {
+    const preview = { VERCEL_ENV: "preview", VERCEL_BRANCH_URL: "forge-git-feature-dev-raymund.vercel.app" };
+    expect(env("core", preview).APP_ORIGIN).toBe("https://forge-git-feature-dev-raymund.vercel.app");
+    expect(env("core", { ...preview, APP_ORIGIN: "https://cms.forgelinetechnologies.com" }).APP_ORIGIN).toBe(
+      "https://cms.forgelinetechnologies.com",
+    );
+    expect(() => env("core", { VERCEL_ENV: "production", VERCEL_BRANCH_URL: "x.vercel.app" })).toThrow(ConfigError);
+  });
+
+  it("serves media from the app's /media route unless a media base URL is configured", () => {
+    expect(mediaPublicBaseUrl(base)).toBe("https://cms.forgelinetechnologies.com/media");
+    expect(mediaPublicBaseUrl({ ...base, MEDIA_PUBLIC_BASE_URL: "https://media.example.com/" })).toBe("https://media.example.com");
   });
 });
 

@@ -26,13 +26,13 @@ async function inTenant<T>(orgId: string, work: (c: pg.Client) => Promise<T>): P
   }
 }
 
-export type SeededSite = { orgId: string; siteId: string; host: string; name: string };
+/** `address` is the site's platform address: the public site lives at `/s/{address}` (ADR 0006). */
+export type SeededSite = { orgId: string; siteId: string; address: string; name: string };
 
 export async function seedSite(label: string, tagline: string): Promise<SeededSite> {
   const orgId = uuidv7();
   const siteId = uuidv7();
   const slug = `${label}-${randomBytes(3).toString("hex")}`;
-  const host = `${slug}.sites.localhost`;
   await inTenant(orgId, async (c) => {
     await c.query("insert into organizations (id, name, slug) values ($1, $2, $3)", [orgId, `Org ${slug}`, `org-${slug}`]);
     await c.query("insert into sites (id, organization_id, name, slug) values ($1, $2, $3, $4)", [siteId, orgId, `Site ${label}`, slug]);
@@ -41,10 +41,10 @@ export async function seedSite(label: string, tagline: string): Promise<SeededSi
     ]);
     await c.query(
       "insert into domains (id, organization_id, site_id, hostname, kind, is_primary, status) values ($1, $2, $3, $4, 'subdomain', true, 'active')",
-      [uuidv7(), orgId, siteId, host],
+      [uuidv7(), orgId, siteId, slug],
     );
   });
-  return { orgId, siteId, host, name: `Site ${label}` };
+  return { orgId, siteId, address: slug, name: `Site ${label}` };
 }
 
 /** A write that bypasses the app, so no cache tag is invalidated. */

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Build plan v1.0, ready for issue creation |
+| **Status** | Build plan v1.0; deployment section updated 2026-10-01 (ADR 0006) |
 | **Date** | 2026-09-30 |
 | **Source** | Derived from [cms-architecture.md](cms-architecture.md), the long-term target. That document keeps its decisions D-01…D-40 |
 | **Rule** | Where the two documents differ, **this plan governs what is built now**. The long-term document governs what we must not make impossible |
@@ -10,16 +10,45 @@
 
 > **Design the architecture for the future, but build only what the product needs today.**
 
-**Hostnames (placeholders):**
+## 0. Deployment and URLs
 
-| Host | Serves | DNS |
+> **Updated 2026-10-01 (ADR 0006).** V1 is built and run on **zero-cost infrastructure** under one existing domain. This section governs every URL and host in this plan. Mentions of separate admin, sites, API or media hosts elsewhere describe the **future production deployment**, which is not a V1 dependency.
+
+### 0.1 V1 current deployment (development / private beta)
+
+```text
+forgelinetechnologies.com            existing Forgeline domain (untouched)
+        └── cms.forgelinetechnologies.com   the ONE Forge host → one Vercel project (Hobby)
+```
+
+| Path on `cms.forgelinetechnologies.com` | Serves |
+|---|---|
+| `/login`, `/signup`, `/onboarding`, `/account`, `/invite/…` | Account screens |
+| `/{orgSlug}/…` | Admin (`/{orgSlug}/sites/{siteSlug}/pages`, `/posts`, …) |
+| `/api/auth/…`, `/api/v1/…`, `/api/app/…` | Better Auth, REST API, admin JSON |
+| `/api/internal/cron`, `/api/internal/cron/daily` | Job runner (`Bearer $CRON_SECRET`) |
+| `/s/{address}/…` | **Tenant websites** (public, read-only), e.g. `/s/acme/about`, `/s/acme/blog/hello-world` |
+| `/_forge/preview/{token}` | Draft preview (signed, scoped token) |
+| `/media/{key}` | Media objects, streamed from object storage with immutable caching |
+
+- **`{address}`** is the site's platform address: a globally unique, DNS-label-shaped name stored in the site's `domains` row of kind `subdomain`. It is the same name that becomes `{address}.<sites domain>` later.
+- **Infrastructure:** free tiers only. Vercel Hobby, Neon Free, Cloudflare R2 (no Cloudflare zone needed), Resend Free, Sentry Developer, Turnstile, Stripe test mode. Postgres + object storage + one Next.js deployment, nothing else.
+- **Vercel Hobby limits that shape V1:**
+  - Non-commercial use only. Live billing requires a paid plan.
+  - Crons run at most daily. The job runner gets a daily cron + `after()` kicks + an optional free external scheduler (§16).
+  - Functions run at most 300 s.
+- **Security on one origin:** admin and public sites share an origin, so tenants must never be able to put script on it. ADR 0006 lists the controls (closed renderer, no tenant HTML/JS, no Server Actions on `/s/*`, the site tree never reads the session, per-surface framing headers, sandboxed media). Public sites move to their own origin before opening to untrusted tenants.
+
+### 0.2 Future production deployment (post-V1, not a V1 dependency)
+
+| Host | Serves | Needs |
 |---|---|---|
-| `app.forgecms.com` | Admin, auth, `/api/v1` | Any (Vercel) |
-| `{sub}.forge-host.com` | Every tenant site's default address | **Vercel nameservers** (required for the wildcard certificate) |
-| `client.com`, `www.client.com` | Tenant custom domains | Customer's DNS → Vercel |
-| `media.forgecdn.com` | Media CDN | **Cloudflare zone** (R2 custom domains must live in a Cloudflare zone) |
+| `app.example.com` (+ `api.example.com` if split) | Admin, auth, API | A domain |
+| `{address}.sites.example.com` | Tenant sites' platform addresses | Wildcard DNS + certificate (Vercel nameservers), `HOST_ROUTING_ENABLED` |
+| `client.com`, `www.client.com` | Tenant custom domains | Vercel for Platforms / Domains API, paid plan (M9) |
+| `media.examplecdn.com` | Media CDN | Set `MEDIA_PUBLIC_BASE_URL`; R2 custom domains need a Cloudflare zone |
 
-There are three domains because of those two DNS constraints. The sites domain must be on Vercel nameservers and the media domain must be a Cloudflare zone, so they can't share. The admin sits on its own domain for security (D-02).
+The routing for host mode is already implemented and tested (`HOST_ROUTING_ENABLED`, ADR 0002/0006), and the `domains` table models custom domains. Moving to this layout is configuration plus M9, with no change to content, tenancy or rendering.
 
 ---
 
@@ -58,9 +87,9 @@ These cost little now and are expensive or impossible to retrofit, so V1 keeps t
 | Custom roles (`role_permissions`) | FUTURE | Five roles cover SMB and agency teams |
 | Site-restricted members (`site_members`) | SHOULD after V1 | V1 answer for agencies: one organization per client |
 | Agency ↔ client relationship, white-label | FUTURE | Orgs-per-client covers V1 |
-| Sites, settings, subdomain hosting | **MUST V1** | Core product |
+| Sites, settings, site address (`/s/{address}`, §0) | **MUST V1** | Core product |
 | Site publish switch (draft/"coming soon" → live) | **MUST V1** | "Publish a website" |
-| Custom domains with TXT proof + Vercel API + SSL | **MUST V1** | Required to charge money for websites |
+| Custom domains with TXT proof + Vercel API + SSL | **Post-V1 infrastructure** (data model and host routing kept) | Needs paid hosting; V1 is a zero-cost private beta (§0, ADR 0006) |
 | Pages and posts as system content types | **MUST V1** | Core content |
 | Content types as a **code** registry (no table) | **MUST V1** (simplified) | Keeps custom types possible without building the builder |
 | Custom content-type builder (DB-defined types and fields) | FUTURE | Big UI + validation surface; not needed to launch |
@@ -138,7 +167,7 @@ These cost little now and are expensive or impossible to retrofit, so V1 keeps t
 |---|---|---|---|
 | 1 | Create an account | Email/password with verification, Google OAuth, forgot/reset password, logout | 2 |
 | 2 | Create an organization | Onboarding step; slug; the creator is Owner; 14-day Pro trial starts | 3 |
-| 3 | Create a website | Name, subdomain on `forge-host.com`, theme, timezone, language; Home page created automatically | 4 |
+| 3 | Create a website | Name, site address (`/s/{address}`), theme, timezone, language; Home page created automatically | 4 |
 | 4 | Invite users | Email invitation with a role; accept by link; revoke; resend | 3 |
 | 5 | Manage permissions | Change role, remove member, transfer ownership; 5 system roles | 3 |
 | 6 | Create pages | Hierarchical pages (parent), templates from the theme | 5 |
@@ -152,7 +181,7 @@ These cost little now and are expensive or impossible to retrofit, so V1 keeps t
 | 14 | Categories and tags | CRUD, assignment, archive pages | 5 |
 | 15 | Navigation | Header and footer menus, two levels, pages, posts, categories, URLs | 8 |
 | 16 | Basic SEO | Per-entry SEO, site defaults, sitemap, robots, JSON-LD, redirects | 8 |
-| 17 | Custom domain | Apex + www, TXT proof, SSL, primary, redirects to primary | 9 |
+| 17 | Custom domain *(post-V1)* | Apex + www, TXT proof, SSL, primary, redirects to primary | 9 |
 | 18 | Publish the website | Site switch: "Coming soon" → live (requires a verified email) | 4 |
 | 19 | Website settings | Name, tagline, logo, favicon, homepage, blog path, timezone, analytics IDs, social links | 4, 8 |
 
@@ -169,7 +198,7 @@ Sign up ──────────────── /signup                
  ↓  verify email ─────── /verify-email                 (can continue; publishing waits for verification)
 Create organization ──── /onboarding (step 1)          (name → slug; Owner; Pro trial starts)
  ↓
-Create site ──────────── /onboarding (step 2)          (site name, subdomain, language, timezone)
+Create site ──────────── /onboarding (step 2)          (site name, site address, language, timezone)
  ↓
 Choose theme ─────────── /onboarding (step 3)          (2 themes with previews; tokens editable later)
  ↓                                                      → site created in "Coming soon" with a Home page draft
@@ -216,7 +245,7 @@ Visit live website ───── https://client.com
 | Menus | `/…/menus` | Header and footer menu editor |
 | SEO | `/…/seo`, `/…/seo/redirects` | Site defaults; redirect manager |
 | Appearance | `/…/appearance` | Theme choice + customisation with live preview |
-| Domains | `/…/domains` | Subdomain, custom domains, status, DNS instructions |
+| Domains | `/…/domains` | Site address (V1); custom domains, status, DNS instructions (post-V1) |
 | Site settings | `/…/settings`, `/…/settings/api-keys` | General, reading, analytics, social; API keys |
 | Staff console | `/platform` | Find org/site, suspend/unsuspend (staff only) |
 
@@ -238,7 +267,7 @@ The **site overview checklist** is the product's onboarding spine: add pages, ad
 | `role_permissions` | **Deferred** | System-role permissions live in code |
 | `site_members` | **Deferred** | Org-scope roles only |
 | `sites` | **Required** | `status`: `coming_soon` \| `live` \| `suspended`; `theme_key` |
-| `domains` | **Required** | Subdomain and custom domains in one table (platform class, no RLS) |
+| `domains` | **Required** | The site address (kind `subdomain`; `hostname` holds the address label) and, post-V1, custom domains, in one table (platform class, no RLS) |
 | `site_settings` | **Simplified** | 1:1 with the site; reference columns + JSONB groups (`general`, `reading`, `seo`, `analytics`, `theme`). Absorbs `site_theme_settings` and analytics integrations |
 | `content_types` | **Deferred** (replaced) | `entries.type` text (`page`/`post`) backed by a **code registry** (§5) |
 | `content_fields` | **Deferred** | Field definitions live in code type definitions |
@@ -302,7 +331,7 @@ Conventions (unchanged from long-term §6):
 |---|---|---|
 | `sites` | `id`, `organization_id`, `name`, `slug`, `status` (`coming_soon` \| `live` \| `suspended`), `theme_key`, `default_locale`, `timezone`, `created_by`, `deleted_at` | UQ `(organization_id, slug)`, UQ `(organization_id, id)`; RLS |
 | `site_settings` | `site_id` (PK), `organization_id`, `homepage_entry_id`, `not_found_entry_id`, `logo_media_id`, `favicon_media_id`, JSONB `general` (tagline, social links), `reading` (blog path, posts per page), `seo` (title template, default description, default OG image ID, discourage indexing, Search Console token), `analytics` (GA4 ID, Plausible domain), `theme` (tokens, header, footer, layout), `version` | Composite FKs, `SET NULL (col)`; RLS |
-| `domains` | `id`, `organization_id`, `site_id`, `hostname`, `kind` (`subdomain` \| `custom`), `is_primary`, `status` (`pending_verification` \| `pending_dns` \| `active` \| `failed`), `verification_token`, `verified_at`, `provider_state`, `last_checked_at`, `next_check_at`, `error` | UQ `hostname`; partial UQ `(site_id) WHERE is_primary`; **platform class (no RLS)**, because it is read before the tenant is known |
+| `domains` | `id`, `organization_id`, `site_id`, `hostname`, `kind` (`subdomain` \| `custom`), `is_primary`, `status` (`pending_verification` \| `pending_dns` \| `active` \| `failed`), `verification_token`, `verified_at`, `provider_state`, `last_checked_at`, `next_check_at`, `error` | UQ `hostname`; partial UQ `(site_id) WHERE is_primary`; **platform class (no RLS)**, because it is read before the tenant is known. For kind `subdomain`, `hostname` holds the site address label (`acme`), independent of any sites domain (ADR 0006) |
 
 **Content**
 
@@ -571,7 +600,7 @@ src/themes/
 | Search, filter, sort | Trigram search over title/filename/alt; filter by kind and folder; sort by newest, name, size |
 | Delete | Soft delete (trash). Public pages omit a missing image (never a broken `<img>`). The `trash.purge` job deletes objects and rows after 30 days |
 | Replace file | SHOULD after V1 (`version + 1`, new keys) |
-| Delivery | `https://media.forgecdn.com/<key>` via the R2 custom domain. A Cloudflare rule adds `X-Content-Type-Options: nosniff` + a sandbox CSP. PDFs are served inline; everything else as attachment |
+| Delivery | V1: `https://cms.forgelinetechnologies.com/media/<key>` (`MEDIA_PUBLIC_BASE_URL`, default `${APP_ORIGIN}/media`). A route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable` (keys are immutable, so Vercel's CDN caches each one), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types. PDFs inline; everything else as attachment. Post-V1: a CDN domain via `MEDIA_PUBLIC_BASE_URL` |
 | Abstraction | `StorageDriver` interface (§13 of the long-term doc). V1 ships the S3-compatible implementation only: R2 in production, MinIO locally |
 | Picker | The same library in a modal, used by the image block, featured image, OG image, logo and favicon |
 
@@ -590,12 +619,12 @@ src/themes/
 |---|---|---|
 | Autosave | Updates `entry_drafts` (`version + 1`) | edit |
 | Save | Autosave + a `save` revision (capped at the plan's revision limit; publish revisions always kept) | edit |
-| Preview | Signed token (HMAC, 15 min, bound to site + entry + user) → `https://{sub}.forge-host.com/_forge/preview/{token}`, which renders the **draft** uncached with `noindex` + `no-store`. Always the platform subdomain, so the admin CSP can `frame-src https://*.forge-host.com` | read |
+| Preview | Signed token (HMAC, 15 min, bound to site + entry + user) → `https://cms.forgelinetechnologies.com/_forge/preview/{token}` (V1, same origin as the admin: `frame-ancestors 'self'`), which renders the **draft** uncached with `noindex` + `no-store`. Post-V1: always the platform subdomain host | read |
 | Publish | One transaction: lock entry → idempotency check on `expectedDraftVersion` → `publish` revision → update projection → auto-redirect if the path changed → replace `entry_terms` → audit. Then `updateTag` for the entry, routes and lists | publish |
 | Unpublish | `published` → `draft`; offer "redirect this URL to…" (creates a redirect) | publish |
 | Schedule | Validate as for publish → `scheduled` revision → `jobs` row `entry.publish_scheduled` with `run_at`, `dedupe_key = entry:{id}` → status `scheduled` | publish |
 | Cancel schedule | Cancel the job → `draft` | publish |
-| Scheduled run | Cron runner (every minute) → the same publish function with the frozen revision → `revalidateTag(…, { expire: 0 })` | system |
+| Scheduled run | Job runner (§16: per-minute only with a scheduler; on V1's free hosting a scheduled post waits for the next runner call) → the same publish function with the frozen revision → `revalidateTag(…, { expire: 0 })` | system |
 | Trash / Restore | Trash unpublishes in the same transaction. Restore returns to `draft` (never auto-republishes) with the slug re-suffixed if taken | delete |
 | Revision restore | Copies the revision into the draft + a `restore` revision; never publishes | edit |
 
@@ -622,11 +651,13 @@ Not in V1: SEO scoring/analysis, hreflang, 404 monitor, prefix/regex redirects, 
 
 ---
 
-## 11. Custom domains
+## 11. Custom domains (post-V1 infrastructure)
+
+> **Deferred (ADR 0006).** V1 runs on zero-cost hosting: no wildcard domains, Vercel Domains API, automated SSL or `domain.check` polling. Every site is reached at its site address, `/s/{address}`. The design below stays the target. The `domains` table, host-mode routing (`HOST_ROUTING_ENABLED`) and `host:` cache tags already exist, so adding it changes no content or tenancy code.
 
 This keeps D-34 in its simplest secure form.
 
-1. **Subdomain.** Every site gets `{sub}.forge-host.com` at creation (a `domains` row with `kind = 'subdomain'`). It is served by the wildcard certificate, with nothing to verify.
+1. **Site address / platform subdomain.** Every site gets an address at creation (a `domains` row with `kind = 'subdomain'`, whose `hostname` holds the label). In V1 it is served at `/s/{address}`; with paid hosting, also at `{address}.<sites domain>` under the wildcard certificate, with nothing to verify.
 2. **Add a custom domain** (Owner/Admin, paid plan):
    - Normalise the hostname: lowercase, IDNA, strip port and trailing dot.
    - Validate it with the Public Suffix List (`tldts`).
@@ -719,7 +750,7 @@ Permissions live in code (`modules/tenancy/permissions.ts`). Roles are five seed
 | Sites | 1 | 5 |
 | Members (incl. pending invites) | 2 | 10 |
 | Storage | 1 GB | 20 GB |
-| Custom domains | — | Yes (apex + www per site) |
+| Custom domains *(post-V1)* | — | Yes (apex + www per site) |
 | "Powered by Forge" badge | Shown | Removable |
 | API keys | 1 read-only | Read and write |
 | Manual revisions kept per entry | 20 | 100 |
@@ -764,9 +795,12 @@ REST, versioned from day one, on the app host (`/api/v1`). No GraphQL. **Site-bo
 **Mechanism** (D-22, simplified; no outbox):
 - `jobs` table.
 - Services enqueue **inside their transaction**, so a job exists only if the change committed.
-- The runner at `/api/internal/cron` is called by Vercel Cron **every minute**, and in-process via `after()` right after an enqueue.
+- The runner at `/api/internal/cron` is called **every minute** by a scheduler, and in-process via `after()` right after an enqueue.
+  - **V1 (Vercel Hobby, ADR 0006):** Vercel crons may only run daily, so the only Vercel cron is `/api/internal/cron/daily`, which enqueues the maintenance jobs and runs the runner.
+  - Minute-level running comes from `after()` kicks plus an optional free external scheduler calling `/api/internal/cron` with the cron secret.
+  - On paid hosting it is a per-minute Vercel cron.
 - It claims jobs with `FOR UPDATE SKIP LOCKED`, retries with exponential backoff, and marks failures `dead` after `max_attempts`.
-- A second cron (`0 3 * * *`) enqueues the daily maintenance jobs.
+- A daily cron (`0 3 * * *`) enqueues the daily maintenance jobs.
 
 | Runs synchronously (in the request) | Runs asynchronously (job) |
 |---|---|
@@ -827,7 +861,7 @@ forge/
 ├── src/
 │   ├── proxy.ts                             host routing · request ID · /render guard · admin CSP nonce
 │   ├── app/
-│   │   ├── (admin)/                         ROOT LAYOUT 1 — app.forgecms.com
+│   │   ├── (admin)/                         ROOT LAYOUT 1 — admin (app host)
 │   │   │   ├── layout.tsx
 │   │   │   ├── (auth)/login · signup · verify-email · forgot-password · reset-password · invite/[token]
 │   │   │   ├── onboarding/
@@ -842,7 +876,7 @@ forge/
 │   │   │           ├── pages/ (page.tsx · new/ · [entryId]/)
 │   │   │           ├── posts/ (page.tsx · new/ · [entryId]/ · categories/ · tags/)
 │   │   │           └── media/ · menus/ · seo/ (redirects/) · appearance/ · domains/ · settings/ (api-keys/)
-│   │   ├── (sites)/render/[host]/           ROOT LAYOUT 2 — tenant sites (reached only via proxy rewrite)
+│   │   ├── (sites)/render/[site]/           ROOT LAYOUT 2 — tenant sites (reached only via proxy rewrite of /s/{address}, or tenant hosts post-V1)
 │   │   │   ├── layout.tsx                   resolveSiteByHost() → theme
 │   │   │   ├── [[...path]]/page.tsx         route resolution → theme template
 │   │   │   ├── sitemap.xml/route.ts · robots.txt/route.ts
@@ -858,7 +892,7 @@ forge/
 │   │   ├── auth/            Better Auth config · session helpers · account actions
 │   │   ├── tenancy/         orgs · members · invitations · roles · permissions · context (requireOrg/SiteContext)
 │   │   ├── sites/           sites · settings · site status · onboarding
-│   │   ├── domains/         domains service · Vercel provider · TXT verification · domain.check job
+│   │   ├── domains/         site address · (post-V1) custom domains: Vercel provider · TXT verification · domain.check job
 │   │   ├── content/         types/ (registry, page, post) · entries · drafts · revisions · publishing · terms · editor/ (client)
 │   │   ├── media/           upload protocol · image processing · folders · library ui/
 │   │   ├── navigation/      menus
@@ -893,7 +927,7 @@ forge/
 |---|---|---|
 | Public API | `modules/<m>/index.ts` (server-only), `shared.ts` (client-safe types, Zod, constants) | Other modules and `app/` import **only** these (ESLint `no-restricted-imports`) |
 | Server Actions | `modules/<m>/actions.ts` (`"use server"`) | Thin: parse (Zod) → context → service → invalidate → `ActionResult`. In the module (not `app/`) because they're reused across screens, e.g. media actions used by the library and the picker |
-| Route handlers | `src/app/api/**/route.ts`, `src/app/(sites)/render/[host]/**/route.ts` | Thin wrappers over module APIs |
+| Route handlers | `src/app/api/**/route.ts`, `src/app/(sites)/render/[site]/**/route.ts` | Thin wrappers over module APIs |
 | Services | `modules/<m>/<thing>.service.ts` | Business rules; open `withTenant` transactions; return domain events; never import `next/*` |
 | Repositories | `modules/<m>/<thing>.repository.ts` | Drizzle only; take `tx`; always scoped by `site_id`/`organization_id` |
 | Queries | `modules/<m>/queries.ts` (admin reads); `modules/rendering/queries.ts` (public `'use cache'` reads) | Read models; may join other modules' tables |
@@ -907,7 +941,7 @@ forge/
 
 ## 19. V1 routes
 
-**Admin: `app.forgecms.com`**
+**Admin: the app host** (V1: `cms.forgelinetechnologies.com`, §0)
 
 | Route | Purpose | Minimum role | Phase |
 |---|---|---|---|
@@ -930,15 +964,15 @@ forge/
 | `/…/menus` | Header/footer menus | Editor | 8 |
 | `/…/seo`, `/…/seo/redirects` | SEO defaults, redirects | Editor | 8 |
 | `/…/appearance` | Theme + customisation | Admin | 4 (choose), 8 (customise) |
-| `/…/domains` | Subdomain + custom domains | Admin | 9 |
+| `/…/domains` | Site address (V1, in site settings until M9); custom domains *(post-V1)* | Admin | 4 / 9 |
 | `/…/settings`, `/…/settings/api-keys` | General/reading/analytics/social; API keys | Admin | 4, 10 |
 | `/platform` | Staff console | staff allow-list | 12 |
 
 `/pages/new` and `/posts/new` are small **forms** (title, and parent or template). The action creates the entry and redirects to the editor. Creating on GET is avoided because Next.js prefetches links.
 
-Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platform`, `api`, `verify-email`, `forgot-password`, `reset-password`, `settings`, `new`, `_next`.
+Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platform`, `api`, `verify-email`, `forgot-password`, `reset-password`, `settings`, `new`, `_next`, `s` (tenant sites), `media`.
 
-**Tenant sites: `{sub}.forge-host.com` and custom domains** (rewritten by `proxy.ts` to `/render/{host}/…`)
+**Tenant sites: `/s/{address}/…` on the app host** (V1; rewritten by `proxy.ts` to `/render/address~{address}/…`). Post-V1 also `{address}.<sites domain>` and custom domains (`HOST_ROUTING_ENABLED`). The paths below are relative to the site's base: `/s/{address}` in V1, the host root later. Links, canonical URLs and sitemaps are built from that base.
 
 | Public URL | Purpose |
 |---|---|
@@ -946,8 +980,8 @@ Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platf
 | `/{path}` | Pages (hierarchical) |
 | `/{blogPath}`, `/{blogPath}/{slug}` | Blog index, post |
 | `/{blogPath}/category/{slug}`, `/{blogPath}/tag/{slug}`, `…/page/{n}` | Archives, pagination |
-| `/sitemap.xml`, `/robots.txt` | SEO |
-| `/_forge/preview/{token}` | Draft preview (platform subdomain only) |
+| `/sitemap.xml` | Per-site sitemap (V1: `/s/{address}/sitemap.xml`). In path mode `robots.txt` is the host's: it allows `/s/` and points to each live site's sitemap; a site that discourages indexing gets `noindex` meta and is left out |
+| `/_forge/preview/{token}` | Draft preview. V1: on the app host root (`cms.forgelinetechnologies.com/_forge/preview/{token}`); the token alone identifies the site |
 
 **Route handlers on the app host:** `/api/auth/[...all]` · `/api/v1/**` · `/api/app/**` · `/api/webhooks/stripe` · `/api/internal/cron` (+ `/daily`) · `/api/health`.
 
@@ -955,34 +989,40 @@ Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platf
 
 ## 20. V1 system architecture
 
+**V1 current deployment (zero-cost, ADR 0006):**
+
 ```text
                  Browsers: editors · site visitors · API clients
                                        │
+                         cms.forgelinetechnologies.com
                                        ▼
-                 Vercel edge — TLS · CDN cache (public pages) · WAF rate limits
+                 Vercel (Hobby) — TLS · CDN cache (public pages, /media) · basic WAF
                                        │
                                   proxy.ts
-                   host routing · request ID · reserved-path guard
+        /s/{address} → site renderer · request ID · /render + Server-Action guards · framing headers
                                        │
                          Next.js app (one deployment)
         ┌──────────────────────────────┼──────────────────────────────┐
         │                              │                              │
       Admin                      Site renderer                       API
-  app.forgecms.com         *.forge-host.com + custom          app.forgecms.com/api/v1
-  RSC + Server Actions     domains · 'use cache' + tags       API keys · withApi
+  /{orgSlug}/…                /s/{address}/…                     /api/v1/…
+  RSC + Server Actions        'use cache' + tags                API keys · withApi
         └──────────────────────────────┼──────────────────────────────┘
                                        │
             Application modules — services · policies · repositories
                   withTenant(): org-scoped transactions (RLS)
                                        │
-        ┌──────────────┬───────────────┼───────────────┬──────────────┬─────────────┐
-        │              │               │               │              │             │
-   PostgreSQL /    Object storage    Resend          Stripe       Vercel         Sentry
-   Neon (pooled)   (R2) → CDN        (email jobs)    (billing)    Domains API    (errors)
-        ▲          media.forgecdn.com
+        ┌──────────────┬───────────────┼───────────────┬─────────────┐
+        │              │               │               │             │
+   PostgreSQL /    Object storage    Resend          Stripe        Sentry
+   Neon Free       R2 (free) →       (email jobs)    (test mode)   (errors)
+   (pooled)        /media route
+        ▲
         │
-   Vercel Cron (every minute) → /api/internal/cron → job runner
+   Job runner ← daily Vercel cron · after() kicks · optional external per-minute scheduler
 ```
+
+**Future production deployment (post-V1):** the same app and modules, with sites on `{address}.<sites domain>` and custom domains (Vercel Domains API), a media CDN domain, and a per-minute Vercel cron (§0.2).
 
 **Request paths:**
 - **Admin:** proxy → `(admin)` layout → `requireSiteContext` (session → membership → site → permissions) → Server Action → service → `withTenant` transaction → audit → `updateTag`.
@@ -1016,7 +1056,7 @@ Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platf
 | 6 — Media library | 2 | 4 (image block needs 5's editor shell) | **B** |
 | 7 — Publishing, revisions, preview | 2 | 5 | **A** |
 | 8 — Theme customisation, navigation, SEO, redirects | 2.5 | 5 | **C** |
-| 9 — Custom domains | 1.5 | 4 | **B** |
+| 9 — Custom domains *(post-V1 infrastructure)* | 1.5 | 4 | **B** |
 | 10 — REST API v1 | 1 | 5, 7 | **C** |
 | 11 — Billing | 1.5 | 3 (limits) | **B** |
 | 12 — Launch hardening | 2 | all | all |
@@ -1031,7 +1071,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
 - **Features:**
   - repo scaffold (Next 16, TS strict, Tailwind 4, shadcn/ui, ESLint boundaries, Vitest, Playwright)
   - `docker-compose` (Postgres, MinIO, Mailpit), CI
-  - environments (Vercel Pro, Neon, R2, Resend, Sentry, the three domains)
+  - environments on free tiers (Vercel Hobby, Neon Free, R2, Resend, Sentry) and the one subdomain `cms.forgelinetechnologies.com` (§0)
 - **Spikes (each ends in a one-page ADR):**
   - **S1** host routing + Cache Components + tag invalidation for on-demand hosts on Vercel
   - **S2** `pg` Pool + `withTenant` + RLS through Neon's pooler: latency, `nullif` gotcha
@@ -1039,7 +1079,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - **S4** Better Auth on our table names with UUIDv7
 - **Tables:** none. **Routes:** `/api/health`, placeholder admin page, placeholder renderer.
 - **Tests:** CI runs unit + E2E smoke.
-- **Definition of done:** preview deployment answers on the app host and on `*.forge-host.com`; four ADRs merged; CI green.
+- **Definition of done:** the deployment answers on `cms.forgelinetechnologies.com`, admin and `/s/{address}`; ADRs merged; CI green.
 
 ### Phase 1 — Database + platform foundation
 
@@ -1106,9 +1146,9 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
 
 ### Phase 4 — Sites, settings, hostname resolution, theme foundation
 
-- **Goal:** a site exists and answers on its subdomain.
+- **Goal:** a site exists and answers at its site address (`/s/{address}`).
 - **Features:**
-  - create site (name, subdomain with reserved words, locale, timezone; the `domains` subdomain row; `site_settings`; plan limit)
+  - create site (name, site address with reserved words, locale, timezone; the `domains` row of kind `subdomain` holding the address; `site_settings`; plan limit)
   - onboarding steps 2–3 (site, theme)
   - site overview with checklist + "Publish site" (coming soon → live; requires a verified email)
   - site settings (general, reading, analytics, social)
@@ -1116,17 +1156,17 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - theme kit + Studio skeleton (layout, header, footer, coming-soon)
 - **Tables:** `sites`, `site_settings`, `domains`.
 - **Routes:** `/{org}/sites`, `/{org}/sites/new`, `/{org}/sites/{site}`, `/…/settings`, `/…/appearance` (theme choice only), `/onboarding` (steps 2–3); site host `/`.
-- **Server Actions:** `createSite`, `updateSiteSettings`, `changeSubdomain`, `chooseTheme`, `setSiteStatus`, `deleteSite` (soft).
+- **Server Actions:** `createSite`, `updateSiteSettings`, `changeSiteAddress`, `chooseTheme`, `setSiteStatus`, `deleteSite` (soft).
 - **APIs:** none.
 - **UI:** sites grid, create-site form, overview, settings forms, theme picker with thumbnails.
 - **Tests:**
-  - subdomain validation/uniqueness
+  - site address validation (DNS-label shape, reserved words)/uniqueness
   - `/render/*` blocked directly
-  - host cache invalidated on subdomain change
+  - `host:` cache tag invalidated on address change
   - site limit per plan
   - isolation suite (sites)
-  - E2E: create site → subdomain shows coming soon → publish site → live placeholder
-- **Definition of done:** `acme.forge-host.com` renders the themed site shell; coming-soon sites are `noindex`; theme switch is visible immediately.
+  - E2E: create site → `/s/{address}` shows coming soon → publish site → live placeholder
+- **Definition of done:** `cms.forgelinetechnologies.com/s/acme` renders the themed site shell; coming-soon sites are `noindex`; theme switch is visible immediately.
 
 ### Phase 5 — Pages, posts, editor, categories/tags
 
@@ -1154,7 +1194,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - link `entry:{id}` resolution
   - isolation suite (content)
   - E2E: create page with columns + button → publish → visible; post in a category → on the archive
-- **Definition of done:** an Editor builds and publishes pages and posts with all non-media blocks, and sees them live on the subdomain within seconds; autosave never loses work.
+- **Definition of done:** an Editor builds and publishes pages and posts with all non-media blocks, and sees them live at the site address within seconds; autosave never loses work.
 
 ### Phase 6 — Media library
 
@@ -1178,7 +1218,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - composite FK blocks cross-site media
   - isolation suite (media)
   - E2E: upload 3 images → insert in a page → live page serves `srcset` from the CDN
-- **Definition of done:** uploads never pass through our functions; every image is served as responsive WebP from `media.forgecdn.com`; PDFs are linkable from content.
+- **Definition of done:** uploads never pass through our functions; every image is served as responsive WebP from `/media` (immutable, CDN-cached); PDFs are linkable from content.
 
 ### Phase 7 — Publishing, revisions, preview
 
@@ -1191,7 +1231,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - local autosave buffer + conflict dialog polish
   - scheduled items on the site overview
 - **Tables:** no new tables (revision kinds; `jobs` for schedules).
-- **Routes:** site host `/_forge/preview/[token]`; editor panels.
+- **Routes:** `/_forge/preview/[token]` (app host in V1); editor panels.
 - **Server Actions:** `saveRevision`, `restoreRevision`, `unpublishEntry`, `scheduleEntry`, `cancelSchedule`, `trashEntry`, `restoreEntry`, `purgeEntry`, `createPreviewToken`.
 - **APIs:** none.
 - **UI:** publish menu, status badges, revision drawer, preview pane/tab, trash filter, scheduled list.
@@ -1215,7 +1255,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - redirects manager + auto-redirects on path changes
   - custom 404 page setting
 - **Tables:** `menus`, `redirects`.
-- **Routes:** `/…/appearance`, `/…/menus`, `/…/seo`, `/…/seo/redirects`; site `/sitemap.xml`, `/robots.txt`.
+- **Routes:** `/…/appearance`, `/…/menus`, `/…/seo`, `/…/seo/redirects`; site `/s/{address}/sitemap.xml`; the host's `/robots.txt`.
 - **Server Actions:** `updateThemeSettings`, `saveMenu`, `updateSeoDefaults`, `createRedirect`, `updateRedirect`, `deleteRedirect`.
 - **APIs:** none.
 - **UI:** appearance editor with preview iframe, menu tree editor (drag, nest), SEO forms with "inherited from" hints, redirects table.
@@ -1228,7 +1268,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - theme settings reject invalid tokens
 - **Definition of done:** a site has branded themes, working menus, correct meta tags, sitemap and robots, and no URL breaks on slug changes.
 
-### Phase 9 — Custom domains
+### Phase 9 — Custom domains *(post-V1 infrastructure; not built on the free deployment, ADR 0006)*
 
 - **Goal:** sites live on the customer's own domain over HTTPS.
 - **Features:**
@@ -1296,7 +1336,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
 - **Features:**
   - **Security pass:** admin nonce CSP, security headers per surface, WAF rules, isolation-suite coverage of every tenant table, dependency audit, OWASP ZAP baseline, external pentest if budget allows.
   - **Staff console:** find org/site, suspend/unsuspend with reason.
-  - **Observability:** alerts, uptime checks (admin, API, canary site on a subdomain and a custom domain, cron heartbeat).
+  - **Observability:** alerts, uptime checks (admin, API, a canary site at `/s/{address}`, job-runner heartbeat).
   - **Runbooks:** tenant restore via a Neon PITR branch, domain troubleshooting, Stripe issues.
   - **Performance:** Lighthouse on both themes, cache-hit verification.
   - **Quality:** accessibility pass (axe) on admin and themes; error pages.
@@ -1337,7 +1377,7 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 **The journey:**
 - [ ] Sign up (email + password) and verify email. Also sign up with Google
 - [ ] Create organization (becomes Owner, trial active)
-- [ ] Create site (subdomain live as "coming soon", theme chosen)
+- [ ] Create site (`/s/{address}` live as "coming soon", theme chosen)
 - [ ] Invite a user as Author; they accept and see only what Author allows (no settings, no pages, can write posts)
 - [ ] Create page (Home + About with columns, button, embed); edit page; autosave survives a reload
 - [ ] Upload images and a PDF; use an image in a page and as a post's featured image
@@ -1347,8 +1387,8 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 - [ ] Manage navigation (header + footer menus) and see it live
 - [ ] Configure SEO (site defaults + per-page override); verify meta tags, canonical, OG image, sitemap, robots, JSON-LD
 - [ ] Change a published slug; the old URL 301s to the new one
-- [ ] Connect a custom domain (apex + www) with the TXT proof; HTTPS works; www and the subdomain 308 to the primary
-- [ ] Publish the site; visit the live website on the custom domain
+- [ ] *(post-V1)* Connect a custom domain (apex + www) with the TXT proof; HTTPS works; www and the subdomain 308 to the primary
+- [ ] Publish the site; visit the live website at `/s/{address}` (custom domain post-V1)
 - [ ] Upgrade to Pro via Stripe (test mode); cancel; limits apply without data loss
 - [ ] Read the published page through `/api/v1` with a site API key
 - [ ] Log out; log back into the CMS; everything is as left
@@ -1358,7 +1398,7 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 - [ ] A member of org A gets 404 for every org-B URL, action argument and API resource
 - [ ] Cross-site references (media, parent page, terms) are rejected by the database
 - [ ] Cache keys and tags are site-scoped; the preview of site A can't render site B's draft
-- [ ] Custom domain claims can't be taken over or squatted
+- [ ] *(post-V1)* Custom domain claims can't be taken over or squatted
 
 **Operational gates:**
 - [ ] Public pages are served from cache after the first view; publish-to-live < 5 s
@@ -1373,7 +1413,7 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 **1. Final V1 feature list.**
 - **Accounts:** email/password, verification, reset, Google, sessions.
 - **Organizations:** invitations, 5 roles.
-- **Sites:** subdomain, settings, coming-soon → live.
+- **Sites:** site address (`/s/{address}`), settings, coming-soon → live.
 - **Pages** (hierarchical, templates) and **posts** (categories, tags, excerpt, featured image).
 - A **one-document block editor** with 11 blocks, reordering, properties, autosave.
 - **Drafts, revisions + restore, preview, publish, unpublish, schedule, trash.**
@@ -1381,7 +1421,7 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 - **Two themes** with branding tokens.
 - **Header/footer menus.**
 - **Basic SEO:** meta, canonical, OG, robots, sitemap, JSON-LD, redirects.
-- **Custom domains** with TXT proof and SSL.
+- **Custom domains** with TXT proof and SSL *(post-V1 infrastructure)*.
 - **Stripe billing:** trial, Free/Pro, limits.
 - **REST API v1:** read + page/post writes.
 - **Operations:** activity log, minimal staff console.
@@ -1408,7 +1448,7 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 - API under `/api/v1/sites/{siteId}/…`
 - See §19.
 
-**5. Final V1 architecture diagram:** §20. One Next.js app on Vercel with three surfaces behind `proxy.ts`, module services over Neon (RLS), plus R2 + CDN, Resend, Stripe, the Vercel Domains API, Sentry, and a Cron-driven Postgres job runner.
+**5. Final V1 architecture diagram:** §20. One Next.js app on one host (`cms.forgelinetechnologies.com`, Vercel Hobby) with three surfaces behind `proxy.ts`, module services over Neon (RLS), plus R2 (served via `/media`), Resend, Stripe (test mode), Sentry, and a cron/kick-driven Postgres job runner.
 
 **6. Final implementation phases:**
 
@@ -1423,7 +1463,7 @@ Forge CMS V1 is complete when **all** of the following pass on production-like s
 | 6 | Media |
 | 7 | Publishing & preview |
 | 8 | Themes, menus & SEO |
-| 9 | Custom domains |
+| 9 | Custom domains *(post-V1)* |
 | 10 | API |
 | 11 | Billing |
 | 12 | Launch hardening |
@@ -1447,7 +1487,7 @@ About 4–4.5 months with 3 engineers.
 | **The editor** (columns, drag handle, NodeViews, paste normalisation) | Spike S3 in week 1; strongest engineer owns it; strict node allow-list; no nested columns |
 | **Caching with host-based routing** (on-demand hosts under Cache Components; invalidation correctness) | Spike S1; publish→live E2E in CI; `site:{id}` purge button as an escape hatch |
 | **RLS through Neon's pooler** (transaction per request, GUC reset, developer friction) | Spike S2; `withTenant` as the only DB entry; documented fallback (§4.3) |
-| **Custom domains in the real world** (DNS confusion, certificate delays, Vercel limits) | Clear DNS UI, verify-now, a staging domain test, support runbook |
+| **Custom domains in the real world** *(post-V1)* (DNS confusion, certificate delays, Vercel limits) | Clear DNS UI, verify-now, a staging domain test, support runbook |
 | **Better Auth schema mapping and upgrades** | Spike S4; pin version; auth flow E2E |
 | **Synchronous `sharp` in functions** (memory/time on large images) | Pixel caps; route `maxDuration`/memory; move to a job if p95 > 5 s |
 | **Scope creep** | §17 is the contract; anything new needs a MUST swapped out |
@@ -1455,7 +1495,7 @@ About 4–4.5 months with 3 engineers.
 **10. First 10 development tasks** (issue IDs from [v1-github-issues.md](v1-github-issues.md)):
 
 1. **M0-1** Scaffold the repository and CI
-2. **M0-2** Provision environments and domains (Vercel Pro, Neon, R2, Resend, Sentry, three domains)
+2. **M0-2** Provision environments (free tiers) and `cms.forgelinetechnologies.com`
 3. **M0-3** Spike S2: `pg` Pool + `withTenant` + RLS through Neon's pooler
 4. **M0-4** Spike S1: host routing + Cache Components tag invalidation on Vercel
 5. **M0-5** Spike S3: Tiptap custom nodes + closed renderer + drag reorder

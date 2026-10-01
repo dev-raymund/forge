@@ -46,30 +46,30 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M0-2 · Provision environments and domains
 **Labels:** `area:ops` `type:infra`
 
-**Description:** Create the production and preview infrastructure so every later phase deploys to real services.
+> *Deployment updated 2026-10-01 (ADR 0006, plan §0): V1 runs on one host, `cms.forgelinetechnologies.com`, on free tiers. Tenant sites live at `/s/{address}`, media at `/media`. Custom domains and wildcard hosts are post-V1 infrastructure.*
+
+**Description:** Create the zero-cost V1 deployment (development / private beta) so every later phase deploys to real services.
 
 **Depends on:** M0-1
 
 **Acceptance criteria:**
-- [ ] Vercel Pro project connected to the repo (Fluid compute on; region chosen next to Neon; previews on PRs)
-- [ ] Neon project; `forge_owner` and `forge_app` roles; production branch with scale-to-zero **off**; Neon–Vercel preview branching
-- [ ] Cloudflare R2 buckets `forge-media-{env}`; custom domain `media.forgecdn.com`; CORS for presigned PUT from the app origin
-- [ ] Domains:
-  - `app.forgecms.com` on Vercel
-  - `forge-host.com` on **Vercel nameservers** with wildcard `*.forge-host.com`
-  - `forgecdn.com` zone on Cloudflare
-- [ ] Resend domain verified (SPF/DKIM/DMARC); Sentry project; Cloudflare Turnstile keys; Stripe test account; scoped Vercel API token
+- [ ] Vercel **Hobby** project connected to the repo (Fluid compute on; region chosen next to Neon; previews on PRs). Hobby is non-commercial only: live billing needs a paid plan
+- [ ] Neon **Free** project; `forge_owner`, `forge_app` and `forge_lookup` roles created with SQL; scale-to-zero stays on (it can't be turned off on Free); preview branches optional
+- [ ] Cloudflare R2 bucket(s) `forge-media-{env}` on the free tier; CORS for presigned PUT from the app origin. No R2 custom domain: media is served by the app at `/media`
+- [ ] Domain: one DNS record, `cms.forgelinetechnologies.com` CNAME → Vercel, added to the project (free on Hobby). `forgelinetechnologies.com` is otherwise untouched
+- [ ] Resend Free with `cms.forgelinetechnologies.com` as the sending domain (DNS records only: SPF/DKIM/DMARC); Sentry Developer project; Cloudflare Turnstile keys; Stripe test mode
+- [ ] Optional: a free external scheduler calling `GET /api/internal/cron` every minute with the cron secret (plan §16)
 - [ ] Environment variables set per environment:
 
   | Group | Variables |
   |---|---|
   | Database | `DATABASE_URL` (pooled, `forge_app`), `DATABASE_MIGRATION_URL` (CI only) |
-  | Hosts | `APP_ORIGIN`, `SITES_ROOT_DOMAIN`, `MEDIA_PUBLIC_BASE_URL` |
+  | Hosts | `APP_ORIGIN` (`https://cms.forgelinetechnologies.com`; unset on previews). Post-V1: `HOST_ROUTING_ENABLED`, `SITES_ROOT_DOMAIN`, `MEDIA_PUBLIC_BASE_URL` |
   | Auth | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID/SECRET` |
   | Email | `RESEND_API_KEY`, `EMAIL_FROM` |
   | Storage | `STORAGE_BUCKET`, `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY_ID/SECRET` |
   | Billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO` |
-  | Domains | `VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` |
+  | Domains *(post-V1)* | `VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` |
   | Security | `CRON_SECRET`, `PREVIEW_TOKEN_SECRET`, `TURNSTILE_SECRET_KEY`/`NEXT_PUBLIC_TURNSTILE_SITE_KEY` |
   | Observability | `SENTRY_DSN`, `SENTRY_AUTH_TOKEN` |
   | Staff | `PLATFORM_ADMIN_EMAILS` |
@@ -78,7 +78,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Likely files/modules:** `vercel.json` (crons), `.env.example`, `docs/runbooks/environments.md`
 
-**Testing:** a preview deployment answers on the app host and on a `*.forge-host.com` test subdomain.
+**Testing:** the deployment answers on `cms.forgelinetechnologies.com`; a seeded site answers at `/s/{address}`; `/api/health/ready` is green.
 
 ### M0-3 · Spike S2: `pg` Pool + `withTenant` + RLS through Neon's pooler
 **Labels:** `area:platform` `type:spike` `risk:high`
@@ -107,7 +107,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Depends on:** M0-2
 
-**Status:** Proven locally on a production build. The Vercel preview run is pending the M0-2 accounts (runbook §5).
+**Status:** Proven locally on a production build. The Vercel preview run is pending the M0-2 accounts (runbook §5). *2026-10-01 (ADR 0006): V1 addresses sites by path (`/s/{address}`). The host routing proven here is kept behind `HOST_ROUTING_ENABLED` for post-V1. The spec now runs on one host, and the Vercel run targets a Hobby deployment with no `?__host=`.*
 
 **Acceptance criteria:**
 - [x] Two test hosts render different content from the same route; direct `/render/*` requests 404 — unknown hosts also return a real 404 status
@@ -217,7 +217,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 - [x] `jobs` table (platform class) with `dedupe_key` partial unique index — from M1-1; migration 0003 adds a partial index for the reaper
 - [x] `jobs.enqueue(tx, type, payload, { runAt?, dedupeKey?, maxAttempts? })` inside the caller's transaction; payloads validated by per-type Zod schemas in a registry — `type` is passed as its `defineJob()` definition (typed payload). Tenant jobs take the organization from the transaction's RLS context. The runner's registry is composed in `src/app/api/internal/cron/jobs.ts` (ADR 0005)
 - [x] Runner: claims with `FOR UPDATE SKIP LOCKED`; exponential backoff with jitter; `dead` after max attempts; reaper for expired locks; stops at ~75% of the time budget — plus fencing on `attempts`, `failed` for permanent errors, and a 900 s default claim
-- [x] `/api/internal/cron` (every minute) and `/api/internal/cron/daily` (03:00) authenticated with `CRON_SECRET`; configured in `vercel.json` — 404 without the secret. The daily route enqueues `jobs.cleanup` (retention, long-term §6.9)
+- [x] `/api/internal/cron` (every minute) and `/api/internal/cron/daily` (03:00) authenticated with `CRON_SECRET`; configured in `vercel.json` — 404 without the secret. *2026-10-01 (ADR 0006): Vercel Hobby only allows daily crons, so `vercel.json` schedules only `/daily`, which now also runs the runner. The minute endpoint is for an optional external scheduler or a paid plan*. The daily route enqueues `jobs.cleanup` (retention, long-term §6.9)
 - [x] `kickJobs()` helper using `after()` — runs only the kicked job types, best effort
 
 **Likely files/modules:** `src/platform/jobs/*`, `src/app/api/internal/cron/*`, `vercel.json`
@@ -243,7 +243,9 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M1-5 · Storage driver: interface + S3-compatible adapter
 **Labels:** `area:platform` `type:infra`
 
-**Description:** `StorageDriver` (plan §8) with the S3 implementation used for R2 in production and MinIO locally.
+**Description:** `StorageDriver` (plan §8) with the S3 implementation used for R2 in production and RustFS locally.
+
+*V1 (ADR 0006): `publicUrl(key)` = `MEDIA_PUBLIC_BASE_URL` + key, defaulting to `${APP_ORIGIN}/media` (`mediaPublicBaseUrl()` in `platform/config/env.ts`). Storage keys never depend on the public URL.*
 
 **Depends on:** M0-2
 
@@ -254,7 +256,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Likely files/modules:** `src/platform/storage/*`
 
-**Testing:** integration against MinIO: presigned PUT round trip, a content-length mismatch is rejected, HEAD/readRange/delete.
+**Testing:** integration against RustFS: presigned PUT round trip, a content-length mismatch is rejected, HEAD/readRange/delete.
 
 ### M1-6 · Test harness + isolation-suite framework
 **Labels:** `area:platform` `type:test` `risk:high`
@@ -284,6 +286,13 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Labels:** `area:rendering` `type:infra`
 
 **Description:** Classify hosts and route requests.
+
+*2026-10-01 (ADR 0006), done in the same change:*
+- *Path mode is always on: `/s/{address}/…` → `/render/address~{address}/…`, on any host. Host mode (`HOST_ROUTING_ENABLED`, post-V1) maps platform subdomains and custom domains to the same renderer.*
+- *`Next-Action` is rejected on site pages in both modes.*
+- *The proxy sets framing headers per surface: admin `frame-ancestors 'none'`, sites `'self'`.*
+- *`?__host=` applies to host mode only.*
+- *`hosts.test.ts` now has 56 cases.*
 
 **Depends on:** M0-4, M1-2
 
@@ -474,27 +483,27 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ## M4 — Sites
 
-### M4-1 · Sites schema, create site, subdomain, limits
+### M4-1 · Sites schema, create site, site address, limits
 **Labels:** `area:sites` `type:feature`
 
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
-**Description:** Sites and their default hostname.
+**Description:** Sites and their site address (`/s/{address}` in V1; `{address}.<sites domain>` post-V1, ADR 0006).
 
 **Depends on:** M3-2
 
 **Acceptance criteria:**
-- [ ] Tables `sites`, `site_settings`, `domains` (subdomain rows; platform class)
+- [ ] Tables `sites`, `site_settings`, `domains` (rows of kind `subdomain` whose `hostname` holds the address label; platform class)
 - [ ] `createSite` in one transaction:
-  - validates the subdomain (charset, reserved words, uniqueness)
+  - validates the site address (`isSiteAddress`: DNS-label shape ≤ 63; reserved words such as `www`, `app`, `api`, `admin`, `media`; uniqueness)
   - creates the site (`coming_soon`) + settings + `domains` row
   - checks the plan limit (`assertLimit` stub with plan in code)
   - audits
-- [ ] `/{org}/sites` grid and `/{org}/sites/new`; `changeSubdomain`, soft `deleteSite`
+- [ ] `/{org}/sites` grid and `/{org}/sites/new`; `changeSiteAddress` (invalidates `host:{old}` and `host:{new}`), soft `deleteSite`
 
 **Likely files/modules:** `src/modules/sites/*`, `src/modules/domains/schema.ts`, site pages
 
-**Testing:** subdomain validation table; limit reached → `LimitExceeded`; isolation suite for sites.
+**Testing:** site address validation table; limit reached → `LimitExceeded`; isolation suite for sites.
 
 ### M4-2 · Site overview, settings and onboarding steps 2–3
 **Labels:** `area:sites` `type:feature`
@@ -512,24 +521,24 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Testing:** invalid GA4 ID rejected; E2E onboarding end to end.
 
-### M4-3 · Renderer foundation: host → site, coming soon, unknown and suspended hosts
+### M4-3 · Renderer foundation: site address/host → site, coming soon, unknown and suspended sites
 **Labels:** `area:rendering` `type:feature` `risk:high`
 
-**Description:** Serve sites by hostname with correct caching.
+**Description:** Serve sites by their site address (V1: `/s/{address}`) or, post-V1, by hostname, with correct caching.
 
-*From M0-4: start from `spikes/rendering/queries.ts` and the current `/render/[host]/[[...path]]` page. Keep static params for both segments, resolve the host outside `<Suspense>` (real 404s), skip the database for the build placeholder, and delete the `/dev/cache` and `/api/dev/revalidate` spike routes (ADR 0002).*
+*From M0-4 and ADR 0006: start from `spikes/rendering/queries.ts` (`resolveSite(locator)`) and the current `/render/[site]/[[...path]]` page; build every link from `siteBasePath()`. Keep static params for both segments, resolve the host outside `<Suspense>` (real 404s), skip the database for the build placeholder, and delete the `/dev/cache` and `/api/dev/revalidate` spike routes (ADR 0002).*
 
 **Depends on:** M1-7, M4-1
 
 **Acceptance criteria:**
-- [ ] `(sites)/render/[host]/layout.tsx` with `resolveSiteByHost` (`'use cache'`, tag `host:{h}`) → site, org, primary, status
-- [ ] Unknown host → platform "site not found"; `suspended` → "site unavailable"; `coming_soon` → theme's coming-soon page with `noindex` (preview token bypass comes in M7-4)
-- [ ] Non-primary host → 308 to primary (except `/_forge/preview/*`)
+- [ ] `(sites)/render/[site]/layout.tsx` with `resolveSite(locator)` (`'use cache'`, tag `host:{address|hostname}`) → site, org, primary, status
+- [ ] Unknown site → platform "site not found"; `suspended` → "site unavailable"; `coming_soon` → theme's coming-soon page with `noindex` (preview token bypass comes in M7-4)
+- [ ] *(Host mode, post-V1)* Non-primary host → 308 to primary (except `/_forge/preview/*`)
 - [ ] Cached data functions take `siteId`/`host` as arguments; lint rule for `'use cache'` functions without a tenant argument
 
-**Likely files/modules:** `src/modules/rendering/*`, `src/app/(sites)/render/[host]/*`
+**Likely files/modules:** `src/modules/rendering/*`, `src/app/(sites)/render/[site]/*`
 
-**Testing:** E2E via `*.localhost` hosts; subdomain change invalidates the host tag.
+**Testing:** E2E via `/s/{address}` on one host; an address change invalidates the `host:` tag; the site tree never imports `modules/auth` (lint).
 
 ### M4-4 · Theme kit, Studio skeleton, theme picker
 **Labels:** `area:themes` `type:feature`
@@ -564,7 +573,7 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Likely files/modules:** `src/modules/sites/*`, overview page
 
-**Testing:** E2E: publish site → the subdomain serves real pages (after M5), and robots no longer disallows.
+**Testing:** E2E: publish site → `/s/{address}` serves real pages (after M5), and the pages are no longer `noindex`.
 
 ---
 
@@ -753,10 +762,10 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Acceptance criteria:**
 - [ ] `processImage(mediaId)` inside `completeUpload`: `sharp` with `limitInputPixels`, auto-rotate, metadata stripped; widths 400 (square thumb), 800, 1600, 2400 (≤ original) as WebP → `variants` JSONB
 - [ ] Route `maxDuration`/memory configured; p95 processing time logged
-- [ ] `media.forgecdn.com` serving with immutable caching, `nosniff` and sandbox CSP (Cloudflare rule documented)
+- [ ] V1 delivery at `/media/{key}` (ADR 0006): a route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types (never HTML/JS/SVG); unknown keys → 404. A CDN domain is post-V1 via `MEDIA_PUBLIC_BASE_URL`
 - [ ] A `<ResponsiveImage>` kit component produces `srcset`/`sizes`/`width`/`height`
 
-**Likely files/modules:** `src/modules/media/processing.ts`, `src/themes/_kit/components/ResponsiveImage.tsx`, `docs/runbooks/media-cdn.md`
+**Likely files/modules:** `src/modules/media/processing.ts`, `src/app/media/[...key]/route.ts`, `src/themes/_kit/components/ResponsiveImage.tsx`
 
 **Testing:** integration: EXIF GPS absent in variants; a 60 MP image rejected; srcset output snapshot.
 
@@ -820,6 +829,8 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 **Description:** Timed publishing of a frozen revision.
 
+*V1 (ADR 0006): on Vercel Hobby the job runs when the runner is next called. That is the minute scheduler (optional, free, external) or the daily cron. Without a scheduler, a post can publish up to a day late: a known V1 limitation.*
+
 **Depends on:** M7-1, M1-3
 
 **Acceptance criteria:**
@@ -850,16 +861,16 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M7-4 · Preview
 **Labels:** `area:rendering` `type:feature`
 
-**Description:** Private draft preview on the site's platform subdomain.
+**Description:** Private draft preview. V1: on the app host (ADR 0006); post-V1: on the site's platform subdomain.
 
 **Depends on:** M5-6
 
 **Acceptance criteria:**
 - [ ] `createPreviewToken(entryId)`: HMAC (`PREVIEW_TOKEN_SECRET`), 15 min, bound to site + entry + user
-- [ ] `/_forge/preview/{token}` on `{sub}.forge-host.com` renders the draft via **uncached** queries, with `Cache-Control: private, no-store` and `X-Robots-Tag: noindex`; `frame-ancestors` allows the app origin
+- [ ] `/_forge/preview/{token}` (V1: `cms.forgelinetechnologies.com/_forge/preview/{token}`, rewritten by the proxy into the site renderer; the token alone identifies site + entry) renders the draft via **uncached** queries, with `Cache-Control: private, no-store` and `X-Robots-Tag: noindex`; `frame-ancestors 'self'`
 - [ ] Editor preview pane (iframe) + "open in new tab"; autosave flushed before preview; works for coming-soon sites
 
-**Likely files/modules:** `src/modules/rendering/preview.*`, `src/app/(sites)/render/[host]/platform/preview/*`
+**Likely files/modules:** `src/modules/rendering/preview.*`, `src/app/(sites)/render/[site]/…/preview/*`, `src/platform/routing/hosts.ts`
 
 **Testing:** tampered or expired token → 404; response headers asserted; E2E preview shows unpublished changes.
 
@@ -930,9 +941,9 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 - [ ] Editor SEO tab: title, description, canonical (absolute https), OG image, noindex/nofollow, with "inherited from…" hints and length counters
 - [ ] `/…/seo`: title template, default description, default OG image, discourage indexing, Search Console token
 - [ ] Output: meta, canonical, OG/Twitter, JSON-LD (`WebSite`, `Organization`, `WebPage`/`BlogPosting`, `BreadcrumbList`) with `<` escaped
-- [ ] `/sitemap.xml` (published, indexable, non-empty archives) and `/robots.txt` per host
+- [ ] Per-site sitemap (V1: `/s/{address}/sitemap.xml`; published, indexable, non-empty archives). Path mode: the host's `/robots.txt` allows `/s/`, lists live sites' sitemaps, and disallows `/api/`; a site that discourages indexing gets `noindex` meta and is left out. Host mode (post-V1): `/robots.txt` per host. Canonical/OG URLs are built from the site's base (`/s/{address}` in V1)
 
-**Likely files/modules:** `src/modules/seo/*`, `src/app/(sites)/render/[host]/{sitemap.xml,robots.txt}/*`
+**Likely files/modules:** `src/modules/seo/*`, `src/app/(sites)/render/[site]/…/sitemap.xml/*`, `src/app/robots.ts`
 
 **Testing:** resolver table tests; sitemap excludes drafts and noindex; JSON-LD escaping test.
 
@@ -958,7 +969,9 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 
 ---
 
-## M9 — Custom domains
+## M9 — Custom domains *(post-V1 infrastructure)*
+
+> **Deferred (ADR 0006).** Not built on the zero-cost V1 deployment: no wildcard tenant domains, Vercel Domains API, automated SSL, domain-ownership automation or `domain.check` polling. The `domains` model, host-mode routing (`HOST_ROUTING_ENABLED`) and `host:` cache tags exist, so this milestone needs paid hosting but no content or tenancy changes. These issues stay as written for that time.
 
 ### M9-1 · Domain provider, service and verification
 **Labels:** `area:domains` `type:feature` `risk:high`
@@ -1082,10 +1095,10 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 **Depends on:** all feature milestones
 
 **Acceptance criteria:**
-- [ ] Admin nonce-based CSP via the proxy; security headers per surface; WAF rules for `/api/auth/*`, `/api/v1/*`
+- [ ] Admin nonce-based CSP via the proxy; security headers per surface (V1: admin paths vs `/s/*` on one origin. Framing headers already exist; add `script-src`, and verify no tenant-controlled script can reach the origin, ADR 0006); WAF rules for `/api/auth/*`, `/api/v1/*` (Hobby allows 3 custom rules)
 - [ ] Isolation suite covers 100% of tenant tables; actions and API routes registered for the 404 checks; `npm audit` clean of high/critical findings; OWASP ZAP baseline on staging (external pentest if budget allows)
 - [ ] `/platform` staff console (allow-list `PLATFORM_ADMIN_EMAILS` + verified email): search orgs/sites, suspend/unsuspend with a reason (audited, invalidates `site:{id}`)
-- [ ] Alerts (5xx rate, cron heartbeat, dead jobs, domain failures, Stripe webhook failures) and uptime checks (admin, API, canary site on subdomain and custom domain)
+- [ ] Alerts (5xx rate, cron heartbeat, dead jobs, domain failures, Stripe webhook failures) and uptime checks (admin, API, a canary site at `/s/{address}`; custom domain post-V1)
 - [ ] Runbooks: tenant restore via a Neon PITR branch (rehearsed once), domain troubleshooting, Stripe issues, incident basics
 
 **Likely files/modules:** `src/proxy.ts`, `next.config.ts`, `src/app/(admin)/platform/*`, `docs/runbooks/*`

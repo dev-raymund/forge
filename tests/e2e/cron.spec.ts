@@ -27,13 +27,11 @@ test("the runner runs with the cron secret and reports what it did", async ({ re
   expect(await res.json()).toMatchObject({ ok: true, stoppedBy: expect.any(String), claimed: expect.any(Number) });
 });
 
-test("the daily cron enqueues the maintenance jobs once per day", async ({ request }) => {
-  const first = await (await request.get("/api/internal/cron/daily", { headers: auth })).json();
-  const second = await (await request.get("/api/internal/cron/daily", { headers: auth })).json();
-  expect(first.enqueued.map((j: { type: string }) => j.type)).toEqual(["jobs.cleanup"]);
-  expect(second.enqueued[0]).toMatchObject({ type: "jobs.cleanup", id: first.enqueued[0].id, deduplicated: true });
-
-  // The minute runner picks it up.
-  const run = await (await request.get("/api/internal/cron", { headers: auth })).json();
-  expect(run.succeeded).toBeGreaterThanOrEqual(1);
+test("the daily cron enqueues the maintenance jobs and runs the job runner", async ({ request }) => {
+  // On Vercel Hobby this is the only cron, so it also runs the runner (ADR 0006).
+  const res = await request.get("/api/internal/cron/daily", { headers: auth });
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.enqueued.map((j: { type: string }) => j.type)).toEqual(["jobs.cleanup"]);
+  expect(body.run.succeeded).toBeGreaterThanOrEqual(1);
 });

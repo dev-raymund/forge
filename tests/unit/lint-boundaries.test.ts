@@ -59,6 +59,12 @@ describe("module boundaries", () => {
     expect(inside).toHaveLength(0);
   });
 
+  it("keeps the session out of public site pages", async () => {
+    const code = `import { getCurrentUser } from "@/modules/auth";\nexport const u = getCurrentUser;\n`;
+    expect(await restrictedImports(code, "src/app/(sites)/render/[site]/[[...path]]/page.tsx")).toHaveLength(1);
+    expect(await restrictedImports(code, "src/app/(admin)/example.tsx")).toHaveLength(0);
+  });
+
   it("gives the identity DB handle to modules/auth only", async () => {
     const code = `import { identityDb } from "@/platform/db/identity";\nexport const d = identityDb;\n`;
     expect(await restrictedImports(code, "src/modules/content/entry.service.ts")).toHaveLength(1);

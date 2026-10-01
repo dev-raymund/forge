@@ -36,7 +36,7 @@ This ADR records the details the implementation had to settle. No Redis or exter
    - A runner that lost its claim cannot flip a newer outcome back. Its result is discarded and logged (`lostClaim`).
    - Delivery is therefore **at least once**, and handlers must be idempotent. `email.send` will use the job id as Resend's idempotency key (M1-4).
 5. **A claim outlives any live runner: 900 s by default.**
-   - Vercel functions run for at most 800 s, so the reaper only ever reclaims jobs from runners that crashed or were killed. A running handler is never handed to a second runner.
+   - Vercel functions run for at most 800 s on Pro and 300 s on Hobby, so the reaper only ever reclaims jobs from runners that crashed or were killed. A running handler is never handed to a second runner.
    - The cost is that a crashed job waits up to 15 minutes. Per-type `lockSeconds` can shorten this for jobs known to be quick.
 6. **Statuses.** `queued → running →` one of:
    - `succeeded`
@@ -56,6 +56,15 @@ This ADR records the details the implementation had to settle. No Redis or exter
 11. **Retention.** `jobs.cleanup` (daily, platform) deletes finished jobs after 14 days and `dead`/`failed` jobs after 30 days (long-term §6.9), in batches of 5,000. It is enqueued by `/api/internal/cron/daily` with a dated dedupe key.
 12. **Dedupe.** While a job with the same `dedupe_key` is `queued` or `running`, `enqueue` returns the existing id (`deduplicated: true`) and writes nothing. After it finishes, the key is free again, so handlers must read current state when they run.
 13. **Reaper index.** `jobs_running_locked_until_idx` (partial, `status = 'running'`) is added in migration 0003, because the reaper runs every minute.
+
+## Triggers on the free V1 deployment (ADR 0006)
+
+Vercel Hobby allows only daily crons, and a per-minute schedule fails deployment. So:
+- `vercel.json` has one cron, `/api/internal/cron/daily`, which enqueues the maintenance jobs and runs the runner.
+- `kickJobs()` covers the jobs a request just enqueued.
+- An optional free external scheduler calls `/api/internal/cron` for minute-level work.
+
+The queue itself is unchanged.
 
 ## Evidence
 

@@ -6,6 +6,13 @@
 | **Date** | 2026-09-30 |
 | **Spike** | S1 / M0-4, with the production proxy and cache primitives of M1-7 |
 | **Decisions touched** | D-02, D-27, D-37 (clarified, not changed) |
+| **Amended** | 2026-10-01 by ADR 0006: V1 serves tenant sites at `/s/{address}` on one host; host-based routing stays, behind `HOST_ROUTING_ENABLED` (post-V1) |
+
+> **2026-10-01, ADR 0006.** The caching and renderer findings below hold unchanged. What changed is addressing:
+> - The internal route is now `/render/[site]/[[...path]]`, where `[site]` is a locator: `address~acme` or `host~client.com`.
+> - V1 reaches sites via `/s/{address}` on the single app host.
+> - The host-based routing proven here is kept behind `HOST_ROUTING_ENABLED` for platform subdomains and custom domains on paid hosting.
+> - The E2E spec now runs on one host, and the Vercel confirmation targets a Hobby deployment.
 
 ## Question
 

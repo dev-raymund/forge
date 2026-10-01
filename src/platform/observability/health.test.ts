@@ -10,8 +10,7 @@ afterEach(() => {
 
 function setRequiredEnv() {
   Object.assign(process.env, {
-    APP_ORIGIN: "https://app.forge.test",
-    SITES_ROOT_DOMAIN: "sites.forge.test",
+    APP_ORIGIN: "https://cms.forgelinetechnologies.com",
     DATABASE_URL: "postgres://u:p@h:5432/d",
   });
 }

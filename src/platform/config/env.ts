@@ -26,8 +26,15 @@ const hostname = z.string().regex(/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-
 const schemas = {
   core: z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    /** The one origin of the V1 deployment (admin, API, /s/ sites, /media). On previews it defaults to the branch URL. */
     APP_ORIGIN: z.url(),
-    SITES_ROOT_DOMAIN: hostname,
+    /** Post-V1: tenant sites on their own hosts (platform subdomains, custom domains). Off in V1 (ADR 0006). */
+    HOST_ROUTING_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    /** Host mode only: `{address}.{SITES_ROOT_DOMAIN}` hosts. */
+    SITES_ROOT_DOMAIN: hostname.optional(),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
     VERCEL_GIT_COMMIT_SHA: z.string().optional(),
@@ -52,7 +59,8 @@ const schemas = {
     STORAGE_ENDPOINT: z.url(),
     STORAGE_ACCESS_KEY_ID: secret(1),
     STORAGE_SECRET_ACCESS_KEY: secret(1),
-    MEDIA_PUBLIC_BASE_URL: z.url(),
+    /** Public media URL prefix. Default (V1): `${APP_ORIGIN}/media`, served by the app; a CDN domain later. */
+    MEDIA_PUBLIC_BASE_URL: z.url().optional(),
   }),
   billing: z.object({ STRIPE_SECRET_KEY: secret(1), STRIPE_WEBHOOK_SECRET: secret(1), STRIPE_PRICE_PRO: secret(1) }),
   domains: z.object({ VERCEL_API_TOKEN: secret(1), VERCEL_PROJECT_ID: secret(1), VERCEL_TEAM_ID: z.string().optional() }),
@@ -86,12 +94,33 @@ export class ConfigError extends Error {
 type Source = Record<string, string | undefined>;
 const cache = new Map<EnvGroup, unknown>();
 
+/**
+ * Vercel preview deployments each have their own URL. When APP_ORIGIN is not
+ * set for the Preview environment, use the branch URL so auth, links and
+ * readiness work there without per-branch configuration.
+ */
+function withDerivedDefaults(group: EnvGroup, values: Record<string, string | undefined>, source: Source) {
+  if (group === "core" && !values.APP_ORIGIN && source.VERCEL_ENV === "preview") {
+    const host = source.VERCEL_BRANCH_URL || source.VERCEL_URL;
+    if (host) values.APP_ORIGIN = `https://${host}`;
+  }
+  return values;
+}
+
 function read(group: EnvGroup, source: Source) {
   const schema = schemas[group];
   const keys = Object.keys(schema.shape);
   // Empty strings mean "unset" (.env files commonly carry `NAME=`).
-  const values = Object.fromEntries(keys.map((k) => [k, source[k] === "" ? undefined : source[k]]));
+  const raw = Object.fromEntries(keys.map((k) => [k, source[k] === "" ? undefined : source[k]]));
+  const values = withDerivedDefaults(group, raw, source);
   return { keys, values, result: schema.safeParse(values) };
+}
+
+/** Public base URL for media objects (V1: the app's own /media route). */
+export function mediaPublicBaseUrl(source: Source = process.env): string {
+  const configured = source.MEDIA_PUBLIC_BASE_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  return `${env("core", source).APP_ORIGIN.replace(/\/$/, "")}/media`;
 }
 
 /** The validated variables of one group. Throws ConfigError when invalid. */

@@ -13,6 +13,9 @@ import nextTs from "eslint-config-next/typescript";
  * 3. `app/` and `components/` never touch the database or Drizzle directly.
  * 4. Only `modules/auth` talks to Better Auth (D-07), and only it may take the
  *    identity-table handle Better Auth needs (`@/platform/db/identity`, ADR 0004).
+ * 5. Public site rendering never touches the session (ADR 0006): in V1 the
+ *    admin and `/s/` sites share one origin, so site pages must stay identical
+ *    for every visitor and never act as the signed-in admin.
  */
 const moduleEntryOnly = {
   group: ["@/modules/*/*", "!@/modules/*/shared"],
@@ -30,6 +33,10 @@ const identityDb = {
 const betterAuth = {
   group: ["better-auth", "better-auth/*"],
   message: "Only modules/auth may import Better Auth (D-07).",
+};
+const noSessionInSites = {
+  group: ["@/modules/auth", "@/modules/auth/*"],
+  message: "Public site pages never read the session or cookies (ADR 0006).",
 };
 const noDbInUi = {
   group: ["@/platform/db", "@/platform/db/*", "drizzle-orm", "drizzle-orm/*", "pg"],
@@ -65,6 +72,15 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, noDbInUi] },
+      ],
+    },
+  },
+  {
+    files: ["src/app/(sites)/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, noDbInUi, noSessionInSites] },
       ],
     },
   },

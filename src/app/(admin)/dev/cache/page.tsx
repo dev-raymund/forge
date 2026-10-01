@@ -35,12 +35,14 @@ async function SiteList() {
   return (
     <ul className="grid gap-3">
       {sites.map((site) => (
-        <li key={site.siteId} className="rounded-md border p-3" data-host={site.host}>
+        <li key={site.siteId} className="rounded-md border p-3" data-address={site.address}>
           <form action={publishTaglineAction} className="flex flex-wrap items-center gap-2">
-            <code className="text-sm">{site.host}</code>
+            <a className="text-sm underline" href={`/s/${site.address}`}>
+              /s/{site.address}
+            </a>
             <input type="hidden" name="orgId" value={site.orgId} />
             <input type="hidden" name="siteId" value={site.siteId} />
-            <input name="tagline" aria-label={`Tagline for ${site.host}`} className="rounded border px-2 py-1" required />
+            <input name="tagline" aria-label={`Tagline for ${site.address}`} className="rounded border px-2 py-1" required />
             <button type="submit" className="rounded border px-2 py-1">
               Publish
             </button>

@@ -4,7 +4,11 @@ import { isCronRequest, runJobs } from "@/platform/jobs";
 import { requestIdFrom, withLogContext } from "@/platform/observability";
 import { jobRegistry } from "./jobs";
 
-/** The job runner, called by Vercel Cron every minute (vercel.json). */
+/**
+ * The job runner. Callers: an optional external scheduler every minute on the
+ * free V1 deployment, or a per-minute Vercel cron on a paid plan (ADR 0006).
+ * The daily cron and `kickJobs()` cover the rest.
+ */
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
