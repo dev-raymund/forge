@@ -78,8 +78,10 @@ Record the result in `docs/adr/0001-rls-withtenant.md`.
 2. Settings: **Fluid compute on**. Set the function region to the Neon region.
 3. **Domain:** add `cms.forgelinetechnologies.com` to the project. Vercel shows the DNS record to create (step 3). No other domains are needed.
 4. **Environment variables** (every name in `.env.example`; mark secrets Sensitive; never set `DATABASE_MIGRATION_URL`):
-   - **Production:** `APP_ORIGIN=https://cms.forgelinetechnologies.com`, `BETTER_AUTH_URL` = the same, `CRON_SECRET`, database, storage, email, Sentry and Turnstile values.
-   - **Preview:** leave `APP_ORIGIN` **unset**. It defaults to the branch URL (`VERCEL_BRANCH_URL`), so auth and links work on every preview.
+   - **Production:** `APP_ORIGIN=https://cms.forgelinetechnologies.com`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`), `CRON_SECRET`, database, storage, email, Sentry and Turnstile values. Leave `BETTER_AUTH_URL` unset: it defaults to `APP_ORIGIN`.
+   - **Preview:** leave `APP_ORIGIN` **unset**. It defaults to the branch URL (`VERCEL_BRANCH_URL`), so auth and links work on every preview. Set `BETTER_AUTH_SECRET` here too, with a **different** value from Production. Open previews by their branch URL: auth rejects requests from any other origin, including the per-deployment URL.
+   - **Auth (M2-1):** readiness (`/api/health/ready`) reports the `auth` group as failed when the secret is missing; sign-in then answers 503. The fixed development secret is accepted only on `localhost`, never on Vercel.
+   - **Google sign-in (optional, M2-3):** set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` together, and register `https://cms.forgelinetechnologies.com/api/auth/callback/google` as the redirect URI in Google Cloud. Without them email/password works and the Google routes answer 404.
    - Leave `HOST_ROUTING_ENABLED`, `SITES_ROOT_DOMAIN` and `MEDIA_PUBLIC_BASE_URL` unset (post-V1).
 5. **Crons:** `vercel.json` declares one daily cron (`/api/internal/cron/daily`, 03:00 UTC; Hobby runs it within that hour). Hobby rejects anything more frequent at deploy time. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set.
 6. Previews are protected by Vercel Authentication by default. For automated tests against a preview, create a Protection Bypass for Automation secret (or use a Shareable Link).

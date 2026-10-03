@@ -11,6 +11,7 @@ afterEach(() => {
 function setRequiredEnv() {
   Object.assign(process.env, {
     APP_ORIGIN: "https://cms.forgelinetechnologies.com",
+    BETTER_AUTH_SECRET: "s".repeat(32),
     DATABASE_URL: "postgres://u:p@h:5432/d",
   });
 }

@@ -8,6 +8,7 @@ import { ZodError } from "zod";
  */
 
 export const APP_ERROR_KINDS = [
+  "Unauthenticated", // no valid session (M2-1); never used to hide a resource (that is NotFound)
   "NotFound", // also for anything outside the caller's tenant
   "Forbidden", // inside the tenant, but the caller lacks permission
   "Validation",
@@ -47,6 +48,7 @@ export const isAppError = (e: unknown): e is AppError => e instanceof AppError;
 
 // Messages are user-facing and deliberately generic: a NotFound never says
 // whether the thing exists in another tenant.
+export const unauthenticated = () => new AppError("Unauthenticated", "Sign in to continue.");
 export const notFound = () => new AppError("NotFound", "Not found.");
 export const forbidden = (message = "You don't have permission to do that.") => new AppError("Forbidden", message);
 export const validationError = (fieldErrors: FieldErrors, message = "Please check the highlighted fields.") =>
@@ -112,6 +114,7 @@ export function toActionResult(error: unknown, requestId?: string): ActionResult
 // ── Route handlers: RFC 9457 problem+json ────────────────────────────────────
 
 const PROBLEMS: Record<AppErrorKind | "Internal", { status: number; slug: string; title: string }> = {
+  Unauthenticated: { status: 401, slug: "unauthenticated", title: "Sign-in required" },
   NotFound: { status: 404, slug: "not-found", title: "Not found" },
   Forbidden: { status: 403, slug: "forbidden", title: "Forbidden" },
   Validation: { status: 422, slug: "validation", title: "Invalid request" },

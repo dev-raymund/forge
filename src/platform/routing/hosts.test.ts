@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  decideRoute, decodeSiteLocator, encodeSiteLocator, isSiteAddress, locatorForHost, normalizeHost, siteBasePath,
-  type RouteInput,
+  decideRoute, decodeSiteLocator, encodeSiteLocator, forwardedHeaders, isSiteAddress, locatorForHost, normalizeHost,
+  siteBasePath, type RouteInput,
 } from "./hosts";
 
 describe("normalizeHost", () => {
@@ -113,5 +113,32 @@ describe("decideRoute — post-V1 host mode", () => {
     });
     expect(hostMode({ search: "?__host=client.com" })).toEqual({ kind: "app" }); // production
     expect(hostMode({ overrideAllowed: true, search: "?__host=a/b" })).toEqual({ kind: "not-found", reason: "bad-host" });
+  });
+});
+
+describe("forwardedHeaders", () => {
+  const incoming = new Headers({
+    cookie: "better-auth.session_token=secret-session; theme=dark",
+    authorization: "Bearer fk_live_secret",
+    "user-agent": "UA",
+    "x-request-id": "client-supplied",
+  });
+
+  it("removes credentials from site requests, so public pages never see the admin session", () => {
+    const site = decideRoute({ ...pathMode, pathname: "/s/acme/about" });
+    const headers = forwardedHeaders(incoming, site, "req-1", "x-request-id");
+    expect(headers.get("cookie")).toBeNull();
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("user-agent")).toBe("UA");
+    expect(headers.get("x-request-id")).toBe("req-1");
+  });
+
+  it("keeps them for the admin and the API", () => {
+    const app = decideRoute({ ...pathMode, pathname: "/acme-org/sites" });
+    const headers = forwardedHeaders(incoming, app, "req-2", "x-request-id");
+    expect(headers.get("cookie")).toContain("better-auth.session_token");
+    expect(headers.get("authorization")).toBe("Bearer fk_live_secret");
+    expect(headers.get("x-request-id")).toBe("req-2");
+    expect(incoming.get("x-request-id")).toBe("client-supplied"); // the original is not mutated
   });
 });

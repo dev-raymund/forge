@@ -32,7 +32,7 @@ describe("env()", () => {
   });
 
   it("validates cross-field rules", () => {
-    const auth = { BETTER_AUTH_SECRET: "x".repeat(32), BETTER_AUTH_URL: "https://app.forge.test" };
+    const auth = { BETTER_AUTH_SECRET: "x".repeat(32), APP_ORIGIN: "https://cms.forgelinetechnologies.com" };
     expect(() => env("auth", { ...auth, GOOGLE_CLIENT_ID: "id" })).toThrow(ConfigError);
     expect(env("auth", { ...auth, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "s" }).GOOGLE_CLIENT_ID).toBe("id");
   });
@@ -70,7 +70,20 @@ describe("envStatus()", () => {
   });
 
   it("requires only the groups shipped code reads today", () => {
-    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "email", "storage"]);
+    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "auth", "email", "storage"]);
+  });
+
+  it("auth: no secret needed on localhost; required everywhere else; Google is optional but all-or-nothing", () => {
+    const local = { ...base, APP_ORIGIN: "http://localhost:3000" };
+    const secret = "s".repeat(32);
+    expect(envStatus(local).auth).toBe("ok");
+    expect(envStatus({ ...local, APP_ORIGIN: "http://app.localhost:3000" }).auth).toBe("ok");
+    expect(envStatus(base).auth).toBe("invalid"); // a real origin
+    expect(envStatus({ ...local, VERCEL_ENV: "preview" }).auth).toBe("invalid"); // never on Vercel
+    expect(envStatus({ ...base, BETTER_AUTH_SECRET: "too-short" }).auth).toBe("invalid");
+    expect(envStatus({ ...base, BETTER_AUTH_SECRET: secret }).auth).toBe("ok");
+    expect(envStatus({ ...base, BETTER_AUTH_SECRET: secret, GOOGLE_CLIENT_ID: "id" }).auth).toBe("invalid");
+    expect(envStatus({ ...base, BETTER_AUTH_SECRET: secret, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "s" }).auth).toBe("ok");
   });
 
   it("storage: nothing needed locally; the s3 driver (explicit, or the default on Vercel) needs all four settings", () => {

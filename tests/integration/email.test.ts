@@ -2,12 +2,11 @@ import { eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { createSpikeAuth } from "../../spikes/auth/auth";
 import { emailSend, queueEmail, sendEmailSoon } from "@/platform/email";
 import { setEmailProviderForTests } from "@/platform/email/get-provider";
 import { EmailConfigError, EmailProviderError } from "@/platform/email/provider";
 import { CaptureEmailProvider } from "@/platform/email/providers/capture";
-import { organizationInvitations, users } from "@/platform/db/schema";
+import { organizationInvitations } from "@/platform/db/schema";
 import { withPlatform, withTenant } from "@/platform/db/tenant";
 import { createJobRegistry, runJobs } from "@/platform/jobs";
 import { jobs } from "@/platform/jobs/schema";
@@ -224,55 +223,5 @@ describe("secrets", () => {
   });
 });
 
-describe("Better Auth sends its emails through email.send", () => {
-  const BASE = APP;
-  const auth = createSpikeAuth({
-    baseURL: BASE,
-    secret: "m1-4-secret-m1-4-secret-m1-4-secret-0123",
-    sendVerificationEmail: ({ userId, url }) => sendEmailSoon({ template: "verify-email", userId, url }).then(() => undefined),
-    sendPasswordResetEmail: ({ userId, url }) =>
-      sendEmailSoon({ template: "reset-password", userId, url, expiresInMinutes: 60 }).then(() => undefined),
-  });
-  const call = (path: string, body?: unknown, method = "POST") =>
-    auth.handler(
-      new Request(`${BASE}/api/auth${path}`, {
-        method,
-        headers: { origin: BASE, ...(body ? { "content-type": "application/json" } : {}) },
-        body: body ? JSON.stringify(body) : undefined,
-      }),
-    );
-  const linkIn = (text: string) => text.match(/https?:\/\/\S+/)![0];
-
-  it("sign-up queues the verification email; following the delivered link verifies the user", async () => {
-    const email = `signup-${uuidv7()}@example.test`;
-    expect((await call("/sign-up/email", { email, password: "correct horse battery staple", name: "Ada" })).status).toBe(200);
-    expect(capture.to(email)).toHaveLength(0); // queued, not sent in the request
-    await run();
-    const link = linkIn(capture.to(email)[0]!.text);
-    expect(link.startsWith(`${BASE}/api/auth/verify-email?token=`)).toBe(true);
-    const verify = await call(link.slice(`${BASE}/api/auth`.length), undefined, "GET");
-    expect(verify.status).toBeLessThan(400); // 302 to the callback URL
-    const [row] = await withPlatform((tx) => tx.select({ v: users.emailVerified }).from(users).where(eq(users.email, email)));
-    expect(row!.v).toBe(true);
-  });
-
-  it("password reset queues the email; the delivered token resets the password", async () => {
-    const email = `reset-${uuidv7()}@example.test`;
-    await call("/sign-up/email", { email, password: "correct horse battery staple", name: "Ada" });
-    capture.clear();
-    expect((await call("/request-password-reset", { email })).status).toBe(200);
-    await run();
-    const resetMail = capture.messages.find((m) => m.to === email && m.tags?.template === "reset-password")!;
-    const token = new URL(linkIn(resetMail.text)).pathname.split("/").pop()!;
-    expect((await call("/reset-password", { token, newPassword: "a brand new passphrase" })).status).toBe(200);
-    expect((await call("/sign-in/email", { email, password: "a brand new passphrase" })).status).toBe(200);
-    expect((await call("/sign-in/email", { email, password: "correct horse battery staple" })).status).toBe(401);
-  });
-
-  it("an unknown address gets the same response and no email", async () => {
-    const res = await call("/request-password-reset", { email: `nobody-${uuidv7()}@example.test` });
-    expect(res.status).toBe(200);
-    await run();
-    expect(capture.messages.filter((m) => m.tags?.template === "reset-password")).toHaveLength(0);
-  });
-});
+// Better Auth's verification and reset flows through email.send are covered in
+// tests/integration/auth.test.ts against the production auth configuration (M2-1).

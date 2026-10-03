@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   AppError, conflict, forbidden, limitExceeded, notFound, problemResponse, rateLimited, toActionResult, toProblem,
-  unavailable, validationError,
+  unauthenticated, unavailable, validationError,
 } from "./errors";
 
 const RID = "01a0f2c0-0000-7000-8000-000000000001";
@@ -10,7 +10,7 @@ const RID = "01a0f2c0-0000-7000-8000-000000000001";
 describe("toActionResult", () => {
   it("maps each AppError kind to { ok: false, code, error }", () => {
     for (const [err, code] of [
-      [notFound(), "NotFound"], [forbidden(), "Forbidden"], [conflict("Slug taken."), "Conflict"],
+      [unauthenticated(), "Unauthenticated"], [notFound(), "NotFound"], [forbidden(), "Forbidden"], [conflict("Slug taken."), "Conflict"],
       [limitExceeded("sites"), "LimitExceeded"], [rateLimited(30), "RateLimited"], [unavailable(), "Unavailable"],
     ] as const) {
       expect(toActionResult(err, RID)).toEqual({ ok: false, code, error: err.message });
@@ -37,6 +37,7 @@ describe("toActionResult", () => {
 
 describe("problem+json (RFC 9457)", () => {
   it.each([
+    [unauthenticated(), 401, "urn:forge:problem:unauthenticated"],
     [notFound(), 404, "urn:forge:problem:not-found"],
     [forbidden(), 403, "urn:forge:problem:forbidden"],
     [validationError({ a: ["x"] }), 422, "urn:forge:problem:validation"],

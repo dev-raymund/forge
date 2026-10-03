@@ -1,11 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { assignRequestId, REQUEST_ID_HEADER } from "@/platform/observability/request-id";
-import { decideRoute, normalizeHost } from "@/platform/routing/hosts";
+import { decideRoute, forwardedHeaders, normalizeHost } from "@/platform/routing/hosts";
 
 /**
  * proxy.ts (Next 16's middleware, Node runtime), plan §19–20, ADR 0006:
  * site routing (`/s/{address}` always; tenant hosts when HOST_ROUTING_ENABLED),
- * request ID, internal-path guards, and per-surface framing headers.
+ * request ID, internal-path guards, per-surface framing headers, and removal
+ * of credentials from site requests.
  * Decisions live in platform/routing/hosts.ts (unit tested).
  *
  * Deferred: the admin cookie-presence redirect (UX only) arrives with the
@@ -42,9 +43,6 @@ const SURFACE_HEADERS = {
 
 export function proxy(request: NextRequest) {
   const requestId = assignRequestId(request.headers);
-  const headers = new Headers(request.headers);
-  headers.set(REQUEST_ID_HEADER, requestId);
-
   const decision = decideRoute({
     host: normalizeHost(request.headers.get("host")),
     pathname: request.nextUrl.pathname,
@@ -53,6 +51,8 @@ export function proxy(request: NextRequest) {
     overrideAllowed: process.env.VERCEL_ENV !== "production",
     ...routingConfig(),
   });
+  // Site pages never receive credentials (the admin session cookie shares this origin).
+  const headers = forwardedHeaders(request.headers, decision, requestId, REQUEST_ID_HEADER);
 
   let response: NextResponse;
   switch (decision.kind) {

@@ -149,3 +149,21 @@ export function decideRoute(input: RouteInput): RouteDecision {
 
   return { kind: "app" };
 }
+
+// ── Headers forwarded to the app ─────────────────────────────────────────────
+
+/**
+ * Credentials never reach public site rendering. Admin and sites share one
+ * origin in V1, so the browser sends the admin session cookie with `/s/…`
+ * requests too; the proxy removes it (and any Authorization header) before
+ * the renderer runs. Site pages therefore cannot act as, or vary by, the
+ * signed-in admin, whatever the rendering code does (ADR 0006).
+ */
+export const SITE_STRIPPED_HEADERS = ["cookie", "authorization"] as const;
+
+export function forwardedHeaders(incoming: Headers, decision: RouteDecision, requestId: string, requestIdHeader: string): Headers {
+  const headers = new Headers(incoming);
+  headers.set(requestIdHeader, requestId);
+  if (decision.kind === "site") for (const name of SITE_STRIPPED_HEADERS) headers.delete(name);
+  return headers;
+}

@@ -339,6 +339,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M2-1 · Better Auth integration and session helpers
 **Labels:** `area:auth` `type:feature`
 
+**Status:** ✔ done (2026-10-03). See the M2-1 addendum in ADR 0004.
+
 **Description:** Production Better Auth setup per ADR 0004.
 
 *From M0-6: the tables and migration were delivered in M1-1. Start from `spikes/auth/auth.ts` and use `identityDb()` for the adapter. Mind the Cache Components note in ADR 0004 (discovery 9).*
@@ -348,14 +350,21 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M0-6, M1-1, M1-4
 
 **Acceptance criteria:**
-- [ ] Tables `users`, `auth_accounts`, `auth_sessions`, `auth_verifications` via reviewed migration
-- [ ] Handler at `/api/auth/[...all]`; `trustedOrigins` = app origin; cookie host-only, secure, `SameSite=Lax`; 7-day sliding / 30-day absolute; `cookieCache` off
-- [ ] Auth emails routed through `email.send` jobs with an `after()` kick
-- [ ] `modules/auth` exports `getCurrentUser()` (React `cache`), `requireUser()` and `requireVerifiedUser()`; lint forbids Better Auth imports elsewhere
+- [x] Tables `users`, `auth_accounts`, `auth_sessions`, `auth_verifications` via reviewed migration (delivered in M1-1; M2-1 needed no migration)
+- [x] Handler at `/api/auth/[...all]`; `trustedOrigins` = app origin; cookie host-only, secure, `SameSite=Lax`; 7-day sliding / 30-day absolute; `cookieCache` off
+- [x] Auth emails routed through `email.send` jobs with an `after()` kick
+- [x] `modules/auth` exports `getCurrentUser()` (React `cache`), `requireUser()` and `requireVerifiedUser()`; lint forbids Better Auth imports elsewhere
+
+**Delivered beyond the criteria (clarifications, no scope change):**
+- `Unauthenticated` (401) added to the error model; `authErrorToAppError()` for the UI.
+- The proxy strips `Cookie` and `Authorization` from `/s/…` requests (one origin, ADR 0006).
+- Origin/CSRF checks pinned on; reset tokens and OAuth state stored hashed; unused Better Auth endpoints disabled.
+- `BETTER_AUTH_SECRET` optional on localhost only; Google credentials optional.
+- The spike (`spikes/auth`) and the `/api/dev/email` route are removed.
 
 **Likely files/modules:** `src/modules/auth/*`, `src/app/api/auth/[...all]/route.ts`
 
-**Testing:** integration: session create/resolve/revoke; an unverified user is rejected by `requireVerifiedUser`.
+**Testing:** integration: session create/resolve/revoke; an unverified user is rejected by `requireVerifiedUser`. ✔ `tests/integration/auth.test.ts` (33), `src/modules/auth/*.test.ts` (42), `tests/e2e/auth.spec.ts` (5).
 
 ### M2-2 · Sign-up, login, logout, email verification UI
 **Labels:** `area:auth` `type:feature`
@@ -363,6 +372,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** The account screens.
 
 *From M1-7: add the admin cookie-presence redirect to `proxy.ts` (UX only; the real check stays in `requireUser()`).*
+
+*From M2-1: the back-end is live at `/api/auth/*`. Map failures with `authErrorToAppError()` and never show Better Auth's text. Read the session inside `<Suspense>` in pages and layouts. `/api/app/session` returns the signed-in user. The E2E helpers in `tests/e2e/helpers/auth.ts` drive the API; switch them to the forms here.*
 
 **Depends on:** M2-1
 
@@ -380,6 +391,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Recovery flow and social login.
 
+*From M2-1: the reset back-end is live and tested: a 60-minute single-use token (stored hashed), every session revoked on reset, the same response for unknown addresses. The emailed link redirects to `/reset-password?token=…`. This issue adds the pages, the notification email and the linking-rule test.*
+
 **Depends on:** M2-1
 
 **Acceptance criteria:**
@@ -396,6 +409,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Self-service account management plus abuse controls.
 
 *From M0-6: Better Auth's limiter uses in-memory storage by default, which is per instance on Vercel. The WAF rule is the real control (ADR 0004, discovery 8).*
+
+*From M2-1: the limiter is already on in production with its defaults, keyed by `x-forwarded-for`. Sign-up reveals that an address is registered (ADR 0004 addendum), so the sign-up limit and Turnstile are what bound enumeration.*
 
 **Depends on:** M2-2, M1-5
 

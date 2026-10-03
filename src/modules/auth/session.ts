@@ -1,0 +1,105 @@
+import "server-only";
+import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
+import { cache } from "react";
+import { identityDb } from "@/platform/db/identity";
+import { forbidden, unauthenticated } from "@/platform/errors";
+import { getAuth, SESSION_ABSOLUTE_SECONDS } from "./auth";
+import { authSessions } from "./schema";
+import { ANONYMOUS, type Actor, type Authenticated, type AuthUser } from "./shared";
+
+/**
+ * Forge's session abstraction (M2-1). The rest of the application sees an
+ * `Authenticated` value or null, never Better Auth's types.
+ *
+ * Authentication only answers "who is this?". It never implies access to an
+ * organization or site: those come from the URL and are checked against
+ * membership by the tenancy module (D-08, M3-2).
+ */
+
+type BetterAuthSession = NonNullable<Awaited<ReturnType<ReturnType<typeof getAuth>["api"]["getSession"]>>>;
+
+/** Better Auth's session → our shape. Only the fields Forge uses cross this line. */
+export function toAuthenticated(result: BetterAuthSession): Authenticated {
+  return {
+    user: {
+      id: result.user.id,
+      email: result.user.email,
+      name: result.user.name,
+      emailVerified: result.user.emailVerified,
+      image: result.user.image ?? null,
+    },
+    session: {
+      id: result.session.id,
+      createdAt: new Date(result.session.createdAt),
+      expiresAt: new Date(result.session.expiresAt),
+    },
+  };
+}
+
+/** Plan §12: a session ends 30 days after it was created, however active it is. */
+export function withinAbsoluteLifetime(createdAt: Date, now: Date = new Date()): boolean {
+  return now.getTime() - createdAt.getTime() < SESSION_ABSOLUTE_SECONDS * 1000;
+}
+
+/**
+ * Resolves the request's session from its headers (cookie). Every call checks
+ * the database (no cookie cache), so logout and revocation apply immediately;
+ * idle and absolute expiry are enforced here, on the server.
+ */
+export async function resolveAuth(requestHeaders: Headers): Promise<Authenticated | null> {
+  const result = await getAuth().api.getSession({ headers: requestHeaders });
+  if (!result) return null;
+  const auth = toAuthenticated(result);
+  if (!withinAbsoluteLifetime(auth.session.createdAt)) {
+    await identityDb().delete(authSessions).where(eq(authSessions.id, auth.session.id));
+    return null;
+  }
+  return auth;
+}
+
+/**
+ * The current request's session, or null. Cached per request (React `cache`).
+ * Reading headers makes the caller dynamic: under Cache Components, call it
+ * inside a <Suspense> boundary in pages and layouts (ADR 0002, ADR 0004).
+ */
+export const getCurrentAuth = cache(async (): Promise<Authenticated | null> => resolveAuth(await headers()));
+
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  return (await getCurrentAuth())?.user ?? null;
+}
+
+/** Throws `Unauthenticated` (401) when there is no valid session. */
+export function assertAuthenticated(auth: Authenticated | null): Authenticated {
+  if (!auth) throw unauthenticated();
+  return auth;
+}
+
+/** Throws `Forbidden` until the user has verified their email (plan §12: publishing, inviting, domains). */
+export function assertVerified(user: AuthUser): AuthUser {
+  if (!user.emailVerified) throw forbidden("Verify your email address to continue.");
+  return user;
+}
+
+export async function requireAuth(): Promise<Authenticated> {
+  return assertAuthenticated(await getCurrentAuth());
+}
+
+export async function requireUser(): Promise<AuthUser> {
+  return (await requireAuth()).user;
+}
+
+export async function requireVerifiedUser(): Promise<AuthUser> {
+  return assertVerified(await requireUser());
+}
+
+/** Who is acting, for request contexts, audit rows and logs. */
+export function toActor(auth: Authenticated | null): Actor {
+  return auth
+    ? { kind: "user", userId: auth.user.id, sessionId: auth.session.id, emailVerified: auth.user.emailVerified }
+    : ANONYMOUS;
+}
+
+export async function getCurrentActor(): Promise<Actor> {
+  return toActor(await getCurrentAuth());
+}

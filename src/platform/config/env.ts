@@ -32,6 +32,17 @@ export function resolveEmailProvider(v: { EMAIL_PROVIDER?: EmailProviderName; VE
   return v.EMAIL_PROVIDER ?? (v.VERCEL_ENV === "production" ? "resend" : "console");
 }
 
+/** The development secret is acceptable only for an app served from localhost, never on Vercel. */
+export function allowsDevelopmentAuthSecret(v: { APP_ORIGIN?: string; BETTER_AUTH_URL?: string; VERCEL_ENV?: string }): boolean {
+  if (v.VERCEL_ENV) return false;
+  try {
+    const { hostname } = new URL(v.BETTER_AUTH_URL ?? v.APP_ORIGIN ?? "");
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost");
+  } catch {
+    return false;
+  }
+}
+
 export const STORAGE_DRIVERS = ["local", "s3"] as const;
 export type StorageDriverName = (typeof STORAGE_DRIVERS)[number];
 
@@ -60,15 +71,29 @@ const schemas = {
     DATABASE_URL: z.url(),
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   }),
+  /**
+   * Authentication (M2-1, ADR 0004). The signing secret is required everywhere
+   * except on a localhost origin, where a fixed development secret is used so
+   * local sign-in needs no configuration. Google OAuth is optional.
+   */
   auth: z
     .object({
-      BETTER_AUTH_SECRET: secret(32),
-      BETTER_AUTH_URL: z.url(),
+      BETTER_AUTH_SECRET: secret(32).optional(),
+      /** Defaults to APP_ORIGIN (V1 has one origin). */
+      BETTER_AUTH_URL: z.url().optional(),
       GOOGLE_CLIENT_ID: z.string().optional(),
       GOOGLE_CLIENT_SECRET: z.string().optional(),
+      APP_ORIGIN: z.url().optional(),
+      VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
     })
-    .refine((v) => !!v.GOOGLE_CLIENT_ID === !!v.GOOGLE_CLIENT_SECRET, {
-      message: "Google OAuth needs both the client id and the secret",
+    .superRefine((v, ctx) => {
+      if (!!v.GOOGLE_CLIENT_ID !== !!v.GOOGLE_CLIENT_SECRET) {
+        const missing = v.GOOGLE_CLIENT_ID ? "GOOGLE_CLIENT_SECRET" : "GOOGLE_CLIENT_ID";
+        ctx.addIssue({ code: "custom", path: [missing], message: "Google OAuth needs both the client id and the secret" });
+      }
+      if (!v.BETTER_AUTH_SECRET && !allowsDevelopmentAuthSecret(v)) {
+        ctx.addIssue({ code: "custom", path: ["BETTER_AUTH_SECRET"], message: "Required outside local development" });
+      }
     }),
   /**
    * Transactional email (M1-4). The provider defaults to `resend` on Vercel
@@ -137,7 +162,7 @@ export type EnvGroupStatus = "ok" | "missing" | "invalid";
 export const ENV_GROUPS = Object.keys(schemas) as EnvGroup[];
 
 /** Groups that shipped code reads today; readiness fails if any is not "ok". */
-export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "email", "storage"];
+export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "auth", "email", "storage"];
 
 export class ConfigError extends Error {
   constructor(
@@ -159,7 +184,7 @@ const cache = new Map<EnvGroup, unknown>();
  * readiness work there without per-branch configuration.
  */
 function withDerivedDefaults(group: EnvGroup, values: Record<string, string | undefined>, source: Source) {
-  if (group === "core" && !values.APP_ORIGIN && source.VERCEL_ENV === "preview") {
+  if ("APP_ORIGIN" in values && !values.APP_ORIGIN && source.VERCEL_ENV === "preview") {
     const host = source.VERCEL_BRANCH_URL || source.VERCEL_URL;
     if (host) values.APP_ORIGIN = `https://${host}`;
   }
