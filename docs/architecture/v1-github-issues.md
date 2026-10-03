@@ -249,20 +249,33 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 ### M1-5 · Storage driver: interface + S3-compatible adapter
 **Labels:** `area:platform` `type:infra`
 
-**Description:** `StorageDriver` (plan §8) with the S3 implementation used for R2 in production and RustFS locally.
+**Description:** `StorageDriver` (plan §8) with a local filesystem driver for development and tests, and the S3 implementation used for R2 in production (RustFS in the integration tests). See ADR 0008.
 
 *V1 (ADR 0006): `publicUrl(key)` = `MEDIA_PUBLIC_BASE_URL` + key, defaulting to `${APP_ORIGIN}/media` (`mediaPublicBaseUrl()` in `platform/config/env.ts`). Storage keys never depend on the public URL.*
 
 **Depends on:** M0-2
 
 **Acceptance criteria:**
-- [ ] Interface: `createUpload` (presigned PUT signing content-type and content-length), `head`, `readRange`, `get`, `put`, `delete`, `publicUrl`
-- [ ] S3 adapter configured by env (endpoint, region `auto`, bucket)
-- [ ] Key builder `o/{org}/s/{site}/m/{media}/v{n}/{variant}/{name}.{ext}`
+- [x] Interface: `createUpload` (presigned PUT signing content-type and content-length), `head`, `readRange`, `get`, `put`, `delete`, `publicUrl`
+  - `put` never overwrites (`AlreadyExists`).
+  - One `StorageError` with eight codes, mapped to the app error model.
+  - Tenant scope via `storageFor({ organizationId, siteId? })`, with `platformStorage()` for platform work. The raw driver is private to `platform/`.
+- [x] S3 adapter configured by env (endpoint, region `auto`, bucket)
+  - Variables: `STORAGE_ENDPOINT`, `STORAGE_REGION` (default `auto`), `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`.
+  - `STORAGE_DRIVER` selects the driver: `s3` by default on Vercel, `local` elsewhere.
+  - Lazy; missing settings are a `ConfigurationError` on use and show in readiness.
+  - The AWS SDK is imported only in `platform/storage/providers` (lint).
+- [x] Key builder `o/{org}/s/{site}/m/{media}/v{n}/{variant}/{name}.{ext}` — `mediaObjectKey()`. Every key is validated on every call, so traversal is unrepresentable
+- [x] *Added:* local filesystem driver (`.storage/`, gitignored). Its upload target is the signed app route `/api/storage/local/{key}`, so development and tests need no storage account
 
 **Likely files/modules:** `src/platform/storage/*`
 
-**Testing:** integration against RustFS: presigned PUT round trip, a content-length mismatch is rejected, HEAD/readRange/delete.
+**Testing:** integration against RustFS: presigned PUT round trip, a content-length mismatch is rejected, HEAD/readRange/delete. ✔
+- `tests/integration/storage.test.ts` (45): the same contract against the local and the S3 driver, including upload round trips and rejections, tenant isolation, provider-failure mapping and configuration.
+- `src/platform/storage/storage.test.ts` (34).
+- `tests/e2e/storage.spec.ts` (3).
+
+The suite can run against real R2 with `TEST_S3_*`.
 
 ### M1-6 · Test harness + isolation-suite framework
 **Labels:** `area:platform` `type:test` `risk:high`
@@ -747,6 +760,12 @@ Derived from [v1-build-plan.md](v1-build-plan.md). There are 56 issues in 13 mil
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Direct-to-storage uploads with validation.
+
+*From M1-5 (ADR 0008):*
+- *Use `storageFor({ organizationId, siteId })` from the request's tenant context, and `mediaObjectKey()` for keys.*
+- *`createUpload` already signs type and size; `head` + `readRange` serve `completeUpload`.*
+- *The `/media/{key}` route (M6-2) reads with `platformStorage().get()`.*
+- *Delete the `/api/dev/storage` dev route once real uploads exist.*
 
 **Depends on:** M1-5, M3-2
 

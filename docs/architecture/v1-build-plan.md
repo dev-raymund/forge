@@ -601,7 +601,7 @@ src/themes/
 | Delete | Soft delete (trash). Public pages omit a missing image (never a broken `<img>`). The `trash.purge` job deletes objects and rows after 30 days |
 | Replace file | SHOULD after V1 (`version + 1`, new keys) |
 | Delivery | V1: `https://cms.forgelinetechnologies.com/media/<key>` (`MEDIA_PUBLIC_BASE_URL`, default `${APP_ORIGIN}/media`). A route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable` (keys are immutable, so Vercel's CDN caches each one), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types. PDFs inline; everything else as attachment. Post-V1: a CDN domain via `MEDIA_PUBLIC_BASE_URL` |
-| Abstraction | `StorageDriver` interface (§13 of the long-term doc). V1 ships the S3-compatible implementation only: R2 in production, MinIO locally |
+| Abstraction | `StorageDriver` interface (§13 of the long-term doc, ADR 0008). V1 ships two drivers behind one contract: **local filesystem** for development and tests (no account; `.storage/`), and **S3-compatible** for production (Cloudflare R2 by configuration; RustFS in tests). Modules get tenant-scoped storage from `storageFor({ organizationId, siteId })`; keys outside the tenant's prefix are refused |
 | Picker | The same library in a modal, used by the image block, featured image, OG image, logo and favicon |
 
 ---

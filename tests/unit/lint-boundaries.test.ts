@@ -59,6 +59,24 @@ describe("module boundaries", () => {
     expect(inside).toHaveLength(0);
   });
 
+  it("keeps the S3 SDK inside platform/storage/providers", async () => {
+    const code = `import { S3Client } from "@aws-sdk/client-s3";\nexport const c = S3Client;\n`;
+    expect(await restrictedImports(code, "src/modules/media/upload.service.ts")).toHaveLength(1);
+    expect((await restrictedImports(code, "src/app/(admin)/example.ts")).length).toBeGreaterThan(0);
+    expect(await restrictedImports(code, "src/platform/jobs/example.ts")).toHaveLength(1);
+    expect(await restrictedImports(code, "src/platform/storage/scoped.ts")).toHaveLength(1);
+    expect(await restrictedImports(code, "src/platform/storage/providers/s3.ts")).toHaveLength(0);
+  });
+
+  it("keeps the raw storage driver private to platform/", async () => {
+    const raw = `import { getStorageDriver } from "@/platform/storage/get-driver";\nexport const d = getStorageDriver;\n`;
+    const provider = `import { S3StorageDriver } from "@/platform/storage/providers/s3";\nexport const d = S3StorageDriver;\n`;
+    const scoped = `import { storageFor } from "@/platform/storage";\nexport const d = storageFor;\n`;
+    expect(await restrictedImports(raw, "src/modules/media/upload.service.ts")).toHaveLength(1);
+    expect(await restrictedImports(provider, "src/modules/media/upload.service.ts")).toHaveLength(1);
+    expect(await restrictedImports(scoped, "src/modules/media/upload.service.ts")).toHaveLength(0);
+  });
+
   it("keeps the session out of public site pages", async () => {
     const code = `import { getCurrentUser } from "@/modules/auth";\nexport const u = getCurrentUser;\n`;
     expect(await restrictedImports(code, "src/app/(sites)/render/[site]/[[...path]]/page.tsx")).toHaveLength(1);

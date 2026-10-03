@@ -23,3 +23,6 @@ next-env.d.ts
 .DS_Store
 *.log
 .vercel
+
+# local storage driver (development uploads) — never commit
+.storage/

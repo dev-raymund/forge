@@ -13,6 +13,9 @@ import nextTs from "eslint-config-next/typescript";
  * 3. `app/` and `components/` never touch the database or Drizzle directly.
  * 4. Only `modules/auth` talks to Better Auth (D-07), and only it may take the
  *    identity-table handle Better Auth needs (`@/platform/db/identity`, ADR 0004).
+ * 6. Only `platform/storage/providers` imports the S3 SDK, and the raw storage
+ *    driver is private to `platform/`: application code uses `storageFor()` /
+ *    `platformStorage()` from `@/platform/storage` (ADR 0008).
  * 5. Public site rendering never touches the session (ADR 0006): in V1 the
  *    admin and `/s/` sites share one origin, so site pages must stay identical
  *    for every visitor and never act as the signed-in admin.
@@ -33,6 +36,14 @@ const identityDb = {
 const betterAuth = {
   group: ["better-auth", "better-auth/*"],
   message: "Only modules/auth may import Better Auth (D-07).",
+};
+const s3Sdk = {
+  group: ["@aws-sdk/*", "@smithy/*"],
+  message: "Only platform/storage/providers may import the S3 SDK. Use @/platform/storage (ADR 0008).",
+};
+const rawStorageDriver = {
+  group: ["@/platform/storage/get-driver", "@/platform/storage/providers/*"],
+  message: "The raw storage driver is private to platform/. Use storageFor() from @/platform/storage.",
 };
 const noSessionInSites = {
   group: ["@/modules/auth", "@/modules/auth/*"],
@@ -62,7 +73,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth] },
+        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, s3Sdk, rawStorageDriver] },
       ],
     },
   },
@@ -71,7 +82,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, noDbInUi] },
+        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, s3Sdk, rawStorageDriver, noDbInUi] },
       ],
     },
   },
@@ -80,18 +91,24 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, noDbInUi, noSessionInSites] },
+        { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, s3Sdk, rawStorageDriver, noDbInUi, noSessionInSites] },
       ],
     },
   },
   {
     files: ["src/modules/auth/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [moduleEntryOnly, rawDbClient] }],
+      "no-restricted-imports": ["error", { patterns: [moduleEntryOnly, rawDbClient, s3Sdk, rawStorageDriver] }],
     },
   },
   {
     files: ["src/platform/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [moduleEntryOnly, betterAuth, s3Sdk] }],
+    },
+  },
+  {
+    files: ["src/platform/storage/providers/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", { patterns: [moduleEntryOnly, betterAuth] }],
     },
@@ -102,7 +119,7 @@ const eslintConfig = defineConfig([
     // the schema barrel re-exports every module's tables.
     files: ["src/modules/*/schema.ts", "src/platform/db/schema.ts"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [rawDbClient, identityDb, betterAuth] }],
+      "no-restricted-imports": ["error", { patterns: [rawDbClient, identityDb, betterAuth, s3Sdk, rawStorageDriver] }],
     },
   },
 ]);

@@ -98,7 +98,21 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
    ```
 
    Add the preview origin(s) you test uploads from to the preview bucket.
-3. An API token scoped to these buckets only (Object Read & Write) → `STORAGE_ACCESS_KEY_ID` / `STORAGE_SECRET_ACCESS_KEY`. `STORAGE_ENDPOINT` is the account's S3 endpoint.
+3. An API token scoped to these buckets only (Object Read & Write) → `STORAGE_ACCESS_KEY_ID` / `STORAGE_SECRET_ACCESS_KEY`.
+4. In Vercel, set the storage variables for Production and Preview (ADR 0008):
+   - `STORAGE_BUCKET`
+   - `STORAGE_ENDPOINT` = `https://<account-id>.r2.cloudflarestorage.com`
+   - `STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY`
+   - `STORAGE_REGION` can stay unset (`auto`), and so can `STORAGE_DRIVER`: on Vercel the driver is S3.
+   - Until these are set, readiness reports the `storage` group as invalid.
+5. Before first use, run the storage contract against a test bucket:
+   ```sh
+   TEST_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com TEST_S3_BUCKET=forge-media-preview \
+   TEST_S3_ACCESS_KEY_ID=<id> TEST_S3_SECRET_ACCESS_KEY=<secret> \
+   npm run test:integration -- tests/integration/storage.test.ts
+   ```
+
+Local development needs none of this: the local driver stores files in `.storage/`.
 
 ## 5. Resend, Sentry, Turnstile, Stripe
 

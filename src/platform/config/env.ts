@@ -32,6 +32,14 @@ export function resolveEmailProvider(v: { EMAIL_PROVIDER?: EmailProviderName; VE
   return v.EMAIL_PROVIDER ?? (v.VERCEL_ENV === "production" ? "resend" : "console");
 }
 
+export const STORAGE_DRIVERS = ["local", "s3"] as const;
+export type StorageDriverName = (typeof STORAGE_DRIVERS)[number];
+
+/** S3 on Vercel unless set explicitly; the local filesystem everywhere else. */
+export function resolveStorageDriver(v: { STORAGE_DRIVER?: StorageDriverName; VERCEL_ENV?: string }): StorageDriverName {
+  return v.STORAGE_DRIVER ?? (v.VERCEL_ENV ? "s3" : "local");
+}
+
 const schemas = {
   core: z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -81,14 +89,38 @@ const schemas = {
       if (!v.RESEND_API_KEY) ctx.addIssue({ code: "custom", path: ["RESEND_API_KEY"], message: "Required for Resend" });
       if (!v.EMAIL_FROM) ctx.addIssue({ code: "custom", path: ["EMAIL_FROM"], message: "Required for Resend" });
     }),
-  storage: z.object({
-    STORAGE_BUCKET: secret(1),
-    STORAGE_ENDPOINT: z.url(),
-    STORAGE_ACCESS_KEY_ID: secret(1),
-    STORAGE_SECRET_ACCESS_KEY: secret(1),
-    /** Public media URL prefix. Default (V1): `${APP_ORIGIN}/media`, served by the app; a CDN domain later. */
-    MEDIA_PUBLIC_BASE_URL: z.url().optional(),
-  }),
+  /**
+   * Object storage (M1-5, ADR 0008). The driver defaults to `s3` on Vercel
+   * (its filesystem is not durable) and to `local` elsewhere, so development
+   * and tests need no storage account. Only `s3` needs credentials. Works with
+   * any S3-compatible store; Cloudflare R2 is configuration, not code.
+   */
+  storage: z
+    .object({
+      STORAGE_DRIVER: z.enum(STORAGE_DRIVERS).optional(),
+      /** Local driver: where objects are kept. Default `.storage` (gitignored). */
+      STORAGE_LOCAL_DIR: z.string().min(1).optional(),
+      STORAGE_BUCKET: z.string().min(1).optional(),
+      STORAGE_ENDPOINT: z.url().optional(),
+      /** `auto` for Cloudflare R2. */
+      STORAGE_REGION: z.string().min(1).default("auto"),
+      STORAGE_ACCESS_KEY_ID: z.string().min(1).optional(),
+      STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+      /** Path-style addressing (`endpoint/bucket/key`): right for R2, RustFS and MinIO. */
+      STORAGE_FORCE_PATH_STYLE: z
+        .enum(["true", "false"])
+        .default("true")
+        .transform((v) => v === "true"),
+      /** Public media URL prefix. Default (V1): `${APP_ORIGIN}/media`, served by the app; a CDN domain later. */
+      MEDIA_PUBLIC_BASE_URL: z.url().optional(),
+      VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
+    })
+    .superRefine((v, ctx) => {
+      if (resolveStorageDriver(v) !== "s3") return;
+      for (const name of ["STORAGE_BUCKET", "STORAGE_ENDPOINT", "STORAGE_ACCESS_KEY_ID", "STORAGE_SECRET_ACCESS_KEY"] as const) {
+        if (!v[name]) ctx.addIssue({ code: "custom", path: [name], message: "Required for the s3 storage driver" });
+      }
+    }),
   billing: z.object({ STRIPE_SECRET_KEY: secret(1), STRIPE_WEBHOOK_SECRET: secret(1), STRIPE_PRICE_PRO: secret(1) }),
   domains: z.object({ VERCEL_API_TOKEN: secret(1), VERCEL_PROJECT_ID: secret(1), VERCEL_TEAM_ID: z.string().optional() }),
   cron: z.object({ CRON_SECRET: secret(16) }),
@@ -105,7 +137,7 @@ export type EnvGroupStatus = "ok" | "missing" | "invalid";
 export const ENV_GROUPS = Object.keys(schemas) as EnvGroup[];
 
 /** Groups that shipped code reads today; readiness fails if any is not "ok". */
-export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "email"];
+export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "email", "storage"];
 
 export class ConfigError extends Error {
   constructor(

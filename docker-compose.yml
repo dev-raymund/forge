@@ -71,6 +71,12 @@ services:
       - "9001:9001"
     volumes:
       - storagedata:/data
+    # Without this, `up --wait` returns before the S3 API accepts connections.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://localhost:9000/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   mailpit:
     image: axllent/mailpit:latest

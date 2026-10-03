@@ -70,7 +70,22 @@ describe("envStatus()", () => {
   });
 
   it("requires only the groups shipped code reads today", () => {
-    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "email"]);
+    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "email", "storage"]);
+  });
+
+  it("storage: nothing needed locally; the s3 driver (explicit, or the default on Vercel) needs all four settings", () => {
+    const s3 = {
+      STORAGE_BUCKET: "forge-media",
+      STORAGE_ENDPOINT: "https://account.r2.cloudflarestorage.com",
+      STORAGE_ACCESS_KEY_ID: "id",
+      STORAGE_SECRET_ACCESS_KEY: "secret",
+    };
+    expect(envStatus({ ...base }).storage).toBe("ok");
+    expect(envStatus({ ...base, VERCEL_ENV: "production" }).storage).toBe("invalid");
+    expect(envStatus({ ...base, VERCEL_ENV: "preview" }).storage).toBe("invalid");
+    expect(envStatus({ ...base, STORAGE_DRIVER: "s3", ...s3, STORAGE_SECRET_ACCESS_KEY: undefined }).storage).toBe("invalid");
+    expect(envStatus({ ...base, VERCEL_ENV: "production", ...s3 }).storage).toBe("ok");
+    expect(env("storage", { ...s3, VERCEL_ENV: "production" })).toMatchObject({ STORAGE_REGION: "auto", STORAGE_FORCE_PATH_STYLE: true });
   });
 
   it("email: nothing needed locally; Resend (explicit, or the Vercel production default) needs a key and a sender", () => {

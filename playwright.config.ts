@@ -41,6 +41,9 @@ export default defineConfig({
       CRON_SECRET: E2E_CRON_SECRET,
       // Email goes to the local Mailpit inbox (docker-compose); never a real service.
       EMAIL_PROVIDER: "mailpit",
+      // Files go to a local directory (gitignored); no storage account.
+      STORAGE_DRIVER: "local",
+      STORAGE_LOCAL_DIR: ".storage/e2e",
     },
   },
 });
