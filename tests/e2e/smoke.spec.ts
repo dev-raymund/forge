@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("admin host serves the admin shell", async ({ page }) => {
+test("the admin answers: an anonymous visit to / lands on the login page", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Forge" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Log in to Forge" })).toBeVisible();
 });
 
 test("health endpoint answers", async ({ request }) => {

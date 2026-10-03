@@ -1,10 +1,13 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import { identityDb } from "@/platform/db/identity";
 import { forbidden, unauthenticated } from "@/platform/errors";
+import { loginPath } from "@/platform/routing/admin-access";
 import { getAuth, SESSION_ABSOLUTE_SECONDS } from "./auth";
+import { findSessionCookie } from "./cookie";
 import { authSessions } from "./schema";
 import { ANONYMOUS, type Actor, type Authenticated, type AuthUser } from "./shared";
 
@@ -91,6 +94,21 @@ export async function requireUser(): Promise<AuthUser> {
 
 export async function requireVerifiedUser(): Promise<AuthUser> {
   return assertVerified(await requireUser());
+}
+
+/**
+ * For pages and layouts: the signed-in user, or a redirect to the login page
+ * that returns to `next` afterwards. A cookie that no longer maps to a session
+ * (expired, revoked, tampered) sends the user there with an explanation.
+ *
+ * This is the real check. The proxy's redirect only spares anonymous visitors
+ * a round trip; it never decides access.
+ */
+export async function requireUserOrLogin(next: string): Promise<AuthUser> {
+  const auth = await getCurrentAuth();
+  if (auth) return auth.user;
+  const hadSession = findSessionCookie((await headers()).get("cookie")) !== null;
+  redirect(loginPath({ next, reason: hadSession ? "session" : undefined }));
 }
 
 /** Who is acting, for request contexts, audit rows and logs. */

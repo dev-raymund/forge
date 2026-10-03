@@ -1,6 +1,6 @@
 import { APIError } from "better-auth/api";
 import { describe, expect, it } from "vitest";
-import { authErrorToAppError } from "./errors";
+import { authErrorToAppError, authFailureToAppError } from "./errors";
 
 type Status = ConstructorParameters<typeof APIError>[0];
 const apiError = (status: Status, code?: string, message = "Better Auth internal text") =>
@@ -20,7 +20,7 @@ describe("authErrorToAppError", () => {
     ["USER_ALREADY_EXISTS", "UNPROCESSABLE_ENTITY", EXISTS],
     ["USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", "UNPROCESSABLE_ENTITY", EXISTS],
     ["PASSWORD_TOO_SHORT", "BAD_REQUEST", { kind: "Validation", fieldErrors: { password: ["Use at least 12 characters."] } }],
-    ["PASSWORD_TOO_LONG", "BAD_REQUEST", { kind: "Validation", fieldErrors: { password: ["This password is too long."] } }],
+    ["PASSWORD_TOO_LONG", "BAD_REQUEST", { kind: "Validation", fieldErrors: { password: ["Use at most 128 characters."] } }],
     ["INVALID_TOKEN", "BAD_REQUEST", LINK],
     ["TOKEN_EXPIRED", "UNAUTHORIZED", LINK],
     ["EMAIL_NOT_VERIFIED", "FORBIDDEN", { kind: "Forbidden", message: "Verify your email address to continue." }],
@@ -60,5 +60,44 @@ describe("authErrorToAppError", () => {
     expect(authErrorToAppError(new Error("boom"))).toBeNull();
     expect(authErrorToAppError("a string")).toBeNull();
     expect(authErrorToAppError(null)).toBeNull();
+  });
+});
+
+describe("authFailureToAppError (responses of the auth handler, as the forms get them)", () => {
+  const WRONG_ORIGIN = "This request didn't come from the Forge app. Reload the page and try again.";
+
+  it("maps by code first", () => {
+    expect(authFailureToAppError({ status: 401, code: "INVALID_EMAIL_OR_PASSWORD" })).toMatchObject({
+      kind: "Validation", message: "Email or password is incorrect.", fieldErrors: { _form: ["Email or password is incorrect."] },
+    });
+    expect(authFailureToAppError({ status: 422, code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" })).toMatchObject(EXISTS);
+    expect(authFailureToAppError({ status: 400, code: "INVALID_TOKEN" })).toMatchObject(LINK);
+  });
+
+  it.each(["INVALID_ORIGIN", "MISSING_OR_NULL_ORIGIN", "CROSS_SITE_NAVIGATION_LOGIN_BLOCKED", "INVALID_CALLBACK_URL", "INVALID_REDIRECT_URL"])(
+    "%s → Forbidden, with a message that helps a real user",
+    (code) => expect(authFailureToAppError({ status: 403, code })).toMatchObject({ kind: "Forbidden", message: WRONG_ORIGIN }),
+  );
+
+  it("Turnstile failures ask for the check again, whatever went wrong with it", () => {
+    for (const [status, code] of [[400, "MISSING_RESPONSE"], [403, "VERIFICATION_FAILED"]] as const) {
+      expect(authFailureToAppError({ status, code })).toMatchObject({ kind: "Validation", message: "Complete the security check and try again." });
+    }
+  });
+
+  it("an already verified address is a Conflict, not an error to report", () => {
+    expect(authFailureToAppError({ status: 400, code: "EMAIL_ALREADY_VERIFIED" })).toMatchObject({ kind: "Conflict" });
+  });
+
+  it("rate limiting carries the wait", () => {
+    expect(authFailureToAppError({ status: 429, retryAfterSeconds: 7 })).toMatchObject({ kind: "RateLimited", retryAfterSeconds: 7 });
+    expect(authFailureToAppError({ status: 429 })).toMatchObject({ kind: "RateLimited", message: "Too many requests. Please try again shortly." });
+  });
+
+  it("anything else is unexpected", () => {
+    expect(authFailureToAppError({ status: 500, code: "UNKNOWN_ERROR" })).toBeNull();
+    expect(authFailureToAppError({ status: 500 })).toBeNull();
+    expect(authFailureToAppError({ status: 404 })).toBeNull();
+    expect(authFailureToAppError({ status: 400, code: "SOMETHING_NEW" })).toBeNull();
   });
 });

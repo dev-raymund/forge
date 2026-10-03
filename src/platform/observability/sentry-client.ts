@@ -10,5 +10,7 @@ export function initClientSentry() {
     dataCollection: SENTRY_DATA_COLLECTION,
     tracesSampleRate: 0.1,
     beforeSend: (event) => scrubEvent(event),
+    // Page-load transactions carry the URL: the reset page's query string holds a token.
+    beforeSendTransaction: (event) => scrubEvent(event),
   });
 }

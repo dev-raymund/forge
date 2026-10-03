@@ -1,16 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { findSessionCookie, renewedSessionCookie } from "@/modules/auth/shared";
 import { assignRequestId, REQUEST_ID_HEADER } from "@/platform/observability/request-id";
+import { decideAdminAccess, isDocumentNavigation } from "@/platform/routing/admin-access";
 import { decideRoute, forwardedHeaders, normalizeHost } from "@/platform/routing/hosts";
 
 /**
  * proxy.ts (Next 16's middleware, Node runtime), plan §19–20, ADR 0006:
  * site routing (`/s/{address}` always; tenant hosts when HOST_ROUTING_ENABLED),
- * request ID, internal-path guards, per-surface framing headers, and removal
- * of credentials from site requests.
- * Decisions live in platform/routing/hosts.ts (unit tested).
+ * request ID, internal-path guards, per-surface framing headers, removal of
+ * credentials from site requests, and the admin login redirect.
+ * Decisions live in platform/routing (unit tested).
  *
- * Deferred: the admin cookie-presence redirect (UX only) arrives with the
- * login page in M2-2; script-src CSP in M12-1.
+ * The login redirect is a convenience, not the security boundary: it only
+ * looks at whether a session cookie is present. Protected pages and every
+ * Server Action check the session themselves (modules/auth).
+ *
+ * Deferred: script-src CSP in M12-1.
  */
 
 let routing: { appHost: string | null; hostRouting: boolean; sitesRootDomain: string | null } | undefined;
@@ -56,10 +61,30 @@ export function proxy(request: NextRequest) {
 
   let response: NextResponse;
   switch (decision.kind) {
-    case "app":
-      response = NextResponse.next({ request: { headers } });
+    case "app": {
+      const session = findSessionCookie(request.headers.get("cookie"));
+      const access = decideAdminAccess({
+        method: request.method,
+        pathname: request.nextUrl.pathname,
+        search: request.nextUrl.search,
+        hasSessionCookie: session !== null,
+        nextAction: request.headers.has("next-action"),
+      });
+      if (access.kind === "login") {
+        // Anonymous on an admin page: straight to the login page, which returns here afterwards.
+        response = NextResponse.redirect(new URL(access.location, request.url), 307);
+      } else {
+        response = NextResponse.next({ request: { headers } });
+        // Server Components cannot set cookies, so a page load would never extend the
+        // browser cookie of a session that is sliding forward in the database. Renew
+        // its lifetime here; whether the session is valid is still decided server-side.
+        if (session && isDocumentNavigation(request.method, request.headers)) {
+          response.headers.append("set-cookie", renewedSessionCookie(session));
+        }
+      }
       for (const [k, v] of Object.entries(SURFACE_HEADERS.app)) response.headers.set(k, v);
       break;
+    }
     case "site":
       response = NextResponse.rewrite(new URL(decision.rewrite, request.url), { request: { headers } });
       for (const [k, v] of Object.entries(SURFACE_HEADERS.site)) response.headers.set(k, v);

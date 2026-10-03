@@ -150,7 +150,24 @@ const schemas = {
   domains: z.object({ VERCEL_API_TOKEN: secret(1), VERCEL_PROJECT_ID: secret(1), VERCEL_TEAM_ID: z.string().optional() }),
   cron: z.object({ CRON_SECRET: secret(16) }),
   preview: z.object({ PREVIEW_TOKEN_SECRET: secret(32) }),
-  turnstile: z.object({ TURNSTILE_SECRET_KEY: secret(1), NEXT_PUBLIC_TURNSTILE_SITE_KEY: secret(1) }),
+  /**
+   * Cloudflare Turnstile on sign-up (M2-2, plan §12). Both keys or neither.
+   * Required on Vercel production; elsewhere sign-up simply has no challenge.
+   */
+  turnstile: z
+    .object({
+      TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
+      VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
+    })
+    .superRefine((v, ctx) => {
+      const required = v.VERCEL_ENV === "production";
+      for (const [name, other] of [["TURNSTILE_SECRET_KEY", "NEXT_PUBLIC_TURNSTILE_SITE_KEY"], ["NEXT_PUBLIC_TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"]] as const) {
+        if (!v[name] && (required || v[other])) {
+          ctx.addIssue({ code: "custom", path: [name], message: required ? "Required in production" : "Turnstile needs both keys" });
+        }
+      }
+    }),
   observability: z.object({ SENTRY_DSN: z.url().optional() }),
   staff: z.object({ PLATFORM_ADMIN_EMAILS: csv }),
 } as const;
@@ -162,7 +179,7 @@ export type EnvGroupStatus = "ok" | "missing" | "invalid";
 export const ENV_GROUPS = Object.keys(schemas) as EnvGroup[];
 
 /** Groups that shipped code reads today; readiness fails if any is not "ok". */
-export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "auth", "email", "storage"];
+export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = ["core", "database", "auth", "email", "storage", "turnstile"];
 
 export class ConfigError extends Error {
   constructor(

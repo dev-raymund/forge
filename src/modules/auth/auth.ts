@@ -2,6 +2,7 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { captcha } from "better-auth/plugins";
 import { uuidv7 } from "uuidv7";
 import { ConfigError } from "@/platform/config/env";
 import { identityDb } from "@/platform/db/identity";
@@ -11,7 +12,8 @@ import { reportError, requestIdFrom } from "@/platform/observability";
 import { authConfig, type AuthConfig } from "./config";
 import { betterAuthLog } from "./log";
 import { authAccounts, authSessions, authVerifications, users } from "./schema";
-import { MIN_PASSWORD_LENGTH } from "./shared";
+import { SESSION_IDLE_SECONDS } from "./cookie";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./validation";
 
 /**
  * Better Auth on Forge's identity tables (D-07, ADR 0004). This module is the
@@ -23,15 +25,18 @@ import { MIN_PASSWORD_LENGTH } from "./shared";
  */
 
 const DAY = 60 * 60 * 24;
-/** Plan §12: 7-day sliding idle window, 30-day absolute lifetime. */
-export const SESSION_IDLE_SECONDS = 7 * DAY;
+/** Plan §12: 7-day sliding idle window (SESSION_IDLE_SECONDS), 30-day absolute lifetime. */
+export { SESSION_IDLE_SECONDS };
 export const SESSION_ABSOLUTE_SECONDS = 30 * DAY;
 export const RESET_TOKEN_MINUTES = 60;
+export const AUTH_BASE_PATH = "/api/auth";
+/** Sent by our own sign-up form; checked by the captcha plugin when Turnstile is configured. */
+export const CAPTCHA_HEADER = "x-captcha-response";
 
 export function createAuth(config: AuthConfig) {
   return betterAuth({
     baseURL: config.baseURL,
-    basePath: "/api/auth",
+    basePath: AUTH_BASE_PATH,
     secret: config.secret,
     // CSRF: state-changing requests and every callback/redirect URL must be on this origin.
     trustedOrigins: [new URL(config.baseURL).origin],
@@ -60,6 +65,7 @@ export function createAuth(config: AuthConfig) {
     emailAndPassword: {
       enabled: true,
       minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
       // Verification gates publishing, inviting and domains (§12), not login.
       requireEmailVerification: false,
       resetPasswordTokenExpiresIn: RESET_TOKEN_MINUTES * 60,
@@ -108,8 +114,18 @@ export function createAuth(config: AuthConfig) {
       },
     },
 
-    // Must stay last: lets Server Actions that call the auth API set cookies.
-    plugins: [nextCookies()],
+    // Better Auth's default is on in production only; tests turn it on to prove the forms are limited.
+    ...(config.rateLimit === undefined ? {} : { rateLimit: { enabled: config.rateLimit } }),
+
+    plugins: [
+      // Turnstile on sign-up (plan §12). Enforced here, in front of the endpoint,
+      // so the form and a direct call to /api/auth/sign-up/email are both covered.
+      ...(config.turnstileSecretKey
+        ? [captcha({ provider: "cloudflare-turnstile", secretKey: config.turnstileSecretKey, endpoints: ["/sign-up/email"] })]
+        : []),
+      // Must stay last: lets code that calls the auth API directly set cookies.
+      nextCookies(),
+    ],
   });
 }
 

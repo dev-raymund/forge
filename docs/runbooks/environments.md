@@ -80,6 +80,7 @@ Record the result in `docs/adr/0001-rls-withtenant.md`.
 4. **Environment variables** (every name in `.env.example`; mark secrets Sensitive; never set `DATABASE_MIGRATION_URL`):
    - **Production:** `APP_ORIGIN=https://cms.forgelinetechnologies.com`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`), `CRON_SECRET`, database, storage, email, Sentry and Turnstile values. Leave `BETTER_AUTH_URL` unset: it defaults to `APP_ORIGIN`.
    - **Preview:** leave `APP_ORIGIN` **unset**. It defaults to the branch URL (`VERCEL_BRANCH_URL`), so auth and links work on every preview. Set `BETTER_AUTH_SECRET` here too, with a **different** value from Production. Open previews by their branch URL: auth rejects requests from any other origin, including the per-deployment URL.
+   - **Local (M2-2):** `APP_ORIGIN=http://localhost:3000`, and open the app at exactly that address. Auth rejects requests from any other origin, so `127.0.0.1:3000` or an old `app.localhost:3000` setting gets "This request didn't come from the Forge app". `EMAIL_PROVIDER=mailpit` delivers verification and reset emails to http://localhost:8025.
    - **Auth (M2-1):** readiness (`/api/health/ready`) reports the `auth` group as failed when the secret is missing; sign-in then answers 503. The fixed development secret is accepted only on `localhost`, never on Vercel.
    - **Google sign-in (optional, M2-3):** set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` together, and register `https://cms.forgelinetechnologies.com/api/auth/callback/google` as the redirect URI in Google Cloud. Without them email/password works and the Google routes answer 404.
    - Leave `HOST_ROUTING_ENABLED`, `SITES_ROOT_DOMAIN` and `MEDIA_PUBLIC_BASE_URL` unset (post-V1).
@@ -127,7 +128,10 @@ Local development needs none of this: the local driver stores files in `.storage
   curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://cms.forgelinetechnologies.com/api/internal/sentry-test
   ```
   The response carries the `requestId` and `sentryEventId`. The event appears in Sentry tagged with `requestId` and `module`, and with the commit SHA as its release.
-- **Turnstile:** one widget for `cms.forgelinetechnologies.com` (sign-up).
+- **Turnstile:** one widget for `cms.forgelinetechnologies.com` (sign-up), "Managed" mode. Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
+  - **Production: required.** Without both keys the `turnstile` group fails readiness and auth answers 503: sign-up is never served there without the challenge.
+  - **Previews and local:** leave both unset; sign-up then has no challenge. Setting only one of the two is a configuration error.
+  - The challenge is checked inside Better Auth, in front of `/api/auth/sign-up/email`, so the form and a direct call are both covered (ADR 0004, M2-2).
 - **Stripe:** test mode, product "Pro" with a monthly price → `STRIPE_PRICE_PRO`. The webhook endpoint is added in M11-2. Going live means commercial use, so it needs a paid Vercel plan first.
 
 ## 6. Optional: per-minute job runner (free)

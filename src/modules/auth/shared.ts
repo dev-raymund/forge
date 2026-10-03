@@ -4,8 +4,15 @@
  * modules/auth (D-07, lint-enforced).
  */
 
-/** Plan §12. */
-export const MIN_PASSWORD_LENGTH = 12;
+export {
+  MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, IDLE,
+  signUpSchema, signInSchema, forgotPasswordSchema, resetPasswordSchema,
+} from "./validation";
+export type { FormState, SignUpInput, SignInInput, ForgotPasswordInput, ResetPasswordInput } from "./validation";
+export {
+  SESSION_COOKIE, SECURE_SESSION_COOKIE, SESSION_IDLE_SECONDS, findSessionCookie, renewedSessionCookie,
+} from "./cookie";
+export type { SessionCookie } from "./cookie";
 
 export type AuthUser = {
   id: string;

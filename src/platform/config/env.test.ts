@@ -70,7 +70,7 @@ describe("envStatus()", () => {
   });
 
   it("requires only the groups shipped code reads today", () => {
-    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "auth", "email", "storage"]);
+    expect(REQUIRED_ENV_GROUPS).toEqual(["core", "database", "auth", "email", "storage", "turnstile"]);
   });
 
   it("auth: no secret needed on localhost; required everywhere else; Google is optional but all-or-nothing", () => {
@@ -84,6 +84,19 @@ describe("envStatus()", () => {
     expect(envStatus({ ...base, BETTER_AUTH_SECRET: secret }).auth).toBe("ok");
     expect(envStatus({ ...base, BETTER_AUTH_SECRET: secret, GOOGLE_CLIENT_ID: "id" }).auth).toBe("invalid");
     expect(envStatus({ ...base, BETTER_AUTH_SECRET: secret, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "s" }).auth).toBe("ok");
+  });
+
+  it("turnstile: optional outside production, both keys or neither; required on Vercel production", () => {
+    const keys = { TURNSTILE_SECRET_KEY: "secret", NEXT_PUBLIC_TURNSTILE_SITE_KEY: "site" };
+    expect(envStatus(base).turnstile).toBe("ok"); // nothing set: sign-up has no challenge
+    expect(envStatus({ ...base, VERCEL_ENV: "preview" }).turnstile).toBe("ok");
+    expect(envStatus({ ...base, ...keys }).turnstile).toBe("ok");
+    expect(envStatus({ ...base, TURNSTILE_SECRET_KEY: "secret" }).turnstile).toBe("invalid");
+    expect(envStatus({ ...base, NEXT_PUBLIC_TURNSTILE_SITE_KEY: "site" }).turnstile).toBe("invalid");
+    expect(envStatus({ ...base, VERCEL_ENV: "production" }).turnstile).toBe("invalid");
+    expect(envStatus({ ...base, VERCEL_ENV: "production", ...keys }).turnstile).toBe("ok");
+    expect(env("turnstile", { ...base, ...keys })).toMatchObject(keys);
+    expect(() => env("turnstile", { ...base, VERCEL_ENV: "production" })).toThrow(/TURNSTILE_SECRET_KEY, NEXT_PUBLIC_TURNSTILE_SITE_KEY/);
   });
 
   it("storage: nothing needed locally; the s3 driver (explicit, or the default on Vercel) needs all four settings", () => {

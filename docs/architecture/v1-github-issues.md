@@ -369,6 +369,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M2-2 · Sign-up, login, logout, email verification UI
 **Labels:** `area:auth` `type:feature`
 
+**Status:** ✔ done (2026-10-04). See the M2-2 addendum in ADR 0004.
+
 **Description:** The account screens.
 
 *From M1-7: add the admin cookie-presence redirect to `proxy.ts` (UX only; the real check stays in `requireUser()`).*
@@ -378,13 +380,21 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M2-1
 
 **Acceptance criteria:**
-- [ ] `/signup` (email, password ≥ 12, Turnstile), `/login`, logout in the account menu, `/verify-email` with resend (throttled)
-- [ ] Generic login error; `?next=` restricted to same-origin paths
-- [ ] Verified-email banner in the admin until verified
+- [x] `/signup` (email, password ≥ 12, Turnstile), `/login`, logout in the account menu, `/verify-email` with resend (throttled)
+- [x] Generic login error; `?next=` restricted to same-origin paths
+- [x] Verified-email banner in the admin until verified
+- [x] *Moved here from M2-3 at the owner's direction:* `/forgot-password` → always the same response; `/reset-password` with a single-use 60-minute token; all sessions revoked on reset
+
+**Delivered beyond the criteria (clarifications, no scope change):**
+- The forms reach Better Auth through its request handler, so its rate limiter, origin checks and captcha apply to them.
+- Signing in or out ends with a full page load, so nothing of the previous session stays in the tab.
+- The proxy renews the browser cookie on admin page loads (Server Components cannot set cookies).
+- Turnstile is optional outside Vercel production and required there (`turnstile` is now a readiness group).
+- `/` is the first protected page (header, account menu, banner) until M3 turns it into the organization redirect.
 
 **Likely files/modules:** `src/app/(admin)/(auth)/*`, `src/modules/auth/ui/*`
 
-**Testing:** E2E: sign up → verify via the captured email → log out → log in.
+**Testing:** E2E: sign up → verify via the captured email → log out → log in. ✔ `tests/e2e/auth.spec.ts` (14), `tests/integration/auth-flows.test.ts` (32), unit tests under `src/modules/auth` and `src/platform/routing`.
 
 ### M2-3 · Password reset and Google OAuth
 **Labels:** `area:auth` `type:feature`
@@ -393,15 +403,18 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 *From M2-1: the reset back-end is live and tested: a 60-minute single-use token (stored hashed), every session revoked on reset, the same response for unknown addresses. The emailed link redirects to `/reset-password?token=…`. This issue adds the pages, the notification email and the linking-rule test.*
 
+*From M2-2: the reset pages and their E2E flow are delivered (see M2-2). What remains here is the "your password was changed" notification email and Google sign-in. The Google button belongs on `LoginForm` and `SignUpForm`, shown only when `GOOGLE_CLIENT_ID` is configured; start the flow through `callAuth("/sign-in/social", …)` so the origin and redirect checks apply, and pass `callbackURL` through `safeNextPath()`.*
+
 **Depends on:** M2-1
 
 **Acceptance criteria:**
-- [ ] `/forgot-password` → always the same response; `/reset-password` with a single-use 60-minute token; all sessions revoked on reset; notification email
+- [x] `/forgot-password` → always the same response; `/reset-password` with a single-use 60-minute token; all sessions revoked on reset *(delivered in M2-2)*
+- [ ] Notification email after a password reset
 - [ ] Google OAuth sign-in and sign-up; auto-link **only** when Google asserts a verified email equal to the account's verified email
 
 **Likely files/modules:** `src/modules/auth/*`, auth pages
 
-**Testing:** E2E reset flow; integration test of the linking rule with a mocked provider response.
+**Testing:** E2E reset flow ✔ (M2-2); integration test of the linking rule with a mocked provider response.
 
 ### M2-4 · Account page, sessions and auth hardening
 **Labels:** `area:auth` `type:feature`
@@ -411,6 +424,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M0-6: Better Auth's limiter uses in-memory storage by default, which is per instance on Vercel. The WAF rule is the real control (ADR 0004, discovery 8).*
 
 *From M2-1: the limiter is already on in production with its defaults, keyed by `x-forwarded-for`. Sign-up reveals that an address is registered (ADR 0004 addendum), so the sign-up limit and Turnstile are what bound enumeration.*
+
+*From M2-2: the forms are Server Actions, which post to the page's own path, not to `/api/auth/*`. The WAF rule must also cover `POST` to `/login`, `/signup`, `/forgot-password`, `/reset-password` and `/verify-email`. Better Auth's limiter already covers the forms (they go through its handler). Turnstile on sign-up is delivered. The account menu (`AccountMenu`) is where the `/account` link goes.*
 
 **Depends on:** M2-2, M1-5
 
@@ -469,6 +484,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:tenancy` `type:feature`
 
 **Description:** Create and manage organizations.
+
+*From M2-2: `/` is currently a placeholder protected page (`src/app/(admin)/page.tsx`): header with `AccountMenu`, the `VerifyEmailBanner`, and `requireUserOrLogin("/")` inside `<Suspense>`. Replace its body with the redirect, and reuse the header in the admin shell. Protected layouts call `requireUserOrLogin(path)`; the proxy's login redirect is only a convenience. After sign-up the user lands on `/verify-email` and continues to `/`.*
 
 **Depends on:** M3-2
 
