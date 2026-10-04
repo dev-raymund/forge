@@ -688,7 +688,7 @@ Better Auth (D-07), identity only. It is mounted at `/api/auth/[...all]` on the 
 
 | Feature | V1 configuration |
 |---|---|
-| Email/password | Minimum 12 characters; scrypt; generic "Email or password is incorrect"; rate-limited (Better Auth limiter + a Vercel WAF rule on `/api/auth/*` and on `POST` to the account screens, whose forms are Server Actions) |
+| Email/password | Minimum 12 characters; scrypt; generic "Email or password is incorrect"; rate-limited (Better Auth limiter + a Vercel WAF rule on `/api/auth/*` and on `POST` to the account screens and `/account`, whose forms are Server Actions) |
 | Email verification | Required before publishing a site, inviting members or adding domains. Sent via the `email.send` job with an immediate `after()` kick. Resend throttled |
 | Forgot / reset password | "If an account exists…" response; hashed single-use token (60 min); all sessions revoked on reset |
 | Google OAuth | Auto-link only when Google asserts a verified email equal to the account's verified email |

@@ -1,16 +1,19 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { fieldErrorsFrom } from "@/platform/errors";
 import { loginPath, safeNextPath } from "@/platform/routing/admin-access";
-import { applyAuthCookies, failureState, leaveFor } from "./action-support";
+import { changePassword, updateProfile } from "./account.service";
+import { accountFailure, applyAuthCookies, failureState, leaveFor } from "./action-support";
 import {
   requestPasswordReset, resendVerificationEmail, resetPassword, signIn, signOut, signUp, startGoogleSignIn,
 } from "./credentials.service";
 import { AUTH_MESSAGES } from "./errors";
 import { getCurrentAuth } from "./session";
+import { revokeOtherSessions, revokeSession } from "./sessions.service";
 import {
-  forgotPasswordSchema, resetPasswordSchema, signInSchema, signUpSchema, text, type FormState,
+  changePasswordSchema, forgotPasswordSchema, profileSchema, resetPasswordSchema, signInSchema, signUpSchema, text, type FormState,
 } from "./validation";
 
 /**
@@ -114,4 +117,76 @@ export async function resetPasswordAction(_previous: FormState, formData: FormDa
   }
   // Every session was revoked: the user signs in with the new password.
   return leaveFor(loginPath({ reason: "password-reset" }));
+}
+
+// ── The account page (M2-4) ─────────────────────────────────────────────────
+// Each action identifies the user from the session cookie on the server. No
+// user id is ever read from the form, and a session to end is named only by
+// its opaque handle. `refresh()` re-renders the page with what is now true.
+
+export async function updateProfileAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const values = { name: text(formData.get("name")) };
+  const parsed = profileSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", fieldErrors: fieldErrorsFrom(parsed.error), values };
+  try {
+    const { setCookies } = await updateProfile(parsed.data, { headers: await headers() });
+    await applyAuthCookies(setCookies);
+  } catch (error) {
+    return accountFailure(error, values);
+  }
+  refresh();
+  return { status: "success", message: "Your name has been updated.", values: { name: parsed.data.name } };
+}
+
+export async function changePasswordAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: text(formData.get("currentPassword")),
+    newPassword: text(formData.get("newPassword")),
+  });
+  if (!parsed.success) return { status: "error", fieldErrors: fieldErrorsFrom(parsed.error) };
+  try {
+    // Every session of the user is revoked; the cookies carry this browser's new one.
+    const { setCookies } = await changePassword(parsed.data, { headers: await headers() });
+    await applyAuthCookies(setCookies);
+  } catch (error) {
+    return accountFailure(error);
+  }
+  refresh();
+  return { status: "success", message: "Your password has been changed. Your other sessions have been logged out." };
+}
+
+/** Emails the signed-in user a link to set a password (an account created with Google has none). */
+export async function sendSetPasswordLinkAction(): Promise<FormState> {
+  const auth = await getCurrentAuth();
+  if (!auth) return leaveFor(loginPath({ next: "/account", reason: "session" }));
+  try {
+    await requestPasswordReset({ email: auth.user.email }, { headers: await headers() });
+  } catch (error) {
+    return accountFailure(error);
+  }
+  return { status: "success", message: "We sent a link to your email address. It works once and expires in 60 minutes." };
+}
+
+export async function revokeSessionAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  try {
+    await revokeSession(text(formData.get("session")), { headers: await headers() });
+  } catch (error) {
+    return accountFailure(error);
+  }
+  refresh();
+  return { status: "success", message: "That session has been logged out." };
+}
+
+export async function revokeOtherSessionsAction(): Promise<FormState> {
+  let revoked: number;
+  try {
+    ({ revoked } = await revokeOtherSessions({ headers: await headers() }));
+  } catch (error) {
+    return accountFailure(error);
+  }
+  refresh();
+  return {
+    status: "success",
+    message: revoked === 0 ? "There were no other sessions." : revoked === 1 ? "1 other session has been logged out." : `${revoked} other sessions have been logged out.`,
+  };
 }

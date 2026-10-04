@@ -6,9 +6,11 @@
 
 export {
   MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, IDLE,
-  signUpSchema, signInSchema, forgotPasswordSchema, resetPasswordSchema,
+  signUpSchema, signInSchema, forgotPasswordSchema, resetPasswordSchema, profileSchema, changePasswordSchema,
 } from "./validation";
-export type { FormState, SignUpInput, SignInInput, ForgotPasswordInput, ResetPasswordInput } from "./validation";
+export type {
+  FormState, SignUpInput, SignInInput, ForgotPasswordInput, ResetPasswordInput, ProfileInput, ChangePasswordInput,
+} from "./validation";
 export {
   SESSION_COOKIE, SECURE_SESSION_COOKIE, SESSION_IDLE_SECONDS, findSessionCookie, renewedSessionCookie,
 } from "./cookie";

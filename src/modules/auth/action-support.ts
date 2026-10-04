@@ -2,7 +2,8 @@ import "server-only";
 import { parseSetCookieHeader, toCookieOptions } from "better-auth/cookies";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { asAppError } from "@/platform/errors";
+import { asAppError, isAppError } from "@/platform/errors";
+import { loginPath } from "@/platform/routing/admin-access";
 import { reportError, requestIdFrom } from "@/platform/observability";
 import type { FormState } from "./validation";
 
@@ -52,4 +53,15 @@ export async function failureState(error: unknown, values: Record<string, string
 export async function leaveFor(path: string): Promise<FormState> {
   if (!(await headers()).has("next-action")) redirect(path);
   return { status: "success", redirectTo: path };
+}
+
+/**
+ * `failureState` for the account page. The one extra case: the session ended
+ * (expired, or revoked from another browser) while the page was open. That is
+ * not a form error to read and retry; the user leaves for the login page and
+ * comes back to the account page afterwards.
+ */
+export async function accountFailure(error: unknown, values: Record<string, string> = {}): Promise<FormState> {
+  if (isAppError(error) && error.kind === "Unauthenticated") return leaveFor(loginPath({ next: "/account", reason: "session" }));
+  return failureState(error, values);
 }

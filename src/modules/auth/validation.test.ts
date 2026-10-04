@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fieldErrorsFrom } from "@/platform/errors";
 import {
-  forgotPasswordSchema, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, resetPasswordSchema, signInSchema, signUpSchema, text,
+  changePasswordSchema, forgotPasswordSchema, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, profileSchema, resetPasswordSchema, signInSchema,
+  signUpSchema, text,
 } from "./validation";
 
 const errors = (schema: { safeParse: (v: unknown) => { success: boolean; error?: unknown } }, value: unknown) => {
@@ -85,6 +86,34 @@ describe("forgotPasswordSchema and resetPasswordSchema", () => {
       token: ["This link is invalid or has expired. Request a new one."],
     });
     expect(errors(resetPasswordSchema, { token: "x".repeat(513), password: good.password })).toHaveProperty("token");
+  });
+});
+
+describe("the account page: profileSchema and changePasswordSchema", () => {
+  it("the name is trimmed, required and bounded; nothing else is a profile field", () => {
+    expect(profileSchema.parse({ name: "  Ada Lovelace " })).toEqual({ name: "Ada Lovelace" });
+    expect(errors(profileSchema, { name: "   " })).toEqual({ name: ["Enter your name."] });
+    expect(errors(profileSchema, { name: "x".repeat(101) })).toEqual({ name: ["Use at most 100 characters."] });
+    // Unknown fields are dropped, so a forged form cannot carry them to the service.
+    expect(profileSchema.parse({ name: "Ada", email: "x@example.test", image: "https://x", emailVerified: true })).toEqual({ name: "Ada" });
+  });
+
+  it("changing the password needs the current one and a new one that meets the rules", () => {
+    expect(changePasswordSchema.parse({ currentPassword: "old", newPassword: good.password })).toEqual({ currentPassword: "old", newPassword: good.password });
+    expect(errors(changePasswordSchema, { currentPassword: "", newPassword: "" })).toEqual({
+      currentPassword: ["Enter your current password."],
+      newPassword: ["Use at least 12 characters."],
+    });
+    expect(errors(changePasswordSchema, { currentPassword: "old", newPassword: "x".repeat(MAX_PASSWORD_LENGTH + 1) })).toEqual({
+      newPassword: ["Use at most 128 characters."],
+    });
+  });
+
+  it("says nothing about the rules for the current password, and treats an absurdly long one as wrong", () => {
+    expect(errors(changePasswordSchema, { currentPassword: "x", newPassword: good.password })).toEqual({});
+    expect(errors(changePasswordSchema, { currentPassword: "x".repeat(MAX_PASSWORD_LENGTH + 1), newPassword: good.password })).toEqual({
+      currentPassword: ["Your current password is incorrect."],
+    });
   });
 });
 

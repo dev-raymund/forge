@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from "node:crypto";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 import pg from "pg";
 
 /**
@@ -18,17 +18,30 @@ export const newEmail = () => `e2e-${randomBytes(5).toString("hex")}@example.tes
  * visitors would. On Vercel the platform sets this header and a client cannot
  * override it.
  */
-export async function asUniqueVisitor(page: Page) {
+export async function asUniqueVisitor(page: Page): Promise<string> {
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const ip = `10.${randomInt(1, 255)}.${randomInt(0, 255)}.${randomInt(1, 255)}`;
   await page.context().setExtraHTTPHeaders({
-    "x-forwarded-for": `10.${randomInt(1, 255)}.${randomInt(0, 255)}.${randomInt(1, 255)}`,
+    "x-forwarded-for": ip,
     ...(bypass ? { "x-vercel-protection-bypass": bypass, "x-vercel-set-bypass-cookie": "true" } : {}),
   });
+  return ip;
+}
+
+/** Another browser (its own cookies, its own address) logged in to the same account: a separate session. */
+export async function anotherBrowser(browser: Browser, email: string, password = PASSWORD) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const ip = await asUniqueVisitor(page);
+  await submitLogin(page, email, password);
+  await expect(page.getByRole("heading", { level: 1, name: /^Welcome, / })).toBeVisible();
+  return { context, page, ip };
 }
 
 // ── The pages ────────────────────────────────────────────────────────────────
 
-export const passwordField = (page: Page, label = "Password") => page.getByLabel(label, { exact: true });
+/** A password input by its exact label ("Show password" buttons share the word). `scope`: the page, or a part of it. */
+export const passwordField = (scope: Page | Locator, label = "Password") => scope.getByLabel(label, { exact: true });
 
 /** Fills and submits the sign-up form; ends on the verification-pending screen. */
 export async function signUp(page: Page, email: string, { name = "Ada E2E", password = PASSWORD } = {}) {

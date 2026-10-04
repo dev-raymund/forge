@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, LoaderCircle, LogOut } from "lucide-react";
+import { ChevronDown, LoaderCircle, LogOut, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useTransition } from "react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -39,6 +40,12 @@ export function AccountMenu({ name, email }: { name: string; email: string }) {
           <span className="truncate text-xs font-normal text-muted-foreground">{email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/account">
+            <UserRound aria-hidden="true" />
+            Account
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem
           disabled={leaving}
           onSelect={(event) => {

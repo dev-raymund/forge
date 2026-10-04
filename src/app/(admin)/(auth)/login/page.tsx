@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { AuthCard, AuthLink, FormSkeleton, getCurrentUser, googleSignInEnabled, LoginForm, oauthErrorMessage } from "@/modules/auth";
+import { AuthCard, AuthLink, FormSkeleton, googleSignInEnabled, LoginForm, oauthErrorMessage, redirectIfSignedIn } from "@/modules/auth";
 import { isLoginReason, safeNextPath } from "@/platform/routing/admin-access";
 import { first, type SearchParams } from "../search-params";
 
@@ -29,7 +28,7 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
 async function Login({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
   const next = safeNextPath(first(query.next)); // untrusted: only a path on this app survives
-  if (await getCurrentUser()) redirect(next);
+  await redirectIfSignedIn(next);
   const reason = first(query.reason);
   return (
     <LoginForm

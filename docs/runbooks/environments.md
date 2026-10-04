@@ -35,6 +35,7 @@ The repository side is done: `vercel.json`, `.env.example`, and local services v
 | 9 | Stripe test account + Pro price | ☐ pending owner |
 | 10 | Environment variables set in Vercel | ☐ pending owner |
 | 11 | Optional: external per-minute scheduler for the job runner | ☐ optional |
+| 12 | Vercel Firewall rate-limit rule for sign-in and account requests (§2a) | ☐ pending owner |
 
 ## 1. Neon (Free)
 
@@ -91,6 +92,36 @@ Record the result in `docs/adr/0001-rls-withtenant.md`.
    - Leave `HOST_ROUTING_ENABLED`, `SITES_ROOT_DOMAIN` and `MEDIA_PUBLIC_BASE_URL` unset (post-V1).
 5. **Crons:** `vercel.json` declares one daily cron (`/api/internal/cron/daily`, 03:00 UTC; Hobby runs it within that hour). Hobby rejects anything more frequent at deploy time. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set.
 6. Previews are protected by Vercel Authentication by default. For automated tests against a preview, create a Protection Bypass for Automation secret (or use a Shareable Link).
+
+## 2a. Firewall: rate-limit sign-in and account requests
+
+Better Auth's own limiter is on in production (3 attempts per 10 s per address for sign-in, sign-up and password changes). It counts per function instance, so it slows one client down but is not a hard ceiling. The Vercel Firewall rule is the outer limit, and it has to be created in the project (it is not part of the repository).
+
+The account screens are forms that post to **their own path** as Server Actions, not to `/api/auth/*`. The rule must therefore cover both:
+
+| What | Method and path |
+|---|---|
+| Auth API | `POST /api/auth/…` |
+| Login, sign-up, verify, forgot and reset password | `POST /login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password` |
+| Account page (name, password, sessions) | `POST /account` |
+
+One rule with OR groups is enough. In the dashboard (Firewall → Rules → New rule), or with the CLI from the linked project:
+
+```sh
+vercel firewall rules add "Auth and account POSTs" \
+  --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"pre","value":"/api/auth/"}' \
+  --or --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"eq","value":"/login"}' \
+  --or --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"eq","value":"/signup"}' \
+  --or --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"eq","value":"/verify-email"}' \
+  --or --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"eq","value":"/forgot-password"}' \
+  --or --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"eq","value":"/reset-password"}' \
+  --or --condition '{"type":"method","op":"eq","value":"POST"}' --condition '{"type":"path","op":"eq","value":"/account"}' \
+  --action rate_limit --rate-limit-window 60 --rate-limit-requests 30 --rate-limit-keys ip --rate-limit-action deny
+```
+
+- 30 POSTs per minute per address is far above what a person does on these screens and far below what guessing needs.
+- Check the rule in the Firewall tab afterwards (`vercel firewall rules list --expand`), and how many rate-limit rules the plan allows before adding others.
+- To verify: 31 quick POSTs to `/login` from one address; the last is refused by the platform (HTTP 429) before it reaches the app.
 
 ## 3. DNS for `cms.forgelinetechnologies.com`
 

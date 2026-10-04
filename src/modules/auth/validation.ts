@@ -38,6 +38,16 @@ export const resetPasswordSchema = z.object({
   password: newPassword,
 });
 
+/** The account page (M2-4). The name is the only profile field a user can change in V1. */
+export const profileSchema = z.object({ name });
+export const changePasswordSchema = z.object({
+  /** Being checked, not chosen: only "is there one". */
+  currentPassword: z.string().min(1, "Enter your current password.").max(MAX_PASSWORD_LENGTH, "Your current password is incorrect."),
+  newPassword,
+});
+
+export type ProfileInput = z.infer<typeof profileSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

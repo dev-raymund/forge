@@ -441,14 +441,24 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Depends on:** M2-2, M1-5
 
+**Status:** ✔ done (2026-10-05), except the two items marked below. See the M2-4 addendum in ADR 0004.
+
 **Acceptance criteria:**
-- [ ] `/account`: name, avatar (upload via the storage driver), change password (revokes other sessions), list and revoke sessions
-- [ ] Vercel WAF rate-limit rule on `/api/auth/*`; Better Auth limiter enabled
-- [ ] Audit rows for login, logout, password change (org-less entries)
+- [x] `/account`: name, change password (revokes other sessions), list and revoke sessions
+- [ ] `/account`: avatar (upload via the storage driver) → **moved to M6-2.** An avatar has to be served from `/media/{key}`, which is M6's route, with M6's type checks. Nothing in M2-4 can show an uploaded image safely before that
+- [x] Better Auth limiter enabled (stated in the configuration, not left to the library default), and it covers the account actions
+- [ ] Vercel WAF rate-limit rule → **owner, at deployment.** It is created in the Vercel project, not in the repository; the exact rule is in runbook §2a and now also covers `POST /account`
+- [x] Audit rows for login, logout, password change (org-less entries)
+
+**Delivered beyond the criteria (clarifications, no scope change):**
+- Sessions are shown and ended by an opaque handle; no session id or token reaches the browser (`/api/app/session` no longer returns the id).
+- `/update-user` accepts the name only. It would otherwise accept any picture URL.
+- An account created with Google gets "email me a link" in place of the change-password form.
+- A minimal audit writer for platform events (`recordPlatformEvent`); `audit.record(tx, …)` is still M3-5.
 
 **Likely files/modules:** `src/app/(admin)/account/*`, `src/modules/auth/actions.ts`
 
-**Testing:** E2E revoke session in browser A → browser B is logged out on the next request.
+**Testing:** E2E revoke session in browser A → browser B is logged out on the next request. ✔ `tests/e2e/account.spec.ts` (6, several browser contexts and a second user), `tests/integration/auth-account.test.ts` (26), `tests/integration/auth-audit-failure.test.ts`.
 
 ---
 
@@ -532,6 +542,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:audit` `type:feature`
 
 **Description:** Transactional audit trail.
+
+*From M2-4: `modules/audit` already has `recordPlatformEvent()` for org-less account events (`auth.login`, `auth.logout`, `auth.password_changed`), written after Better Auth's own queries, so not in their transaction. Add `audit.record(tx, …)` for tenant mutations next to it. **No application role can read org-less rows**: the policy's `USING` clause needs an organization, and `FORCE ROW LEVEL SECURITY` applies it to the owner too. That is right for tenants; the staff console (M12-1) will need a definer function or a platform policy to read them. The integration tests read them as the owner with `FORCE` lifted inside a rolled-back transaction (`tests/integration/auth-account.test.ts`).*
 
 **Depends on:** M3-1
 
@@ -828,11 +840,14 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Synchronous variants and fast delivery.
 
+*From M2-4: the account avatar moved here. It is a user-level image (no organization): store it through `platformStorage()` under a user prefix (e.g. `u/{userId}/…`), run it through `processImage` (square thumb, metadata stripped), serve it from `/media/{key}`, and set `users.image` to that URL. `/update-user` currently accepts the name only (`EDITABLE_PROFILE_FIELDS` in `modules/auth/auth.ts`): set the image on the server from the upload, never from a URL the browser sends. The account page (`src/app/(admin)/account/page.tsx`) and `AccountMenu` show initials until then; a Google account may carry Google's picture URL in `users.image`, which is not displayed.*
+
 **Depends on:** M6-1
 
 **Acceptance criteria:**
 - [ ] `processImage(mediaId)` inside `completeUpload`: `sharp` with `limitInputPixels`, auto-rotate, metadata stripped; widths 400 (square thumb), 800, 1600, 2400 (≤ original) as WebP → `variants` JSONB
 - [ ] Route `maxDuration`/memory configured; p95 processing time logged
+- [ ] Account avatar on `/account`: upload via the storage driver, processed and served like other media *(moved from M2-4)*
 - [ ] V1 delivery at `/media/{key}` (ADR 0006): a route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types (never HTML/JS/SVG); unknown keys → 404. A CDN domain is post-V1 via `MEDIA_PUBLIC_BASE_URL`
 - [ ] A `<ResponsiveImage>` kit component produces `srcset`/`sizes`/`width`/`height`
 

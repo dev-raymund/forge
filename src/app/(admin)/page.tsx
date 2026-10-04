@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { AccountMenu, requireUserOrLogin, VerifyEmailBanner } from "@/modules/auth";
+import { AppHeader } from "@/components/admin/app-header";
+import { requireUserOrLogin, VerifyEmailBanner } from "@/modules/auth";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -22,12 +23,7 @@ async function SignedInHome() {
   const user = await requireUserOrLogin("/");
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-          <p className="text-lg font-semibold tracking-tight">Forge</p>
-          <AccountMenu name={user.name} email={user.email} />
-        </div>
-      </header>
+      <AppHeader user={user} />
       {user.emailVerified ? null : <VerifyEmailBanner />}
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-balance">Welcome, {user.name}</h1>

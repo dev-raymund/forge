@@ -4,9 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 // The forms import their Server Actions; rendering needs only their identity.
 vi.mock("../actions", () => ({
   signInAction: vi.fn(), signUpAction: vi.fn(), signOutAction: vi.fn(), resendVerificationAction: vi.fn(), signInWithGoogleAction: vi.fn(),
-  requestPasswordResetAction: vi.fn(), resetPasswordAction: vi.fn(),
+  requestPasswordResetAction: vi.fn(), resetPasswordAction: vi.fn(), updateProfileAction: vi.fn(), changePasswordAction: vi.fn(),
+  sendSetPasswordLinkAction: vi.fn(), revokeSessionAction: vi.fn(), revokeOtherSessionsAction: vi.fn(),
 }));
 
+import { ChangePasswordForm, ProfileForm, SessionList, SetPasswordPrompt, type SessionRow } from "./account-forms";
+import { AccountSection, EmailStatus, SignInMethodList } from "./account-section";
 import { AuthCard } from "./auth-card";
 import { ForgotPasswordForm } from "./forgot-password-form";
 import { Field, FormAlert, PasswordField, SubmitButton } from "./form";
@@ -268,6 +271,120 @@ describe("verify-email screen", () => {
     const out = html(<VerifyEmailPanel view={{ kind: "anonymous" }} />);
     expect(state(out)).toBe("anonymous");
     expect(out).toContain("next=%2Fverify-email");
+  });
+});
+
+describe("account page (M2-4)", () => {
+  const session = (over: Partial<SessionRow>): SessionRow => ({
+    handle: "h".repeat(32), current: false, device: "Chrome on macOS", ipAddress: "203.0.113.7",
+    signedInAt: "2026-10-01T23:30:00.000Z", lastActiveAt: "2026-10-04T00:10:00.000Z", ...over,
+  });
+  const three = [
+    session({ handle: "a".repeat(32), current: true }),
+    session({ handle: "b".repeat(32), device: "Safari on iOS", ipAddress: "203.0.113.20" }),
+    session({ handle: "c".repeat(32), device: "Firefox on Windows", ipAddress: null }),
+  ];
+  const rows = (out: string) => out.match(/<li[^>]*data-testid="session"[\s\S]*?<\/li>/g) ?? [];
+
+  it("the profile form edits the name only", () => {
+    const out = html(<ProfileForm name="Ada Lovelace" />);
+    expect(out.match(/<input/g)).toHaveLength(1);
+    const input = tag(out, /<input[^>]*name="name"[^>]*>/);
+    expect(attr(input, "value")).toBe("Ada Lovelace");
+    expect(attr(input, "autoComplete") ?? attr(input, "autocomplete")).toBe("name");
+    expect(out).not.toContain('name="email"');
+    expect(out).not.toContain('type="file"');
+  });
+
+  it("the address is shown, not editable, with its verification state in words", () => {
+    const unverified = html(<EmailStatus email="ada@example.test" verified={false} />);
+    expect(unverified).not.toContain("<input");
+    expect(unverified).toContain("ada@example.test");
+    expect(unverified).toContain("Not verified");
+    expect(unverified).toContain('href="/verify-email"');
+    const verified = html(<EmailStatus email="ada@example.test" verified />);
+    expect(verified).toContain("Verified");
+    expect(verified).not.toContain("Not verified");
+    expect(verified).not.toContain('href="/verify-email"');
+  });
+
+  it("sign-in methods are a read-only list", () => {
+    const out = html(<SignInMethodList password google={false} />);
+    expect(out).toMatch(/Password<\/span><span[^>]*>Set</);
+    expect(out).toMatch(/Google<\/span><span[^>]*>Not connected</);
+    expect(out).not.toMatch(/<button|<form|<a /);
+    expect(html(<SignInMethodList password={false} google />)).toMatch(/Password<\/span><span[^>]*>Not set<[\s\S]*Google<\/span><span[^>]*>Connected</);
+  });
+
+  it("changing the password asks for the current one, states the rule, and says what else happens", () => {
+    const out = html(<ChangePasswordForm email="ada@example.test" />);
+    const current = tag(out, /<input[^>]*name="currentPassword"[^>]*>/);
+    const next = tag(out, /<input[^>]*name="newPassword"[^>]*>/);
+    expect(attr(current, "type")).toBe("password");
+    expect(attr(current, "autoComplete") ?? attr(current, "autocomplete")).toBe("current-password");
+    expect(attr(next, "autoComplete") ?? attr(next, "autocomplete")).toBe("new-password");
+    expect(out).toContain("At least 12 characters.");
+    expect(out).toContain("Changing your password logs out your other sessions.");
+    // For password managers only: hidden, and never a password.
+    const username = tag(out, /<input[^>]*name="username"[^>]*>/);
+    expect(username).toContain("hidden");
+    expect(attr(username, "value")).toBe("ada@example.test");
+    expect(current).not.toContain("value=");
+    expect(next).not.toContain("value=");
+  });
+
+  it("an account without a password is offered a link by email instead of a form it cannot use", () => {
+    const out = html(<SetPasswordPrompt />);
+    expect(out).toContain("has no password");
+    expect(out).toContain("Email me a link");
+    expect(out).not.toContain('type="password"');
+  });
+
+  it("lists each session with what a person needs to recognise it, and marks this device", () => {
+    const out = html(<SessionList sessions={three} />);
+    const items = rows(out);
+    expect(items).toHaveLength(3);
+    expect(items[0]).toContain("This device");
+    expect(items[0]).toContain("Chrome on macOS");
+    // The server renders the UTC day inside <time>; the browser replaces it with the viewer's own day.
+    expect(items[0]).toMatch(/Signed in <time dateTime="2026-10-01T23:30:00.000Z">Oct 1, 2026<\/time>/i);
+    expect(items[0]).toMatch(/Last active <time dateTime="2026-10-04T00:10:00.000Z">Oct 4, 2026<\/time>/i);
+    expect(items[0]).toContain("IP address 203.0.113.7");
+    expect(items[1]).not.toContain("This device");
+    expect(items[2]).not.toContain("IP address"); // unknown: omitted, not invented
+  });
+
+  it("this device has no button; every other session has its own, named so they can be told apart", () => {
+    const out = html(<SessionList sessions={three} />);
+    const items = rows(out);
+    expect(items[0]).not.toContain("<button");
+    const second = tag(items[1]!, /<button[^>]*>/);
+    expect(attr(second, "type")).toBe("submit");
+    expect(attr(second, "name")).toBe("session");
+    expect(attr(second, "value")).toBe("b".repeat(32));
+    expect(attr(second, "aria-label")).toBe("Log out the session on Safari on iOS, signed in Oct 1, 2026");
+    expect(attr(tag(items[2]!, /<button[^>]*>/), "value")).toBe("c".repeat(32));
+    expect(out).toContain("Log out all other sessions");
+  });
+
+  it("with one session there is nothing to end", () => {
+    const out = html(<SessionList sessions={[three[0]!]} />);
+    expect(out).not.toContain("<button");
+    expect(out).toContain("This is your only active session.");
+  });
+
+  it("carries only the opaque handle to the browser", () => {
+    const out = html(<SessionList sessions={three} />);
+    expect(out).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/); // no UUIDs: no session or user ids
+    expect(out).not.toContain("Mozilla/");
+  });
+
+  it("each block of the page is a labelled region with an h2", () => {
+    const out = html(<AccountSection title="Sessions" description="Where your account is logged in.">body</AccountSection>);
+    const section = tag(out, /<section[^>]*>/);
+    const heading = tag(out, /<h2[^>]*>/);
+    expect(attr(section, "aria-labelledby")).toBe(attr(heading, "id"));
+    expect(out).toContain(">Sessions</h2>");
   });
 });
 

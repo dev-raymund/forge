@@ -1,10 +1,12 @@
 import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { captcha } from "better-auth/plugins";
+import { eq } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
+import { recordPlatformEvent } from "@/modules/audit";
 import { ConfigError } from "@/platform/config/env";
 import { identityDb } from "@/platform/db/identity";
 import { sendEmailSoon } from "@/platform/email";
@@ -35,20 +37,66 @@ export const AUTH_BASE_PATH = "/api/auth";
 /** Sent by our own sign-up form; checked by the captcha plugin when Turnstile is configured. */
 export const CAPTCHA_HEADER = "x-captcha-response";
 
+type EndpointContext = { path?: string; headers?: Headers; params?: Record<string, unknown> } | null | undefined;
+
+/** The request id the proxy assigned and the client address, for audit rows. */
+function requestFacts(ctx: EndpointContext) {
+  const headers = ctx?.headers;
+  return {
+    requestId: headers ? requestIdFrom(headers) : undefined,
+    ip: headers?.get("x-forwarded-for")?.split(",")[0]?.trim().slice(0, 64) || undefined,
+  };
+}
+
 /**
- * Queues the "your password was changed" notice (ADR 0007: a job, sent after
- * the response). Better Auth has already stored the new password when this
- * runs, in its own queries, so the notice cannot share a transaction with it.
- * A failure to queue is reported and swallowed: it must never fail the change
- * or stop the sessions from being revoked.
+ * Account events for the audit trail (M2-4): org-less rows in `audit_logs`.
+ * Better Auth has already done the thing when this runs, in its own queries, so
+ * the row cannot share its transaction. A failure to write it is reported and
+ * swallowed: an audit problem must not lock people out or leave them signed in.
  */
-async function notifyPasswordChanged(userId: string, origin: string) {
+async function audit(action: string, userId: string, ctx: EndpointContext, metadata: Record<string, unknown> = {}) {
+  try {
+    const [user] = await identityDb().select({ email: users.email }).from(users).where(eq(users.id, userId));
+    await recordPlatformEvent({ action, userId, userLabel: user?.email, ...requestFacts(ctx), metadata });
+  } catch (error) {
+    reportError(error, { module: "auth" }, { operation: `audit ${action}` });
+  }
+}
+
+/** How a new session came about, from the endpoint that created it. `null`: not a login. */
+function loginMethod(ctx: EndpointContext): string | null {
+  switch (ctx?.path) {
+    case "/sign-in/email":
+      return "password";
+    case "/sign-up/email":
+      return "sign-up";
+    case "/callback/:id": // the OAuth callback; `:id` is the provider
+      return typeof ctx.params?.id === "string" ? ctx.params.id : "oauth";
+    case "/sign-in/social":
+      return "google-id-token";
+    case "/change-password":
+      return null; // the same person, on a fresh session after changing the password
+    default:
+      return "other";
+  }
+}
+
+/**
+ * After a password change, by reset link or while signed in: the audit row and
+ * the "your password was changed" notice (ADR 0007: a job, sent after the
+ * response). Neither can fail the change or stop the sessions from being revoked.
+ */
+async function afterPasswordChanged(userId: string, via: "reset" | "change", origin: string, ctx: EndpointContext) {
+  await audit("auth.password_changed", userId, ctx, { via });
   try {
     await sendEmailSoon({ template: "password-changed", userId, url: `${origin}/forgot-password`, changedAt: new Date().toISOString() });
   } catch (error) {
     reportError(error, { module: "auth" }, { operation: "password-changed notice" });
   }
 }
+
+/** The only profile field a user can change in V1 (the avatar arrives with the media pipeline, M6). */
+const EDITABLE_PROFILE_FIELDS = ["name"];
 
 export function createAuth(config: AuthConfig) {
   const origin = new URL(config.baseURL).origin;
@@ -96,15 +144,23 @@ export function createAuth(config: AuthConfig) {
         await sendEmailSoon({ template: "reset-password", userId: user.id, url, expiresInMinutes: RESET_TOKEN_MINUTES });
       },
       // Runs once the new password is stored, before the user's sessions are revoked.
-      onPasswordReset: async ({ user }) => notifyPasswordChanged(user.id, origin),
+      onPasswordReset: async ({ user }, request) => afterPasswordChanged(user.id, "reset", origin, { headers: request?.headers }),
     },
 
     hooks: {
-      // The same notice for a password changed while signed in (`/change-password`; its screen is M2-4).
+      before: createAuthMiddleware(async (ctx) => {
+        // `/update-user` would also accept `image` (any URL) and other fields. V1 lets a user change the name only.
+        if (ctx.path !== "/update-user") return;
+        const fields = ctx.body && typeof ctx.body === "object" ? Object.keys(ctx.body as object) : [];
+        if (fields.some((field) => !EDITABLE_PROFILE_FIELDS.includes(field))) {
+          throw new APIError("BAD_REQUEST", { code: "FIELD_NOT_EDITABLE", message: "Only the name can be changed" });
+        }
+      }),
+      // A password changed while signed in (`/change-password`, the account page).
       after: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== "/change-password" || isAPIError(ctx.context.returned)) return;
         const userId = ctx.context.session?.user.id;
-        if (userId) await notifyPasswordChanged(userId, origin);
+        if (userId) await afterPasswordChanged(userId, "change", origin, ctx);
       }),
     },
 
@@ -145,6 +201,19 @@ export function createAuth(config: AuthConfig) {
         },
       },
       session: {
+        create: {
+          // Every way of signing in ends here: one place for the audit row.
+          after: async (session, ctx) => {
+            const method = loginMethod(ctx);
+            if (method) await audit("auth.login", session.userId, ctx, { method });
+          },
+        },
+        delete: {
+          // Logging out. Sessions ended from the account page, or by a reset, are not logouts.
+          after: async (session, ctx) => {
+            if (ctx?.path === "/sign-out") await audit("auth.logout", session.userId, ctx);
+          },
+        },
         update: {
           // Better Auth has no absolute session lifetime. When a session slides
           // forward, cap it at created_at + 30 days. resolveAuth() enforces the
@@ -159,8 +228,11 @@ export function createAuth(config: AuthConfig) {
       },
     },
 
-    // Better Auth's default is on in production only; tests turn it on to prove the forms are limited.
-    ...(config.rateLimit === undefined ? {} : { rateLimit: { enabled: config.rateLimit } }),
+    // Per client address: 3 per 10 s for sign-in, sign-up and password changes, 3 per minute for
+    // reset and verification emails, 100 per 10 s otherwise. On in production (stated here, not left
+    // to the library's default); tests turn it on to prove the forms are limited. Counts are kept
+    // per instance, so the WAF rule in the runbook is the outer limit (ADR 0004).
+    rateLimit: { enabled: config.rateLimit ?? process.env.NODE_ENV === "production" },
 
     plugins: [
       // Turnstile on sign-up (plan §12). Enforced here, in front of the endpoint,

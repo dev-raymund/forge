@@ -9,7 +9,8 @@ import { requestIdFrom } from "@/platform/observability";
 export async function GET(request: Request) {
   try {
     const { user, session } = await requireAuth();
-    return Response.json({ user, session: { id: session.id, expiresAt: session.expiresAt } }, { headers: { "cache-control": "no-store" } });
+    // No session id: nothing that identifies a session inside Forge leaves the server (M2-4).
+    return Response.json({ user, session: { expiresAt: session.expiresAt } }, { headers: { "cache-control": "no-store" } });
   } catch (err) {
     return problemResponse(err, requestIdFrom(request.headers));
   }

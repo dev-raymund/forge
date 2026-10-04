@@ -5,7 +5,7 @@ import "server-only";
  * never Better Auth itself (D-07).
  */
 export {
-  getCurrentAuth, getCurrentUser, getCurrentActor, requireAuth, requireUser, requireVerifiedUser, requireUserOrLogin,
+  getCurrentAuth, getCurrentUser, getCurrentActor, requireAuth, requireUser, requireVerifiedUser, requireUserOrLogin, requireAuthOrLogin, redirectIfSignedIn,
   assertAuthenticated, assertVerified, toActor, resolveAuth,
 } from "./session";
 export { authRouteHandlers, RESET_TOKEN_MINUTES } from "./auth";
@@ -27,3 +27,12 @@ export { verifyEmailView } from "./verify-email-view";
 export type { VerifyEmailView } from "./verify-email-view";
 export { AccountMenu } from "./ui/account-menu";
 export { VerifyEmailBanner } from "./ui/verify-email-banner";
+
+// The account page (M2-4).
+export { listSessions } from "./sessions.service";
+export type { SessionSummary } from "./sessions.service";
+export { signInMethods } from "./account.service";
+export type { SignInMethods } from "./account.service";
+export { AccountSection, EmailStatus, SignInMethodList } from "./ui/account-section";
+export { ChangePasswordForm, ProfileForm, SessionList, SetPasswordPrompt } from "./ui/account-forms";
+export type { SessionRow } from "./ui/account-forms";
