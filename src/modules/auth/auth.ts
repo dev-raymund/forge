@@ -1,6 +1,7 @@
 import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createAuthMiddleware, isAPIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { captcha } from "better-auth/plugins";
 import { uuidv7 } from "uuidv7";
@@ -11,6 +12,7 @@ import { problemResponse, unavailable } from "@/platform/errors";
 import { reportError, requestIdFrom } from "@/platform/observability";
 import { authConfig, type AuthConfig } from "./config";
 import { betterAuthLog } from "./log";
+import { ACCOUNT_LINKING } from "./oauth";
 import { authAccounts, authSessions, authVerifications, users } from "./schema";
 import { SESSION_IDLE_SECONDS } from "./cookie";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./validation";
@@ -33,13 +35,31 @@ export const AUTH_BASE_PATH = "/api/auth";
 /** Sent by our own sign-up form; checked by the captcha plugin when Turnstile is configured. */
 export const CAPTCHA_HEADER = "x-captcha-response";
 
+/**
+ * Queues the "your password was changed" notice (ADR 0007: a job, sent after
+ * the response). Better Auth has already stored the new password when this
+ * runs, in its own queries, so the notice cannot share a transaction with it.
+ * A failure to queue is reported and swallowed: it must never fail the change
+ * or stop the sessions from being revoked.
+ */
+async function notifyPasswordChanged(userId: string, origin: string) {
+  try {
+    await sendEmailSoon({ template: "password-changed", userId, url: `${origin}/forgot-password`, changedAt: new Date().toISOString() });
+  } catch (error) {
+    reportError(error, { module: "auth" }, { operation: "password-changed notice" });
+  }
+}
+
 export function createAuth(config: AuthConfig) {
+  const origin = new URL(config.baseURL).origin;
   return betterAuth({
     baseURL: config.baseURL,
     basePath: AUTH_BASE_PATH,
     secret: config.secret,
     // CSRF: state-changing requests and every callback/redirect URL must be on this origin.
-    trustedOrigins: [new URL(config.baseURL).origin],
+    trustedOrigins: [origin],
+    // OAuth failures land on our login page with `?error=<code>`, never on Better Auth's own error page.
+    onAPIError: { errorURL: "/login" },
     telemetry: { enabled: false },
     logger: { disableColors: true, log: betterAuthLog },
 
@@ -75,6 +95,17 @@ export function createAuth(config: AuthConfig) {
       sendResetPassword: async ({ user, url }) => {
         await sendEmailSoon({ template: "reset-password", userId: user.id, url, expiresInMinutes: RESET_TOKEN_MINUTES });
       },
+      // Runs once the new password is stored, before the user's sessions are revoked.
+      onPasswordReset: async ({ user }) => notifyPasswordChanged(user.id, origin),
+    },
+
+    hooks: {
+      // The same notice for a password changed while signed in (`/change-password`; its screen is M2-4).
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/change-password" || isAPIError(ctx.context.returned)) return;
+        const userId = ctx.context.session?.user.id;
+        if (userId) await notifyPasswordChanged(userId, origin);
+      }),
     },
 
     emailVerification: {
@@ -84,12 +115,17 @@ export function createAuth(config: AuthConfig) {
       },
     },
 
-    socialProviders: config.google ? { google: config.google } : {},
+    // Authorization-code flow with PKCE, default scopes (openid, email, profile).
+    // `select_account`: Google always asks which account, so a shared computer
+    // doesn't sign the next person in as the previous one.
+    socialProviders: config.google ? { google: { ...config.google, prompt: "select_account" } } : {},
     account: {
-      // Google is linked to an existing user only when Google asserts a verified
-      // email AND the local user has verified the same address (Better Auth's
-      // default). No trustedProviders: an unverified claim never links.
-      accountLinking: { enabled: true },
+      // Plan §12 and ./oauth.ts: link only when both sides have verified the same address.
+      accountLinking: ACCOUNT_LINKING,
+      // Forge never calls Google's APIs after sign-in, so it keeps none of Google's
+      // tokens: nothing is written on sign-in, and nothing is stored when the
+      // identity is first recorded (databaseHooks below).
+      updateAccountOnSignIn: false,
     },
 
     session: {
@@ -99,6 +135,15 @@ export function createAuth(config: AuthConfig) {
     },
 
     databaseHooks: {
+      account: {
+        create: {
+          // A stored ID token could be replayed to `/sign-in/social` for as long as
+          // Google considers it fresh. Keep the identity (provider + subject), drop the tokens.
+          before: async (account) => ({
+            data: { ...account, accessToken: null, refreshToken: null, idToken: null, accessTokenExpiresAt: null, refreshTokenExpiresAt: null },
+          }),
+        },
+      },
       session: {
         update: {
           // Better Auth has no absolute session lifetime. When a session slides

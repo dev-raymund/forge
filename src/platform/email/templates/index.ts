@@ -1,6 +1,7 @@
 import { render } from "@react-email/render";
 import { createElement, type FunctionComponent } from "react";
 import { OrganizationInvitation, organizationInvitationSubject, type OrganizationInvitationProps } from "./organization-invitation";
+import { PasswordChanged, passwordChangedSubject, type PasswordChangedProps } from "./password-changed";
 import { PaymentFailed, paymentFailedSubject, type PaymentFailedProps } from "./payment-failed";
 import { ResetPassword, resetPasswordSubject, type ResetPasswordProps } from "./reset-password";
 import { TrialEnding, trialEndingSubject, type TrialEndingProps } from "./trial-ending";
@@ -10,6 +11,7 @@ import { VerifyEmail, verifyEmailSubject, type VerifyEmailProps } from "./verify
 export type TemplateProps = {
   "verify-email": VerifyEmailProps;
   "reset-password": ResetPasswordProps;
+  "password-changed": PasswordChangedProps;
   "organization-invitation": OrganizationInvitationProps;
   "trial-ending": TrialEndingProps;
   "payment-failed": PaymentFailedProps;
@@ -19,6 +21,7 @@ export type TemplateName = keyof TemplateProps;
 const TEMPLATES: { [K in TemplateName]: { component: FunctionComponent<TemplateProps[K]>; subject: (p: TemplateProps[K]) => string } } = {
   "verify-email": { component: VerifyEmail, subject: verifyEmailSubject },
   "reset-password": { component: ResetPassword, subject: resetPasswordSubject },
+  "password-changed": { component: PasswordChanged, subject: passwordChangedSubject },
   "organization-invitation": { component: OrganizationInvitation, subject: organizationInvitationSubject },
   "trial-ending": { component: TrialEnding, subject: trialEndingSubject },
   "payment-failed": { component: PaymentFailed, subject: paymentFailedSubject },

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ConfigError, resetEnvCache } from "@/platform/config/env";
-import { authConfig, DEVELOPMENT_AUTH_SECRET, turnstileSiteKey } from "./config";
+import { authConfig, DEVELOPMENT_AUTH_SECRET, googleSignInEnabled, turnstileSiteKey } from "./config";
 
 const SECRET = "0123456789abcdef0123456789abcdef-production";
 const local = { APP_ORIGIN: "http://localhost:3000" };
@@ -37,6 +37,19 @@ describe("authConfig", () => {
     expect(authConfig(both).google).toEqual({ clientId: "id", clientSecret: "secret" });
     expect(() => authConfig({ ...local, GOOGLE_CLIENT_ID: "id" })).toThrow(/GOOGLE_CLIENT_SECRET/);
     expect(() => authConfig({ ...local, GOOGLE_CLIENT_SECRET: "secret" })).toThrow(/GOOGLE_CLIENT_ID/);
+  });
+
+  it("googleSignInEnabled: true only with both credentials; empty values count as unset", () => {
+    expect(googleSignInEnabled(local)).toBe(false);
+    expect(googleSignInEnabled({ ...local, GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "" })).toBe(false);
+    expect(googleSignInEnabled({ ...local, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" })).toBe(true);
+    // One without the other is a configuration error, not "half on".
+    expect(() => googleSignInEnabled({ ...local, GOOGLE_CLIENT_ID: "id" })).toThrow(/GOOGLE_CLIENT_SECRET/);
+    expect(() => googleSignInEnabled({ ...local, GOOGLE_CLIENT_SECRET: "secret" })).toThrow(/GOOGLE_CLIENT_ID/);
+    // It agrees with what Better Auth is configured with.
+    for (const source of [local, { ...local, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" }]) {
+      expect(googleSignInEnabled(source)).toBe(authConfig(source).google !== undefined);
+    }
   });
 
   it("Turnstile: off without keys (local, previews); on with both; required on Vercel production", () => {

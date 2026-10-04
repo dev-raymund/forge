@@ -28,6 +28,8 @@ let A: Graph;
 let B: Graph;
 
 beforeAll(async () => {
+  // These tests count the jobs a run processes: start from an empty email queue.
+  await withPlatform((tx) => tx.delete(jobs).where(eq(jobs.type, "email.send")));
   setEmailProviderForTests(capture);
   setLogSink((_level, line) => logs.push(line));
   [A, B] = await Promise.all([createTenantGraph(), createTenantGraph()]);

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAuth, setAuthForTests } from "@/modules/auth/auth";
@@ -13,9 +13,11 @@ import { resetEnvCache } from "@/platform/config/env";
 import { withPlatform } from "@/platform/db/tenant";
 import { emailSend } from "@/platform/email";
 import { setEmailProviderForTests } from "@/platform/email/get-provider";
+import { EmailProviderError } from "@/platform/email/provider";
 import { CaptureEmailProvider } from "@/platform/email/providers/capture";
 import { isAppError } from "@/platform/errors";
 import { createJobRegistry, runJobs } from "@/platform/jobs";
+import { jobs } from "@/platform/jobs/schema";
 import { setLogSink } from "@/platform/observability/logger";
 import { safeNextPath } from "@/platform/routing/admin-access";
 
@@ -41,7 +43,9 @@ beforeAll(() => {
   setEmailProviderForTests(capture);
   setLogSink((_level, line) => logs.push(line));
 });
-afterAll(() => {
+afterAll(async () => {
+  // Leave the worker's queue as we found it: other suites count the jobs they run.
+  await withPlatform((tx) => tx.delete(jobs).where(eq(jobs.type, "email.send")));
   setAuthForTests(null);
   setEmailProviderForTests(null);
   setLogSink(null);
@@ -321,6 +325,133 @@ describe("password reset", () => {
       tx.select({ password: authAccounts.password }).from(authAccounts).innerJoin(users, eq(users.id, authAccounts.userId)).where(eq(users.email, email)),
     );
     expect(account!.password).not.toContain(NEW_PASSWORD);
+  });
+});
+
+describe("the password-changed notice (M2-3)", () => {
+  const resetToken = async (email: string) => {
+    const link = linkIn(capture.messages.find((m) => m.to === email && m.tags?.template === "reset-password")!.text);
+    const response = await auth.handler(new Request(link));
+    return new URL(response.headers.get("location")!, BASE).searchParams.get("token")!;
+  };
+  /** An account with a reset requested and its token in hand; the inbox is empty again. */
+  async function readyToReset() {
+    const account = await newAccount();
+    await deliver(); // the verification email
+    capture.clear();
+    await requestPasswordReset({ email: account.email }, browser());
+    await deliver();
+    const token = await resetToken(account.email);
+    capture.clear();
+    return { ...account, token };
+  }
+  const notices = () => capture.messages.filter((m) => m.tags?.template === "password-changed");
+  const noticeJobs = (userId: string) =>
+    identity((tx) =>
+      tx.select().from(jobs).where(and(eq(jobs.type, "email.send"), sql`${jobs.payload}->>'template' = 'password-changed'`, sql`${jobs.payload}->>'userId' = ${userId}`)),
+    );
+  const userId = async (email: string) => (await identity((tx) => tx.select({ id: users.id }).from(users).where(eq(users.email, email))))[0]!.id;
+
+  it("a successful reset queues the notice, and it is delivered to the account's own address", async () => {
+    const { email, token } = await readyToReset();
+    const before = Date.now();
+    await resetPassword({ token, password: NEW_PASSWORD }, browser());
+
+    expect(notices()).toEqual([]); // queued by the reset, sent by the job
+    const [job] = await noticeJobs(await userId(email));
+    expect(job).toMatchObject({ status: "queued" });
+    await deliver();
+
+    expect(notices()).toHaveLength(1);
+    const mail = notices()[0]!;
+    expect(mail.to).toBe(email);
+    expect(mail.subject).toBe("Your Forge password was changed");
+    expect(mail.text).toContain(`The password for the Forge account ${email} was changed on`);
+    expect(mail.text).toContain(`${BASE}/forgot-password`);
+    const changedAt = Date.parse((job!.payload as { changedAt: string }).changedAt);
+    expect(changedAt).toBeGreaterThanOrEqual(before - 1000);
+    expect(changedAt).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  it("says nothing secret: no token, no password, no link other than the app's reset page", async () => {
+    const { token } = await readyToReset();
+    await resetPassword({ token, password: NEW_PASSWORD }, browser());
+    await deliver();
+    const mail = notices()[0]!;
+    for (const part of [mail.html, mail.text, mail.subject]) {
+      for (const secret of [token, PASSWORD, NEW_PASSWORD]) expect(part).not.toContain(secret);
+      expect(part).not.toMatch(/token=|reset-password\//);
+    }
+    const links = [...mail.html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(links)).toEqual(new Set([`${BASE}/forgot-password`]));
+  });
+
+  it("a reset that fails sends no notice", async () => {
+    const { email, token } = await readyToReset();
+    await failureOf(() => resetPassword({ token: "not-the-token", password: NEW_PASSWORD }, browser()));
+    await failureOf(() => resetPassword({ token, password: "short" }, browser()));
+    await deliver();
+    expect(notices()).toEqual([]);
+    expect(await noticeJobs(await userId(email))).toEqual([]);
+  });
+
+  it("delivery failing does not fail or undo the password change; the notice is retried and arrives once", async () => {
+    const { email, request, token } = await readyToReset();
+    capture.failNext(new EmailProviderError("provider is down", true, 503));
+
+    await expect(resetPassword({ token, password: NEW_PASSWORD }, browser())).resolves.toBeUndefined();
+    await deliver(); // the provider refuses this attempt
+    expect(notices()).toEqual([]);
+
+    // The change stands regardless: new password works, old sessions are gone.
+    await expect(signIn({ email, password: NEW_PASSWORD }, browser())).resolves.toBeDefined();
+    expect(await whoIs(request)).toBeNull();
+    const [job] = await noticeJobs(await userId(email));
+    expect(job).toMatchObject({ status: "queued", attempts: 1 });
+
+    // Later the runner tries again.
+    await runJobs({ registry, budgetMs: 20_000, now: () => new Date(Date.now() + 2 * 3600 * 1000) });
+    expect(notices().map((m) => m.to)).toEqual([email]);
+  });
+
+  it("failing to even queue the notice is reported, and the reset still completes and revokes every session", async () => {
+    const { email, request, token } = await readyToReset();
+    const saved = process.env.APP_ORIGIN;
+    process.env.APP_ORIGIN = "https://somewhere-else.example"; // the notice's link no longer matches the app origin
+    resetEnvCache();
+    try {
+      await expect(resetPassword({ token, password: NEW_PASSWORD }, browser())).resolves.toBeUndefined();
+    } finally {
+      process.env.APP_ORIGIN = saved;
+      resetEnvCache();
+    }
+    expect(await noticeJobs(await userId(email))).toEqual([]); // nothing was queued
+    expect(logs.join("\n")).toContain("password-changed notice"); // …and that was reported
+    expect(await whoIs(request)).toBeNull();
+    await expect(signIn({ email, password: NEW_PASSWORD }, browser())).resolves.toBeDefined();
+  });
+
+  it("a password changed while signed in sends the same notice; a wrong current password sends none", async () => {
+    const { email, setCookies } = await newAccount();
+    await deliver();
+    capture.clear();
+    const change = (currentPassword: string) =>
+      auth.handler(
+        new Request(`${BASE}/api/auth/change-password`, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: BASE, cookie: cookieHeader(setCookies) },
+          body: JSON.stringify({ currentPassword, newPassword: NEW_PASSWORD, revokeOtherSessions: true }),
+        }),
+      );
+
+    expect((await change("not my current password")).status).toBe(400);
+    await deliver();
+    expect(notices()).toEqual([]);
+
+    expect((await change(PASSWORD)).status).toBe(200);
+    await deliver();
+    expect(notices().map((m) => m.to)).toEqual([email]);
+    await expect(signIn({ email, password: NEW_PASSWORD }, browser())).resolves.toBeDefined();
   });
 });
 

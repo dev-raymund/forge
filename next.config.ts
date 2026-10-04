@@ -27,6 +27,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // `next dev` would otherwise write AGENTS.md and CLAUDE.md into the repository
+  // root whenever it detects an AI coding agent. Those are not part of this project.
+  agentRules: false,
   // D-27: Cache Components is the caching model for the site renderer.
   cacheComponents: true,
   // The `cms` profile (ADR 0002); mirrored as CMS_CACHE_LIFE in src/platform/cache.

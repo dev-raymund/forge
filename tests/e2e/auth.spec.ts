@@ -328,6 +328,16 @@ test("password reset by email: forgot → email → new password → log in", as
   await expect(reset).toHaveURL(`${baseURL}/login?reason=password-reset`);
   await expect(notice(reset)).toHaveText("Your password has been changed. Log in with your new password.");
 
+  // The account's address is told about the change (M2-3): a notice, with no token and no password in it.
+  const changed = await waitForEmail(email, { subject: "Your Forge password was changed" });
+  expect(changed.From.Address).toMatch(/^no-reply@/);
+  expect(changed.To.map((t) => t.Address)).toEqual([email]);
+  expect(changed.Text).toContain(`The password for the Forge account ${email} was changed on`);
+  expect(changed.Text).toContain(`${baseURL}/forgot-password`);
+  const token = new URL(link).pathname.split("/").pop()!;
+  for (const secret of [token, NEW_PASSWORD, PASSWORD]) expect(changed.Text + changed.HTML).not.toContain(secret);
+  expect(changed.Text + changed.HTML).not.toMatch(/token=/);
+
   // The session from before the reset is revoked.
   await page.goto("/");
   await expect(page).toHaveURL(`${baseURL}/login?reason=session`);
@@ -388,14 +398,22 @@ test("requests from another origin can't use the session; redirects stay on the 
 });
 
 test("endpoints V1 doesn't use are not exposed, and Google is off without credentials", async ({ page }) => {
+  // This server has no Google credentials (google.spec.ts covers the configured side): no button, no divider.
+  if (!process.env.E2E_BASE_URL) {
+    for (const path of ["/login", "/signup"]) {
+      await page.goto(path);
+      await expect(page.getByRole("button", { name: path === "/login" ? "Log in" : "Create account" })).toBeVisible();
+      await expect(page.getByText(/Google/)).toHaveCount(0);
+      await expect(page.getByRole("separator")).toHaveCount(0);
+    }
+  }
+
   await signUp(page, newEmail());
   for (const path of ["/api/auth/change-email", "/api/auth/delete-user", "/api/auth/link-social", "/api/auth/unlink-account"]) {
     expect((await browserPost(page, path, {})).status, path).toBe(404);
   }
-  test.skip(!!process.env.GOOGLE_CLIENT_ID, "Google is configured in this environment");
+  test.skip(!!process.env.E2E_BASE_URL, "a deployment may have Google configured");
   expect((await browserPost(page, "/api/auth/sign-in/social", { provider: "google", callbackURL: "/" })).status).toBe(404);
-  await page.goto("/login");
-  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
 });
 
 test("public site pages on the same host neither see nor set the session", async ({ page }) => {

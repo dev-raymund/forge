@@ -1,8 +1,10 @@
 import "server-only";
 import { AppError } from "@/platform/errors";
+import { loginPath, safeNextPath } from "@/platform/routing/admin-access";
 import { CAPTCHA_HEADER } from "./auth";
 import { authFailureToAppError } from "./errors";
 import { callAuth, type AuthResponse } from "./gateway";
+import { isGoogleAuthorizeUrl } from "./oauth";
 import type { AuthUser } from "./shared";
 import type { ForgotPasswordInput, ResetPasswordInput, SignInInput, SignUpInput } from "./validation";
 
@@ -93,4 +95,27 @@ export async function requestPasswordReset(input: ForgotPasswordInput, request: 
 export async function resetPassword(input: ResetPasswordInput, request: AuthRequest): Promise<void> {
   const response = await callAuth("/reset-password", request.headers, { token: input.token, newPassword: input.password });
   if (response.status !== 200) throw failure("reset-password", response);
+}
+
+/**
+ * Starts a Google sign-in (or sign-up: the same flow). Returns Google's
+ * authorization URL and the cookie that binds the flow to this browser.
+ *
+ * `next` is untrusted. Only a page of this app survives `safeNextPath`, and
+ * Better Auth checks the URLs again against the app origin. The callback
+ * (`/api/auth/callback/google`) finishes on `next`, or on the login page with
+ * `?error=` when anything fails.
+ */
+export async function startGoogleSignIn(input: { next: string }, request: AuthRequest): Promise<AuthCookies & { url: string }> {
+  const next = safeNextPath(input.next);
+  const response = await callAuth("/sign-in/social", request.headers, {
+    provider: "google",
+    callbackURL: next,
+    errorCallbackURL: loginPath({ next }),
+    disableRedirect: true, // we navigate ourselves, after checking where to
+  });
+  if (response.status !== 200) throw failure("google sign-in", response);
+  const url = response.body?.url;
+  if (!isGoogleAuthorizeUrl(url)) throw new UnexpectedAuthError("google sign-in", response);
+  return { url, setCookies: response.setCookies };
 }

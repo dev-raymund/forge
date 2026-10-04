@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { AuthCard, AuthLink, FormSkeleton, getCurrentUser, SignUpForm, turnstileSiteKey } from "@/modules/auth";
+import { AuthCard, AuthLink, FormSkeleton, getCurrentUser, googleSignInEnabled, SignUpForm, turnstileSiteKey } from "@/modules/auth";
 
 export const metadata: Metadata = { title: "Sign up" };
 
@@ -25,5 +25,5 @@ export default function SignUpPage() {
 
 async function SignUp() {
   if (await getCurrentUser()) redirect("/");
-  return <SignUpForm turnstileSiteKey={turnstileSiteKey()} />;
+  return <SignUpForm turnstileSiteKey={turnstileSiteKey()} googleEnabled={googleSignInEnabled()} />;
 }

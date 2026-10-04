@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 
 // The forms import their Server Actions; rendering needs only their identity.
 vi.mock("../actions", () => ({
-  signInAction: vi.fn(), signUpAction: vi.fn(), signOutAction: vi.fn(), resendVerificationAction: vi.fn(),
+  signInAction: vi.fn(), signUpAction: vi.fn(), signOutAction: vi.fn(), resendVerificationAction: vi.fn(), signInWithGoogleAction: vi.fn(),
   requestPasswordResetAction: vi.fn(), resetPasswordAction: vi.fn(),
 }));
 
 import { AuthCard } from "./auth-card";
 import { ForgotPasswordForm } from "./forgot-password-form";
 import { Field, FormAlert, PasswordField, SubmitButton } from "./form";
+import { GoogleButton } from "./google-button";
 import { LoginForm } from "./login-form";
 import { ResetLinkInvalid, ResetPasswordForm } from "./reset-password-form";
 import { SignUpForm } from "./signup-form";
@@ -116,6 +117,65 @@ describe("login form", () => {
     const out = html(<LoginForm next="/" reason={reason} />);
     expect(out).toContain(message);
     expect(attr(tag(out, /<div[^>]*data-form-alert[^>]*>/), "role")).toBe(role);
+  });
+});
+
+describe("Google sign-in button", () => {
+  const googleForm = (out: string) => out.match(/<form[^>]*aria-label="(Continue|Sign up) with Google"[\s\S]*?<\/form>/)?.[0];
+
+  it("is absent unless Google is configured: on the login page…", () => {
+    for (const out of [html(<LoginForm next="/" />), html(<LoginForm next="/" googleEnabled={false} />)]) {
+      expect(out).not.toMatch(/Google/);
+      expect(out.match(/<form/g)).toHaveLength(1);
+      expect(out).not.toContain('role="separator"');
+    }
+  });
+
+  it("…and on the sign-up page", () => {
+    const out = html(<SignUpForm />);
+    expect(out).not.toMatch(/Google/);
+    expect(out.match(/<form/g)).toHaveLength(1);
+  });
+
+  it("is shown when Google is configured, above the email form, as its own form", () => {
+    const out = html(<LoginForm next="/acme-org/sites" googleEnabled />);
+    const form = googleForm(out)!;
+    expect(form).toContain("Continue with Google");
+    expect(tag(form, /<input[^>]*name="next"[^>]*>/)).toContain('value="/acme-org/sites"'); // returns to the same page
+    expect(attr(tag(form, /<button[^>]*>/), "type")).toBe("submit");
+    expect(form).not.toContain('name="password"'); // the password never travels with it
+    expect(out.indexOf("Continue with Google")).toBeLessThan(out.indexOf('name="email"'));
+    expect(out).toContain('role="separator"');
+    expect(out.match(/<form/g)).toHaveLength(2);
+  });
+
+  it("on the sign-up page it says so, and a new account lands on the home page", () => {
+    const form = googleForm(html(<SignUpForm googleEnabled />))!;
+    expect(form).toContain("Sign up with Google");
+    expect(tag(form, /<input[^>]*name="next"[^>]*>/)).toContain('value="/"');
+  });
+
+  it("the logo is decorative; the button is named by its text", () => {
+    const out = html(<GoogleButton next="/" />);
+    expect(tag(out, /<svg[^>]*>/)).toContain('aria-hidden="true"');
+    expect(out).toContain("Continue with Google");
+  });
+
+  it("a failed Google sign-in is explained on the login page, with or without the button", () => {
+    const message = "Google sign-in was cancelled.";
+    for (const out of [html(<LoginForm next="/" googleEnabled oauthError={message} />), html(<LoginForm next="/" oauthError={message} />)]) {
+      const alert = tag(out, /<div[^>]*data-form-alert[^>]*>/);
+      expect(attr(alert, "role")).toBe("alert");
+      expect(out).toContain(message);
+    }
+    // It takes precedence over a notice about why the user is on this page: one message at a time.
+    const both = html(<LoginForm next="/" reason="signed-out" oauthError={message} />);
+    expect(both).toContain(message);
+    expect(both).not.toContain("You have been logged out.");
+    expect(both.match(/data-form-alert/g)).toHaveLength(1);
+    // It is about the Google attempt, so it sits above the Google button.
+    const placed = html(<LoginForm next="/" googleEnabled oauthError={message} />);
+    expect(placed.indexOf(message)).toBeLessThan(placed.indexOf("Continue with Google"));
   });
 });
 

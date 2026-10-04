@@ -8,6 +8,11 @@ describe("email templates", () => {
     ["verify-email", { name: "Ada", url }, "Verify your email for Forge"],
     ["reset-password", { name: "Ada", url, expiresInMinutes: 60 }, "Reset your Forge password"],
     [
+      "password-changed",
+      { name: "Ada", email: "ada@example.test", changedAt: new Date("2026-10-04T09:30:00Z"), url },
+      "Your Forge password was changed",
+    ],
+    [
       "organization-invitation",
       { inviterName: "Grace", organizationName: "Acme", roleName: "Editor", url, expiresAt: new Date("2026-10-08T00:00:00Z") },
       "Grace invited you to Acme on Forge",
@@ -37,7 +42,46 @@ describe("email templates", () => {
     expect(email.subject).not.toMatch(/[\r\n]/);
   });
 
+  describe("password-changed", () => {
+    const forgot = "https://cms.example.com/forgot-password";
+    const render = (over: Partial<{ name: string; email: string }> = {}) =>
+      renderEmail("password-changed", { name: "Ada", email: "ada@example.test", changedAt: new Date("2026-10-04T09:30:00Z"), url: forgot, ...over });
+
+    it("says the password was changed, for which account, and when", async () => {
+      const email = await render();
+      expect(email.subject).toBe("Your Forge password was changed");
+      expect(email.text).toContain("Hi Ada,");
+      expect(email.text).toMatch(/The password for the Forge account ada@example\.test was changed on October 4, 2026 at 9:30\sAM UTC\./);
+      expect(email.text).toContain("If you made this change, there is nothing more to do.");
+    });
+
+    it("tells someone who didn't make the change what to do, with a link to the app's own reset page", async () => {
+      const email = await render();
+      expect(email.text).toMatch(/If you didn.t, someone else may have access to your account\./);
+      expect(email.html).toContain(`href="${forgot}"`);
+      expect(email.text).toContain(forgot);
+    });
+
+    it("carries no token, no password and no other link", async () => {
+      const email = await render();
+      for (const part of [email.html, email.text]) {
+        expect(part).not.toMatch(/token=/i);
+        expect(part).not.toMatch(/reset-password\//);
+        expect(part).not.toMatch(/your (new|old) password (is|was):/i);
+      }
+      const links = [...email.html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+      expect(new Set(links)).toEqual(new Set([forgot]));
+    });
+
+    it("escapes the account's name and address", async () => {
+      const email = await render({ name: "<script>alert(1)</script>", email: "a\"><img src=x>@example.test" });
+      expect(email.html).not.toContain("<script>alert(1)</script>");
+      expect(email.html).not.toContain("<img src=x>");
+    });
+  });
+
   it("uses a friendly greeting when the user has no name", async () => {
     expect((await renderEmail("verify-email", { name: "", url })).text).toContain("Hi there,");
+    expect((await renderEmail("password-changed", { name: "", email: "a@example.test", changedAt: new Date(0), url })).text).toContain("Hi there,");
   });
 });

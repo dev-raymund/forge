@@ -37,6 +37,8 @@ export const emailPayload = z.discriminatedUnion("template", [
     url: appLink,
     expiresInMinutes: z.int().min(1).max(1_440).default(60),
   }),
+  // A notice after a password change. `url` is the app's forgot-password page: no token, nothing secret.
+  z.object({ template: z.literal("password-changed"), userId: z.uuid(), url: appLink, changedAt: z.iso.datetime() }),
   z.object({ template: z.literal("organization-invitation"), invitationId: z.uuid(), url: appLink }),
   z.object({ template: z.literal("trial-ending"), trialEndsAt: z.iso.datetime(), url: appLink }),
   z.object({ template: z.literal("payment-failed"), url: appLink }),
@@ -90,6 +92,11 @@ async function deliveries(payload: ParsedPayload, ctx: JobContext): Promise<Deli
       const user = await userRecipient(payload.userId);
       const props = { name: user.name, url: payload.url, expiresInMinutes: payload.expiresInMinutes };
       return [{ to: user.email, key: id, template: "reset-password", props }];
+    }
+    case "password-changed": {
+      const user = await userRecipient(payload.userId);
+      const props = { name: user.name, email: user.email, changedAt: new Date(payload.changedAt), url: payload.url };
+      return [{ to: user.email, key: id, template: "password-changed", props }];
     }
     case "organization-invitation": {
       if (!ctx.orgId) throw new PermanentJobError("An invitation email must be queued inside its organization's transaction");

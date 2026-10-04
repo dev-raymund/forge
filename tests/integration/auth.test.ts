@@ -12,6 +12,7 @@ import { setEmailProviderForTests } from "@/platform/email/get-provider";
 import { CaptureEmailProvider } from "@/platform/email/providers/capture";
 import { withPlatform, withUser } from "@/platform/db/tenant";
 import { createJobRegistry, runJobs } from "@/platform/jobs";
+import { jobs } from "@/platform/jobs/schema";
 import { setLogSink } from "@/platform/observability/logger";
 import { createOrganization } from "../fixtures/factories";
 
@@ -38,7 +39,9 @@ beforeAll(() => {
   setEmailProviderForTests(capture);
   setLogSink((_level, line) => logs.push(line));
 });
-afterAll(() => {
+afterAll(async () => {
+  // Leave the worker's queue as we found it: other suites count the jobs they run.
+  await withPlatform((tx) => tx.delete(jobs).where(eq(jobs.type, "email.send")));
   setAuthForTests(null);
   setEmailProviderForTests(null);
   setLogSink(null);

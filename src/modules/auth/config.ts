@@ -43,3 +43,9 @@ export function authConfig(source: Record<string, string | undefined> = process.
 export function turnstileSiteKey(source: Record<string, string | undefined> = process.env): string | undefined {
   return env("turnstile", source).NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 }
+
+/** Whether Google sign-in is configured (both credentials). The button is shown only then. */
+export function googleSignInEnabled(source: Record<string, string | undefined> = process.env): boolean {
+  const vars = env("auth", source);
+  return !!(vars.GOOGLE_CLIENT_ID && vars.GOOGLE_CLIENT_SECRET);
+}

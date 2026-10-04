@@ -43,6 +43,8 @@ const BY_CODE: Record<string, () => AppError> = {
   INVALID_REDIRECT_URL: () => forbidden(WRONG_ORIGIN),
   INVALID_ERROR_CALLBACK_URL: () => forbidden(WRONG_ORIGIN),
   INVALID_NEW_USER_CALLBACK_URL: () => forbidden(WRONG_ORIGIN),
+  // Google sign-in asked for where it is not configured (the button is not shown there).
+  PROVIDER_NOT_FOUND: () => validationError({ _form: ["Google sign-in is not available."] }, "Google sign-in is not available."),
   // Turnstile (sign-up).
   MISSING_RESPONSE: () => validationError({ _form: [CAPTCHA] }, CAPTCHA),
   VERIFICATION_FAILED: () => validationError({ _form: [CAPTCHA] }, CAPTCHA),

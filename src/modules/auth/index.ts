@@ -9,7 +9,8 @@ export {
   assertAuthenticated, assertVerified, toActor, resolveAuth,
 } from "./session";
 export { authRouteHandlers, RESET_TOKEN_MINUTES } from "./auth";
-export { turnstileSiteKey } from "./config";
+export { googleSignInEnabled, turnstileSiteKey } from "./config";
+export { oauthErrorMessage } from "./oauth";
 export { authErrorToAppError, authFailureToAppError } from "./errors";
 export { ANONYMOUS, MIN_PASSWORD_LENGTH } from "./shared";
 export type { Actor, Authenticated, AuthSession, AuthUser } from "./shared";

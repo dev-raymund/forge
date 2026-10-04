@@ -85,6 +85,12 @@ describe("authFailureToAppError (responses of the auth handler, as the forms get
     }
   });
 
+  it("Google asked for where it is not configured: a plain message, not an unexpected error", () => {
+    expect(authFailureToAppError({ status: 404, code: "PROVIDER_NOT_FOUND" })).toMatchObject({
+      kind: "Validation", message: "Google sign-in is not available.",
+    });
+  });
+
   it("an already verified address is a Conflict, not an error to report", () => {
     expect(authFailureToAppError({ status: 400, code: "EMAIL_ALREADY_VERIFIED" })).toMatchObject({ kind: "Conflict" });
   });

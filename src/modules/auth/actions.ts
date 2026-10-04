@@ -5,7 +5,7 @@ import { fieldErrorsFrom } from "@/platform/errors";
 import { loginPath, safeNextPath } from "@/platform/routing/admin-access";
 import { applyAuthCookies, failureState, leaveFor } from "./action-support";
 import {
-  requestPasswordReset, resendVerificationEmail, resetPassword, signIn, signOut, signUp,
+  requestPasswordReset, resendVerificationEmail, resetPassword, signIn, signOut, signUp, startGoogleSignIn,
 } from "./credentials.service";
 import { AUTH_MESSAGES } from "./errors";
 import { getCurrentAuth } from "./session";
@@ -49,6 +49,23 @@ export async function signInAction(_previous: FormState, formData: FormData): Pr
   }
   // `next` comes from the URL, so it is untrusted: only a path on this app is followed.
   return leaveFor(safeNextPath(formData.get("next")));
+}
+
+/**
+ * "Continue with Google" on the login and sign-up screens. Sets the cookie
+ * that ties the flow to this browser and leaves for Google's authorization
+ * page; Google comes back to `/api/auth/callback/google`.
+ */
+export async function signInWithGoogleAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  let url: string;
+  try {
+    const started = await startGoogleSignIn({ next: text(formData.get("next")) }, { headers: await headers() });
+    await applyAuthCookies(started.setCookies);
+    url = started.url;
+  } catch (error) {
+    return failureState(error);
+  }
+  return leaveFor(url);
 }
 
 /** Deletes the session, clears the cookie, and leaves for the login page. Fine to call without a session. */

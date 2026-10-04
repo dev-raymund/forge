@@ -399,6 +399,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M2-3 · Password reset and Google OAuth
 **Labels:** `area:auth` `type:feature`
 
+**Status:** ✔ done (2026-10-04). See the M2-3 addendum in ADR 0004.
+
 **Description:** Recovery flow and social login.
 
 *From M2-1: the reset back-end is live and tested: a 60-minute single-use token (stored hashed), every session revoked on reset, the same response for unknown addresses. The emailed link redirects to `/reset-password?token=…`. This issue adds the pages, the notification email and the linking-rule test.*
@@ -409,12 +411,20 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Acceptance criteria:**
 - [x] `/forgot-password` → always the same response; `/reset-password` with a single-use 60-minute token; all sessions revoked on reset *(delivered in M2-2)*
-- [ ] Notification email after a password reset
-- [ ] Google OAuth sign-in and sign-up; auto-link **only** when Google asserts a verified email equal to the account's verified email
+- [x] Notification email after a password reset (also sent after `/change-password`)
+- [x] Google OAuth sign-in and sign-up; auto-link **only** when Google asserts a verified email equal to the account's verified email
+
+**Delivered beyond the criteria (clarifications, no scope change):**
+- The button appears only when both Google credentials are set; nothing else depends on them.
+- Google's tokens are not stored (a stored ID token could be replayed to `/sign-in/social`).
+- OAuth failures land on `/login?error=<code>` with Forge's own wording.
+- `agentRules: false` in `next.config.ts`: `next dev` no longer writes `AGENTS.md` / `CLAUDE.md`.
+
+**Not covered:** a browser round trip through real Google (needs a real account and client secret). Check it by hand on the first deployment with credentials.
 
 **Likely files/modules:** `src/modules/auth/*`, auth pages
 
-**Testing:** E2E reset flow ✔ (M2-2); integration test of the linking rule with a mocked provider response.
+**Testing:** E2E reset flow ✔ (M2-2); integration test of the linking rule with a mocked provider response. ✔ `tests/integration/auth-google.test.ts` (39; only Google's token endpoint is replaced), `tests/e2e/google.spec.ts` (5).
 
 ### M2-4 · Account page, sessions and auth hardening
 **Labels:** `area:auth` `type:feature`
@@ -424,6 +434,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M0-6: Better Auth's limiter uses in-memory storage by default, which is per instance on Vercel. The WAF rule is the real control (ADR 0004, discovery 8).*
 
 *From M2-1: the limiter is already on in production with its defaults, keyed by `x-forwarded-for`. Sign-up reveals that an address is registered (ADR 0004 addendum), so the sign-up limit and Turnstile are what bound enumeration.*
+
+*From M2-3: `/change-password` already queues the "password changed" notice (an `after` hook in `createAuth`); the account page only needs the form. Google identities cannot be linked or unlinked by the user in V1 (`/link-social` and `/unlink-account` are disabled): if the account page lists sign-in methods, it is read-only. An account created through Google has no password; "change password" needs a current one, so offer "set a password" through the reset email instead.*
 
 *From M2-2: the forms are Server Actions, which post to the page's own path, not to `/api/auth/*`. The WAF rule must also cover `POST` to `/login`, `/signup`, `/forgot-password`, `/reset-password` and `/verify-email`. Better Auth's limiter already covers the forms (they go through its handler). Turnstile on sign-up is delivered. The account menu (`AccountMenu`) is where the `/account` link goes.*
 

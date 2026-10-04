@@ -59,6 +59,7 @@ The repository side is done: `vercel.json`, `.env.example`, and local services v
    - `DATABASE_MIGRATION_URL`: the **direct** host with user `forge_owner` (local/CI only; never in Vercel).
 5. Apply migrations: `DATABASE_MIGRATION_URL=<direct owner URL> npm run db:migrate`.
 6. Preview branches (optional): the Neon ↔ Vercel integration can give each preview its own branch. Otherwise previews share a non-production branch.
+   - Deployments that share a database share its job queue. An email job is valid only for the origin that queued it (its links must be on that `APP_ORIGIN`), so when two previews with different URLs share a branch, one can pick up the other's email job and refuse it. Give a preview its own branch when its emails matter. Production never shares its database.
 
 ### 1b. Prove RLS on Neon itself
 
@@ -82,7 +83,11 @@ Record the result in `docs/adr/0001-rls-withtenant.md`.
    - **Preview:** leave `APP_ORIGIN` **unset**. It defaults to the branch URL (`VERCEL_BRANCH_URL`), so auth and links work on every preview. Set `BETTER_AUTH_SECRET` here too, with a **different** value from Production. Open previews by their branch URL: auth rejects requests from any other origin, including the per-deployment URL.
    - **Local (M2-2):** `APP_ORIGIN=http://localhost:3000`, and open the app at exactly that address. Auth rejects requests from any other origin, so `127.0.0.1:3000` or an old `app.localhost:3000` setting gets "This request didn't come from the Forge app". `EMAIL_PROVIDER=mailpit` delivers verification and reset emails to http://localhost:8025.
    - **Auth (M2-1):** readiness (`/api/health/ready`) reports the `auth` group as failed when the secret is missing; sign-in then answers 503. The fixed development secret is accepted only on `localhost`, never on Vercel.
-   - **Google sign-in (optional, M2-3):** set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` together, and register `https://cms.forgelinetechnologies.com/api/auth/callback/google` as the redirect URI in Google Cloud. Without them email/password works and the Google routes answer 404.
+   - **Google sign-in (optional, M2-3):** set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` together. Without them email/password works, no Google button is shown, and the Google routes answer 404.
+     1. Google Cloud → APIs & Services → Credentials → OAuth client ID, type "Web application".
+     2. Authorized redirect URI: `https://cms.forgelinetechnologies.com/api/auth/callback/google` (for local use add `http://localhost:3000/api/auth/callback/google`). No JavaScript origins are needed.
+     3. Consent screen scopes: `openid`, `email`, `profile` only. While the app is in "Testing", only the listed test users can sign in.
+     4. **Check it by hand once** (it cannot be automated without a real account): sign up with Google; log out; log in with Google again (same user); then try Google with the address of an existing, *unverified* password account, which must be refused with "isn't connected to Google".
    - Leave `HOST_ROUTING_ENABLED`, `SITES_ROOT_DOMAIN` and `MEDIA_PUBLIC_BASE_URL` unset (post-V1).
 5. **Crons:** `vercel.json` declares one daily cron (`/api/internal/cron/daily`, 03:00 UTC; Hobby runs it within that hour). Hobby rejects anything more frequent at deploy time. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set.
 6. Previews are protected by Vercel Authentication by default. For automated tests against a preview, create a Protection Bypass for Automation secret (or use a Shareable Link).
