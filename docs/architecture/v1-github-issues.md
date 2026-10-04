@@ -284,7 +284,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Depends on:** M1-1
 
-**Status:** Partially done. The two helpers below are deferred until the things they test exist; nothing in them blocks M2.
+**Status:** ✔ done. The last helper (the "B's IDs → 404" registry) was delivered with M3-1.
 
 **Acceptance criteria:**
 - [x] Integration DB per Vitest worker (template database clone), migrations applied once — `tests/setup/integration-global.ts` migrates `forge_test_template` once, then clones `forge_test_w1..4`
@@ -294,7 +294,7 @@ The suite can run against real R2 with `TEST_S3_*`.
   - asserts RLS enabled + forced for each table
   - seeds orgs A and B
   - runs registered read functions (`tests/isolation/tenant-reads.ts`) under A's context and asserts no B rows. It starts with one no-WHERE read per tenant table; repository reads are added there as they land.
-- [ ] Helper to register actions and route handlers for "B's IDs → 404" checks — **deferred to the first action/route handler (M2)**; its shape depends on the action wrapper and session helpers
+- [x] Helper to register actions and route handlers for "B's IDs → 404" checks — delivered with M3-1: `tests/isolation/tenant-operations.ts`. Each registered operation runs as a member of A with B's identifiers and must answer `NotFound` while a digest of B's rows stays unchanged. It holds the tenancy services today; **register every new service, action and route handler that accepts an id or a slug there**
 - [x] Captured-email helper for E2E (reads the capture adapter or Mailpit) — delivered with M1-4: `tests/e2e/helpers/mailbox.ts` (Mailpit), and `CaptureEmailProvider` for integration tests
 
 **Likely files/modules:** `tests/setup/*`, `tests/isolation/*`, `tests/fixtures/*`
@@ -467,32 +467,43 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M3-1 · Tenancy schema and RLS policies
 **Labels:** `area:tenancy` `type:feature` `risk:high`
 
-> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
+> *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services and tests.*
 
-**Description:** The multi-tenant core tables.
+**Status:** ✔ done (2026-10-05). See the M3-1 addendum in ADR 0001.
+
+**Description:** The multi-tenant core tables, and the tenancy module around them.
 
 **Depends on:** M1-1, M1-6, M2-1
 
 **Acceptance criteria:**
-- [ ] Tables: `organizations`, `organization_members`, `organization_invitations`, `roles` (5 system rows seeded), `subscriptions` (plan/trial columns)
-- [ ] Standard RLS; membership policies visible via `app.user_id`; `resolve_invitation(token_hash)` `SECURITY DEFINER` returning minimum columns
-- [ ] Reserved org slugs enforced
+- [x] Tables: `organizations`, `organization_members`, `organization_invitations`, `roles` (5 system rows seeded), `subscriptions` (plan/trial columns)
+- [x] Standard RLS; membership policies visible via `app.user_id`; `resolve_invitation(token_hash)` `SECURITY DEFINER` returning minimum columns
+- [x] Reserved org slugs enforced (`modules/tenancy/slugs.ts`; a unit test fails when a top-level route is not reserved)
 
-**Likely files/modules:** `src/modules/tenancy/schema.ts`, `drizzle/*`
+**Delivered at the owner's direction (the backend of later issues; their screens remain where they were):**
+- The tenant resolver: `resolveOrgContext`, `resolveSiteContext`, and `requireOrgContext` / `requireSiteContext` for the current request (listed under M3-2).
+- Organization services: `createOrganization` (organization + Owner membership + trial, one transaction), `listOrganizations`, `updateOrganization` (listed under M3-3).
+- Member services: `listMembers`, `changeMemberRole`, `removeMember`, `leaveOrganization`, `transferOwnership`, with the last-Owner rule under a row lock (listed under M3-3 and M3-4).
+- `canAccessSite`, and the read side of the sites module (`findSiteBySlug`, `siteAddress`).
+- Migration 0004: `organizations` and `organization_members` stay readable by their members, and become writable only inside the tenant context.
 
-**Testing:** isolation suite covers these tables; a user sees only their own orgs in the switcher query.
+**Likely files/modules:** `src/modules/tenancy/*`, `drizzle/*`
+
+**Testing:** isolation suite covers these tables; a user sees only their own orgs in the switcher query. ✔ `tests/integration/tenancy.test.ts` (51), `tests/integration/isolation.test.ts` (34, including the cross-tenant operations registry), `tests/e2e/tenancy.spec.ts` (2).
 
 ### M3-2 · Permission catalog, policies, context resolvers
 **Labels:** `area:tenancy` `type:feature` `risk:high`
 
 **Description:** Authorization for everything that follows.
 
+*From M3-1: the context resolvers exist (`modules/tenancy/context.ts`): they answer "which organization and site, and is the user a member". What remains here is "what may they do": the catalog, `can()`, and `policies.ts`. Add `permissions` to the context where it is built (`resolveOrgContext`), not beside it. The four membership rules in `membership-rules.ts` include `canManageMembers` / `canManageOrganization`: express those two through the catalog (`org.members.manage`, `org.manage`) and keep the invariants (last Owner, only an Owner grants Owner) where they are. Contexts are sealed: build one only through the resolver, including in tests.*
+
 **Depends on:** M3-1
 
 **Acceptance criteria:**
 - [ ] `permissions.ts` catalog (plan §13), with role → permission sets in code and `entries.{type}.{action}` keys
 - [ ] `can(ctx, permission, resource?)` with `.own` ownership rules; unknown roles hold nothing
-- [ ] `requireOrgContext(orgSlug)` and `requireSiteContext(orgSlug, siteSlug)` (React `cache`) → `RequestContext`; 404 for non-members
+- [x] `requireOrgContext(orgSlug)` and `requireSiteContext(orgSlug, siteSlug)` (React `cache`) → context; 404 for non-members *(delivered in M3-1; this issue adds `permissions` to it)*
 - [ ] `policies.ts` helpers used by later modules
 
 **Likely files/modules:** `src/modules/tenancy/{permissions,policies,context}.ts`
@@ -508,6 +519,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Create and manage organizations.
 
 *From M2-2: `/` is currently a placeholder protected page (`src/app/(admin)/page.tsx`): header with `AccountMenu`, the `VerifyEmailBanner`, and `requireUserOrLogin("/")` inside `<Suspense>`. Replace its body with the redirect, and reuse the header in the admin shell. Protected layouts call `requireUserOrLogin(path)`; the proxy's login redirect is only a convenience. After sign-up the user lands on `/verify-email` and continues to `/`.*
+
+*From M3-1: the services exist. `createOrganization(actor, { name, slug })` creates the organization, the Owner membership and the 14-day trial in one transaction; `suggestOrgSlug(name)` and `checkOrgSlug(slug)` (client-safe, `modules/tenancy/shared`) are for the form; `listOrganizations(actor)` is the switcher's query; `updateOrganization(ctx, …)` and `transferOwnership(ctx, { memberId })` are for the settings page. This issue is the screens, their Server Actions, and the `/` redirect. Layouts call `requireOrgContext(params.orgSlug)` and map `NotFound` to `notFound()`, `Unauthenticated` to the login redirect, and `Forbidden` (a suspended organization) to a page that says so. Register each action in `tests/isolation/tenant-operations.ts`.*
 
 **Depends on:** M3-2
 
@@ -525,6 +538,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:tenancy` `type:feature`
 
 **Description:** Invite users and manage roles.
+
+*From M3-1: `listMembers`, `changeMemberRole`, `removeMember` and `leaveOrganization` exist with the last-Owner rule under a row lock, and are tested under concurrency. This issue adds invitations and the screens. `acceptInvitation` must insert the membership inside the invited organization's tenant context (`withTenant` with the organization id that `resolve_invitation()` returned): since migration 0004 a membership cannot be written from a user-only context. A member is named by membership id, never by user id.*
 
 **Depends on:** M3-3, M1-4
 
@@ -544,6 +559,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Transactional audit trail.
 
 *From M2-4: `modules/audit` already has `recordPlatformEvent()` for org-less account events (`auth.login`, `auth.logout`, `auth.password_changed`), written after Better Auth's own queries, so not in their transaction. Add `audit.record(tx, …)` for tenant mutations next to it. **No application role can read org-less rows**: the policy's `USING` clause needs an organization, and `FORCE ROW LEVEL SECURITY` applies it to the owner too. That is right for tenants; the staff console (M12-1) will need a definer function or a platform policy to read them. The integration tests read them as the owner with `FORCE` lifted inside a rolled-back transaction (`tests/integration/auth-account.test.ts`).*
+
+*From M3-1: the tenancy services do not write audit rows yet (`audit.record` did not exist). Add them inside the same `inTenant(ctx, …)` transactions: organization created / renamed / slug changed, role changed, member removed or left, ownership handed over. The context already carries `requestId`, `ip` and the actor.*
 
 **Depends on:** M3-1
 
@@ -566,6 +583,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Sites and their site address (`/s/{address}` in V1; `{address}.<sites domain>` post-V1, ADR 0006).
+
+*From M3-1: `modules/sites` has its read side (`findSiteBySlug`, `siteAddress`) and `requireSiteContext(orgSlug, siteSlug)` resolves a site for an admin request. A site's **slug** (admin URLs, unique per organization) and its **address** (public URLs, unique on the platform) are different values; the test factory still sets them equal. The database already refuses a duplicate address, an uppercase address, and a `domains` row whose site belongs to another organization (tested in `tests/integration/tenancy.test.ts`). `createSite` takes a context from the resolver and opens its transaction with `inTenant(ctx, …)`.*
 
 **Depends on:** M3-2
 

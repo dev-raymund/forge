@@ -18,8 +18,13 @@ export const ROLE_KEYS = ["owner", "admin", "editor", "author", "viewer"] as con
 export type RoleKey = (typeof ROLE_KEYS)[number];
 
 /**
- * organizations — class: membership. Visible inside its own tenant context, or
- * to a user who is a member (so the org switcher works before an org is chosen).
+ * organizations — class: membership.
+ *
+ * Read: inside its own tenant context, or by a user who is a member (so the
+ * organization list works before an organization is chosen).
+ * Write: only inside its own tenant context, which the tenancy module sets
+ * after verifying membership. A user-only context can never change or delete an
+ * organization (M3-1: the original single policy also let members delete it).
  */
 export const organizations = pgTable(
   "organizations",
@@ -35,13 +40,22 @@ export const organizations = pgTable(
   (t) => [
     oneOf("organizations_status_check", t.status, ORGANIZATION_STATUSES),
     check("organizations_slug_format", sql`${sql.identifier("slug")} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`),
+    // "membership": who can see the row. The name is the original policy's, kept so the migration is a change, not a rename.
     pgPolicy("organizations_membership", {
       as: "permissive",
-      for: "all",
+      for: "select",
       to: "public",
       using: sql`id = app_current_org_id() or id in (select m.organization_id from organization_members m where m.user_id = app_current_user_id())`,
+    }),
+    pgPolicy("organizations_insert", { as: "permissive", for: "insert", to: "public", withCheck: sql`id = app_current_org_id()` }),
+    pgPolicy("organizations_update", {
+      as: "permissive",
+      for: "update",
+      to: "public",
+      using: sql`id = app_current_org_id()`,
       withCheck: sql`id = app_current_org_id()`,
     }),
+    pgPolicy("organizations_delete", { as: "permissive", for: "delete", to: "public", using: sql`id = app_current_org_id()` }),
   ],
 ).enableRLS();
 
@@ -63,7 +77,15 @@ export const roles = pgTable(
   (t) => [unique("roles_org_key_unique").on(t.organizationId, t.key).nullsNotDistinct()],
 );
 
-/** organization_members — class: membership. */
+/**
+ * organization_members — class: membership.
+ *
+ * Read: the members of the current organization, or the current user's own
+ * memberships (in any organization).
+ * Write: only inside the organization's tenant context. In particular a user
+ * cannot delete their own membership of some other organization from wherever
+ * they happen to be, which would walk around the last-Owner rule.
+ */
 export const organizationMembers = pgTable(
   "organization_members",
   {
@@ -82,12 +104,31 @@ export const organizationMembers = pgTable(
   (t) => [
     unique("organization_members_org_user_unique").on(t.organizationId, t.userId),
     index("organization_members_user_idx").on(t.userId),
+    // "membership": who can see the row (see organizations).
     pgPolicy("organization_members_membership", {
       as: "permissive",
-      for: "all",
+      for: "select",
       to: "public",
       using: sql`organization_id = app_current_org_id() or user_id = app_current_user_id()`,
+    }),
+    pgPolicy("organization_members_insert", {
+      as: "permissive",
+      for: "insert",
+      to: "public",
       withCheck: sql`organization_id = app_current_org_id()`,
+    }),
+    pgPolicy("organization_members_update", {
+      as: "permissive",
+      for: "update",
+      to: "public",
+      using: sql`organization_id = app_current_org_id()`,
+      withCheck: sql`organization_id = app_current_org_id()`,
+    }),
+    pgPolicy("organization_members_delete", {
+      as: "permissive",
+      for: "delete",
+      to: "public",
+      using: sql`organization_id = app_current_org_id()`,
     }),
   ],
 ).enableRLS();

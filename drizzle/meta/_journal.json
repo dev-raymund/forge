@@ -29,6 +29,13 @@
       "when": 1790809168183,
       "tag": "0003_jobs_running_lock_index",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791156478203,
+      "tag": "0004_membership_write_policies",
+      "breakpoints": true
     }
   ]
 }

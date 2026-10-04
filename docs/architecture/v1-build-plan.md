@@ -356,7 +356,7 @@ Conventions (unchanged from long-term §6):
 ### 4.3 RLS in V1 (thin)
 
 - One policy template on every tenant table: `organization_id = nullif(current_setting('app.org_id', true), '')::uuid`, with `FORCE ROW LEVEL SECURITY`.
-- Two special policies: `organizations` and `organization_members` are also visible to their own members via `app.user_id`, so the org switcher works.
+- Two special tables: `organizations` and `organization_members` are also **readable** by their own members via `app.user_id`, so the org switcher works. They are **writable** only inside the organization's tenant context, like every other tenant table (migration 0004, M3-1).
 - Two `SECURITY DEFINER` lookups: `resolve_api_key(hash)` and `resolve_invitation(token_hash)`. Preview tokens are stateless HMAC, so they need no lookup.
 - Runtime role `forge_app` owns nothing. Migrations run as `forge_owner` from CI.
 - Platform tables with no RLS: `domains`, `jobs`. Reference data: `roles`. Identity tables are managed by the auth module.
@@ -971,7 +971,7 @@ forge/
 
 `/pages/new` and `/posts/new` are small **forms** (title, and parent or template). The action creates the entry and redirects to the editor. Creating on GET is avoided because Next.js prefetches links.
 
-Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platform`, `api`, `verify-email`, `forgot-password`, `reset-password`, `settings`, `new`, `_next`, `s` (tenant sites), `media`.
+Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platform`, `api`, `verify-email`, `forgot-password`, `reset-password`, `settings`, `new`, `_next`, `s` (tenant sites), `media`, plus `dev`, `render` and `_forge` (top-level paths the app also uses; added in M3-1). An organization slug is 3 to 63 characters, lowercase letters and digits in hyphen-separated groups. A unit test fails when a top-level admin route is added without being reserved.
 
 **Tenant sites: `/s/{address}/…` on the app host** (V1; rewritten by `proxy.ts` to `/render/address~{address}/…`). Post-V1 also `{address}.<sites domain>` and custom domains (`HOST_ROUTING_ENABLED`). The paths below are relative to the site's base: `/s/{address}` in V1, the host root later. Links, canonical URLs and sitemaps are built from that base.
 

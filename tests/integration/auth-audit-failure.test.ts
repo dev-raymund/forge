@@ -4,8 +4,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // The audit store is "down" for this whole file.
 const recordPlatformEvent = vi.hoisted(() =>
-  vi.fn(async (_event: { action: string }): Promise<void> => {
-    throw new Error("audit store is down");
+  vi.fn(async (event: { action: string }): Promise<void> => {
+    throw new Error(`audit store is down (${event.action})`);
   }),
 );
 vi.mock("@/modules/audit", () => ({ recordPlatformEvent }));

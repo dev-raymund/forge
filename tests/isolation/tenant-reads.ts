@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
+import { listOrganizations } from "@/modules/tenancy";
 import { tablesOfClass, type TableName } from "@/platform/db/table-classes";
-import { withTenant } from "@/platform/db/tenant";
+import { withTenant, withUser } from "@/platform/db/tenant";
 
 /**
  * Registry of tenant-scoped READS for the isolation suite (M1-6).
@@ -30,4 +31,20 @@ export const tenantReads: TenantRead[] = [
   ...[...tablesOfClass("tenant"), ...tablesOfClass("membership")].map(fullTableRead),
   // Repository/query reads are registered below as they are implemented, e.g.
   // { name: "content.queries.listEntries", read: (ctx) => listEntries(ctx).then(rows => rows.map(r => r.organizationId)) },
+
+  // M3-1: what a user sees before any organization is chosen.
+  {
+    name: "tenancy.listOrganizations (user context, no organization chosen)",
+    read: (ctx) =>
+      listOrganizations({ kind: "user", userId: ctx.userId, sessionId: ctx.userId, emailVerified: true }).then((rows) => rows.map((r) => r.id)),
+  },
+  ...(["organizations", "organization_members"] as const).map((table): TenantRead => ({
+    name: `table ${table} under a user-only context (no WHERE clause)`,
+    read: (ctx) =>
+      withUser(ctx.userId, async (tx) => {
+        const column = table === "organizations" ? "id" : "organization_id";
+        const res = await tx.execute(sql`select ${sql.identifier(column)} as org from ${sql.identifier(table)}`);
+        return (res.rows as { org: string }[]).map((r) => r.org);
+      }),
+  })),
 ];
