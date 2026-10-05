@@ -723,6 +723,8 @@ Permissions live in code (`modules/tenancy/permissions.ts`). Roles are five seed
 | `media.upload`, `media.update.own`, `media.delete.own` | ✓ | ✓ | ✓ | ✓ | |
 | `media.update.any`, `media.delete.any` | ✓ | ✓ | ✓ | | |
 
+The table uses shorthand. The exact keys (29, one per row), the same matrix checked against the code by a test, and the rules for `can()` are in ADR 0009. Reading an organization, its members and its sites takes membership, not a permission.
+
 - `can(ctx, permission, resource?)` evaluates code-defined role permissions plus ownership rules (`.own` compares `author_id`/`uploaded_by`). Unknown roles hold nothing.
 - **Invariants:** at least one Owner; only an Owner can grant Owner; only Owner/Admin see settings.
 - Resources outside the tenant → **404**; inside without permission → **403**.

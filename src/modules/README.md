@@ -17,4 +17,4 @@ Everything else in the module is private. ESLint enforces this: code outside a m
 | `queries.ts` | Read models for Server Components |
 | `actions.ts` | `"use server"` adapters: parse → context → service → invalidate |
 | `validation.ts` | Zod schemas shared by client and server |
-| `policies.ts` | Permission checks |
+| `policies.ts` | Permission checks: `can(ctx, permission, resource?)` from `@/modules/tenancy` (ADR 0009). Never compare roles |

@@ -7,7 +7,8 @@ import { startTrial } from "@/modules/billing";
 import { isUniqueViolation, withTenant, withUser } from "@/platform/db";
 import { fieldErrorsFrom, forbidden, notFound, unauthenticated, validationError } from "@/platform/errors";
 import { inTenant, type OrgContext } from "./context";
-import { canManageOrganization } from "./membership-rules";
+import { roleHolds } from "./permissions";
+import { requirePermission } from "./policies";
 import { findMember, listMemberships, lockOrganization, roleIdFor } from "./repository";
 import { organizationMembers, organizations } from "./schema";
 import type { OrganizationSummary } from "./shared";
@@ -58,18 +59,19 @@ export async function listOrganizations(actor: Actor): Promise<OrganizationSumma
 }
 
 /**
- * Renames the organization and/or changes its slug. Owners only (plan §13,
- * `org.manage`). The organization is the context's: there is no id to pass.
+ * Renames the organization and/or changes its slug. Takes `org.manage` (plan
+ * §13). The organization is the context's: there is no id to pass.
  */
 export async function updateOrganization(ctx: OrgContext, input: UpdateOrganizationInput): Promise<OrganizationSummary> {
+  requirePermission(ctx, "org.manage");
   const changes = parse(updateOrganizationSchema, input);
   try {
     return await inTenant(ctx, async (tx) => {
       await lockOrganization(tx, ctx.org.id);
-      // The role as it is now, not as it was when the request began.
+      // Asked again of the role as it is now, not as it was when the request began.
       const actor = await findMember(tx, ctx.org.id, ctx.membership.id);
       if (!actor) throw notFound();
-      if (!canManageOrganization(actor.role)) throw forbidden();
+      if (!roleHolds(actor.role, "org.manage")) throw forbidden();
       const [row] = await tx
         .update(organizations)
         .set({ ...(changes.name !== undefined ? { name: changes.name } : {}), ...(changes.slug !== undefined ? { slug: changes.slug } : {}) })

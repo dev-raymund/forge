@@ -75,7 +75,7 @@ No decision above changes: shared schema, `organization_id` on every tenant row,
 ```text
 modules/auth        who is this?                         session → Actor
 modules/tenancy     which organization and site?         Actor + URL slugs → OrgContext / SiteContext   (context.ts)
-(M3-2)              what may they do there?              can(ctx, permission)
+modules/tenancy     what may they do there?              can(ctx, permission)                           (policies.ts, ADR 0009)
 services            act                                  inTenant(ctx, tx => …)
 Postgres            tenant boundary, whatever the code   RLS + composite foreign keys
 ```
@@ -101,7 +101,7 @@ RLS still knows nothing about roles. It is the tenant boundary; who may do what 
 
 1. An organization always has at least one Owner.
 2. Only an Owner can make an Owner, or change or remove one.
-3. Managing other members takes an Owner or an Admin (this is `org.members.manage`; M3-2's catalog will express it).
+3. Managing other members takes `org.members.manage`, and handing the organization over takes `org.manage`. Which roles hold them is the catalog's answer (ADR 0009), asked of the role as re-read under the lock.
 4. Anyone can leave, unless that breaks rule 1.
 
 - **The lock.** Every membership change first locks the organization row (`SELECT … FOR UPDATE`), then reads the actor's and the target's memberships *as they are now*, then decides. Two Owners demoting each other at once: exactly one succeeds.
@@ -119,7 +119,7 @@ They are different columns and different code paths. The admin resolver does not
 ### What remains
 
 - **Audit rows** for these services wait for `audit.record(tx, …)` (M3-5).
-- **Permissions** beyond the four rules (M3-2), and every screen (M3-3, M3-4).
+- **Permissions** beyond the four rules: delivered in M3-2, see ADR 0009. Every screen is still M3-3 and M3-4.
 - **Suspending** an organization is a staff action (M12-1); here it is only honoured.
 - **A deleted organization keeps its slug** (the unique constraint is not partial). Deleting organizations is not built yet; decide then whether the slug is released.
 

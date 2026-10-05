@@ -269,8 +269,12 @@ test("the keyboard alone is enough to log in", async ({ page }) => {
   // The account menu too.
   await page.getByRole("button", { name: "Account menu" }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("menuitem", { name: "Log out" })).toBeVisible();
+  // Opened from the keyboard, the menu puts focus on its first item, and an arrow key moves it.
+  // The menu moves focus a tick after the key (a 0 ms timer), so wait to see it land, as a person
+  // would, before pressing Enter: without that, a fast machine activates the item still focused.
+  await expect(page.getByRole("menuitem", { name: "Account" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Log out" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/login\?reason=signed-out$/);
 });

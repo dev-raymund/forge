@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import * as t from "@/platform/db/schema";
 import { withPlatform, withTenant, type TenantTx } from "@/platform/db/tenant";
@@ -23,7 +23,8 @@ export async function createUser(overrides: Partial<typeof t.users.$inferInsert>
 }
 
 export async function roleId(tx: TenantTx, key: t.RoleKey): Promise<string> {
-  const [role] = await tx.select({ id: t.roles.id }).from(t.roles).where(eq(t.roles.key, key));
+  // The system role: a role row that belongs to an organization may carry the same key.
+  const [role] = await tx.select({ id: t.roles.id }).from(t.roles).where(and(eq(t.roles.key, key), isNull(t.roles.organizationId)));
   if (!role) throw new Error(`system role ${key} missing (migration 0002 seeds it)`);
   return role.id;
 }

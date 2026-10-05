@@ -19,6 +19,9 @@ import nextTs from "eslint-config-next/typescript";
  * 5. Public site rendering never touches the session (ADR 0006): in V1 the
  *    admin and `/s/` sites share one origin, so site pages must stay identical
  *    for every visitor and never act as the signed-in admin.
+ * 7. Nothing outside `modules/tenancy` decides by comparing a role (ADR 0009).
+ *    What a role may do is the permission catalog's answer: ask
+ *    `can(ctx, permission)` or `requirePermission(ctx, permission)`.
  */
 const moduleEntryOnly = {
   group: ["@/modules/*/*", "!@/modules/*/shared"],
@@ -54,6 +57,16 @@ const noDbInUi = {
   message: "No database access in app/ or components/. Call a module's public API.",
 };
 
+const ROLE_LITERAL = "/^(owner|admin|editor|author|viewer)$/";
+const ROLE_NAMED = ":matches([property.name=/role/i], [name=/role/i])";
+const roleCheckMessage =
+  "Do not decide by role. Ask can(ctx, permission) / requirePermission(ctx, permission) from @/modules/tenancy (ADR 0009).";
+const noRoleChecks = [
+  { selector: `BinaryExpression[operator=/^[!=]==?$/][right.value=${ROLE_LITERAL}] > ${ROLE_NAMED}.left`, message: roleCheckMessage },
+  { selector: `BinaryExpression[operator=/^[!=]==?$/][left.value=${ROLE_LITERAL}] > ${ROLE_NAMED}.right`, message: roleCheckMessage },
+  { selector: `SwitchStatement:has(SwitchCase > Literal.test[value=${ROLE_LITERAL}]) > ${ROLE_NAMED}.discriminant`, message: roleCheckMessage },
+];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -76,6 +89,11 @@ const eslintConfig = defineConfig([
         { patterns: [moduleEntryOnly, rawDbClient, identityDb, betterAuth, s3Sdk, rawStorageDriver] },
       ],
     },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/modules/tenancy/**"],
+    rules: { "no-restricted-syntax": ["error", ...noRoleChecks] },
   },
   {
     files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],

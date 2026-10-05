@@ -6,6 +6,7 @@ import { findSiteBySlug, type SiteRef } from "@/modules/sites";
 import { withTenant, withUser, type TenantTx } from "@/platform/db";
 import { forbidden, notFound, unauthenticated } from "@/platform/errors";
 import { requestIdFrom } from "@/platform/observability";
+import { permissionsForRole, type PermissionSet } from "./permissions";
 import { findMembershipBySlug } from "./repository";
 import type { RoleKey } from "./schema";
 import { looksLikeOrgSlug } from "./slugs";
@@ -16,7 +17,7 @@ import { looksLikeOrgSlug } from "./slugs";
  *
  *   authentication (modules/auth)   who is this?
  *   tenancy        (here)           which organization and site is this request about, and does the user belong there?
- *   authorization  (M3-2)           what may they do there?
+ *   authorization  (./policies.ts)  what may they do there?
  *
  * The organization and the site come from the URL and nowhere else: never from
  * a form field, a request body or client state. Every service that touches
@@ -51,6 +52,12 @@ export type OrgContext = {
   readonly org: { readonly id: string; readonly slug: string; readonly name: string };
   /** The actor's membership of `org`, as it was when the context was resolved. */
   readonly membership: { readonly id: string; readonly role: RoleKey };
+  /**
+   * What the member may do here: the catalog's set for their role
+   * (./permissions.ts). Worked out by the resolver from the membership it just
+   * read, once per request, and from nothing the request itself says.
+   */
+  readonly permissions: PermissionSet;
   /** Never present at runtime (see `genuine`): a context cannot be assembled from loose ids. */
   readonly [VERIFIED]: true;
 };
@@ -61,11 +68,14 @@ export type SiteContext = OrgContext & {
 
 export type RequestMeta = { requestId?: string; ip?: string };
 
+/** Is `ctx` an object the resolver itself returned? */
+export function isContext(ctx: unknown): ctx is OrgContext {
+  return typeof ctx === "object" && ctx !== null && genuine.has(ctx);
+}
+
 /** Throws unless `ctx` is an object the resolver itself returned. */
 export function assertContext(ctx: OrgContext): void {
-  if (typeof ctx !== "object" || ctx === null || !genuine.has(ctx)) {
-    throw new Error("A tenant context must come from resolveOrgContext() / resolveSiteContext()");
-  }
+  if (!isContext(ctx)) throw new Error("A tenant context must come from resolveOrgContext() / resolveSiteContext()");
 }
 
 /**
@@ -85,6 +95,11 @@ export function inTenant<T>(ctx: OrgContext, work: (tx: TenantTx) => Promise<T>)
  *   answer for all three: a non-member cannot tell whether a slug exists.
  * - A member of a suspended organization → `Forbidden` (they know it exists;
  *   it just cannot be used).
+ *
+ * The context carries the member's permissions. They follow from the role on
+ * the membership row read here, so a role change counts from the next request,
+ * and somebody who is not signed in or not a member never has a context to
+ * hold permissions in.
  */
 export async function resolveOrgContext(actor: Actor, orgSlug: string, meta: RequestMeta = {}): Promise<OrgContext> {
   if (actor.kind !== "user") throw unauthenticated();
@@ -101,6 +116,7 @@ export async function resolveOrgContext(actor: Actor, orgSlug: string, meta: Req
     actor: Object.freeze({ ...actor }),
     org: Object.freeze({ id: membership.id, slug: membership.slug, name: membership.name }),
     membership: Object.freeze({ id: membership.membershipId, role: membership.role }),
+    permissions: permissionsForRole(membership.role),
   } as OrgContext);
 }
 

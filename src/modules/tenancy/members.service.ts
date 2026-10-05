@@ -1,8 +1,9 @@
 import "server-only";
 import type { TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound, validationError } from "@/platform/errors";
-import { inTenant, type OrgContext } from "./context";
+import { assertContext, inTenant, type OrgContext } from "./context";
 import { decideRemoval, decideRoleChange, decideTransfer, type Decision } from "./membership-rules";
+import { requirePermission } from "./policies";
 import { countOwners, deleteMember, findMember, listMembers as listMemberRows, lockOrganization, setMemberRole, type MemberRow } from "./repository";
 import { ROLE_KEYS, type RoleKey } from "./schema";
 import type { MemberSummary } from "./shared";
@@ -11,9 +12,16 @@ import type { MemberSummary } from "./shared";
  * Members of an organization: list them, change a role, remove one, leave,
  * hand the organization over (M3-1; invitations and the screens are M3-4).
  *
- * Every change runs in one transaction that first locks the organization,
- * then reads who is who, then applies the rules in ./membership-rules.ts. The
- * member to change is named by membership id and looked up inside the
+ * Each change is checked twice, on purpose:
+ *
+ *  1. The policy, on the request's context, before anything is read: may this
+ *     caller attempt it at all? A member without the permission is refused
+ *     here, whatever id they sent, and never takes the organization lock.
+ *  2. One transaction that locks the organization, reads who is who NOW, and
+ *     applies ./membership-rules.ts: the permission again, on the current
+ *     role, and the rules that are not permissions (an Owner always remains).
+ *
+ * The member to change is named by membership id and looked up inside the
  * context's organization only: an id from another organization is not found.
  */
 
@@ -44,6 +52,7 @@ export async function listMembers(ctx: OrgContext): Promise<MemberSummary[]> {
 }
 
 export async function changeMemberRole(ctx: OrgContext, input: { memberId: string; role: RoleKey }): Promise<void> {
+  requirePermission(ctx, "org.members.manage");
   if (!(ROLE_KEYS as readonly string[]).includes(input.role)) throw validationError({ role: ["Choose a role."] });
   await inTenant(ctx, async (tx) => {
     const { actor, target, owners } = await factsFor(tx, ctx, input.memberId);
@@ -52,8 +61,10 @@ export async function changeMemberRole(ctx: OrgContext, input: { memberId: strin
   });
 }
 
-/** Removes another member. To remove yourself, leave. */
+/** Removes another member. Naming yourself is leaving, which takes no permission. */
 export async function removeMember(ctx: OrgContext, input: { memberId: string }): Promise<void> {
+  assertContext(ctx);
+  if (input.memberId !== ctx.membership.id) requirePermission(ctx, "org.members.manage");
   await inTenant(ctx, async (tx) => {
     const { actor, target, owners } = await factsFor(tx, ctx, input.memberId);
     enforce(decideRemoval({ actorRole: actor.role, self: actor.id === target.id, targetRole: target.role, owners }));
@@ -61,7 +72,7 @@ export async function removeMember(ctx: OrgContext, input: { memberId: string })
   });
 }
 
-/** The caller leaves the organization. The last Owner cannot. */
+/** The caller leaves the organization. Any member may; the last Owner cannot. */
 export async function leaveOrganization(ctx: OrgContext): Promise<void> {
   await inTenant(ctx, async (tx) => {
     const { actor, owners } = await factsFor(tx, ctx, ctx.membership.id);
@@ -76,6 +87,7 @@ export async function leaveOrganization(ctx: OrgContext): Promise<void> {
  * so this is "promote and step down", and at no point is there no Owner.
  */
 export async function transferOwnership(ctx: OrgContext, input: { memberId: string }): Promise<void> {
+  requirePermission(ctx, "org.manage");
   await inTenant(ctx, async (tx) => {
     const { actor, target } = await factsFor(tx, ctx, input.memberId);
     enforce(decideTransfer({ actorRole: actor.role, self: actor.id === target.id }));

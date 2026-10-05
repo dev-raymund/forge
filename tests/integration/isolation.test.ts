@@ -1,14 +1,17 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import pg from "pg";
+import { uuidv7 } from "uuidv7";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/modules/auth/shared";
 import { resolveOrgContext } from "@/modules/tenancy";
 import { getPool } from "@/platform/db/client";
 import { withTenant } from "@/platform/db/tenant";
-import { createTenantGraph } from "../fixtures/factories";
+import { isAppError } from "@/platform/errors";
+import { createTenantGraph, createUser } from "../fixtures/factories";
+import { addUser } from "../fixtures/tenants";
 import { auditRlsCoverage } from "../isolation/coverage";
-import { contextBoundOperations, tenantOperations, type Caller, type Foreign } from "../isolation/tenant-operations";
+import { contextBoundOperations, tenantOperations, tenantPolicyChecks, type Caller, type Foreign } from "../isolation/tenant-operations";
 import { tenantReads } from "../isolation/tenant-reads";
 
 /**
@@ -18,6 +21,10 @@ import { tenantReads } from "../isolation/tenant-reads";
  *     while B's data sits in the same database.
  *  3. Operations: every registered operation, run as A with B's identifiers,
  *     answers NotFound and leaves B exactly as it was.
+ *  4. The same operations, run by a member of A who may manage nothing (M3-2):
+ *     whatever they are told about B's identifiers, they are told the same
+ *     about identifiers that do not exist, and B is exactly as it was.
+ *  5. Policies handed a resource of B allow nothing, even to the user who made it.
  */
 
 describe("catalog coverage", () => {
@@ -62,7 +69,11 @@ describe("registered tenant reads return only the caller's rows", () => {
 
 describe("registered operations given another tenant's identifiers answer NotFound", () => {
   let caller: Caller;
+  /** A member of A with the least a member can have: a Viewer. */
+  let bystander: Caller;
   let foreign: Foreign;
+  /** Identifiers of the same shapes that belong to nobody. */
+  let nowhere: Foreign;
   let aOrgId: string;
 
   /** Everything an organization owns in the tenancy tables, as one digest: any change to any row changes it. */
@@ -89,6 +100,11 @@ describe("registered operations given another tenant's identifiers answer NotFou
       tx.execute<{ id: string }>(sql`select id from organization_members where organization_id = ${B.org.id} limit 1`),
     );
     foreign = { orgId: B.org.id, orgSlug: B.org.slug, siteId: B.site.id, siteSlug: B.site.slug, memberId: memberOfB.rows[0]!.id, userId: B.user.id };
+
+    const viewer = await addUser(A.org, await createUser(), "viewer");
+    bystander = { actor: viewer.actor, ctx: await resolveOrgContext(viewer.actor, A.org.slug), orgSlug: A.org.slug };
+    const tail = randomBytes(4).toString("hex");
+    nowhere = { orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7() };
   });
 
   it("has operations to check, and the fixtures are what the checks assume", async () => {
@@ -116,6 +132,46 @@ describe("registered operations given another tenant's identifiers answer NotFou
     const before = await fingerprintOf(foreign.orgId);
     await expect(operation.run(caller, foreign)).resolves.toBeDefined();
     expect(await fingerprintOf(foreign.orgId), "organization B changed").toBe(before);
+  });
+
+  describe("asked by a member of A who may manage nothing", () => {
+    const answerOf = async (run: () => Promise<unknown>) => {
+      try {
+        await run();
+      } catch (error) {
+        if (isAppError(error)) return { kind: error.kind, message: error.message };
+        throw error;
+      }
+      throw new Error("expected the operation to be refused");
+    };
+
+    it("the bystander is a Viewer, and the identifiers that belong to nobody really do", async () => {
+      expect(bystander.ctx.membership.role).toBe("viewer");
+      expect(bystander.ctx.org.id).toBe(aOrgId);
+      expect(bystander.ctx.permissions.list).toEqual(["entries.page.read", "entries.post.read"]);
+      await expect(resolveOrgContext(caller.actor, nowhere.orgSlug)).rejects.toMatchObject({ kind: "NotFound" });
+    });
+
+    it.each(tenantOperations.map((op) => [op.name, op] as const))("%s: the same answer as for something that does not exist", async (_name, operation) => {
+      const before = await fingerprintOf(foreign.orgId);
+      const aboutB = await answerOf(() => operation.run(bystander, foreign));
+      const aboutNothing = await answerOf(() => operation.run(bystander, nowhere));
+      expect(aboutB).toEqual(aboutNothing);
+      expect(["NotFound", "Forbidden"]).toContain(aboutB.kind);
+      expect(await fingerprintOf(foreign.orgId), "organization B changed").toBe(before);
+    });
+  });
+
+  describe("policies handed a resource of another tenant", () => {
+    it.each(tenantPolicyChecks.map((check) => [check.name, check] as const))("%s allows nothing", async (_name, check) => {
+      for (const who of [caller, bystander]) {
+        // The worst case for an ownership rule: B's resource, recorded as made by this very user.
+        expect(check.run(who.ctx, { organizationId: foreign.orgId, ownerId: who.ctx.actor.userId }), who.ctx.membership.role).toEqual([]);
+        expect(check.run(who.ctx, { organizationId: nowhere.orgId, ownerId: who.ctx.actor.userId })).toEqual([]);
+      }
+      // Not passing by refusing everything: the same check on A's own resource allows A's Owner something.
+      expect(check.run(caller.ctx, { organizationId: aOrgId, ownerId: caller.ctx.actor.userId }).length).toBeGreaterThan(0);
+    });
   });
 });
 

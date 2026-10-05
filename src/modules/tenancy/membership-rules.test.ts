@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canManageMembers, canManageOrganization, decideRemoval, decideRoleChange, decideTransfer } from "./membership-rules";
+import { decideRemoval, decideRoleChange, decideTransfer } from "./membership-rules";
+import { roleHolds } from "./permissions";
 import { ROLE_KEYS, type RoleKey } from "./schema";
 
 const OK = { ok: true };
@@ -8,9 +9,17 @@ const LAST_OWNER = { ok: false, reason: "last-owner" };
 const others = ROLE_KEYS.filter((role) => role !== "owner");
 
 describe("who manages what", () => {
-  it("members: Owner and Admin; the organization itself: Owner", () => {
-    expect(ROLE_KEYS.filter(canManageMembers)).toEqual(["owner", "admin"]);
-    expect(ROLE_KEYS.filter(canManageOrganization)).toEqual(["owner"]);
+  it("is the catalog's answer: members take org.members.manage, the organization itself org.manage", () => {
+    const managers = ROLE_KEYS.filter((role) => roleHolds(role, "org.members.manage"));
+    const organizers = ROLE_KEYS.filter((role) => roleHolds(role, "org.manage"));
+    expect(managers).toEqual(["owner", "admin"]);
+    expect(organizers).toEqual(["owner"]);
+    // The decisions follow the catalog, role for role, rather than a list of their own.
+    for (const role of ROLE_KEYS) {
+      expect(decideRoleChange({ actorRole: role, self: false, currentRole: "viewer", newRole: "author", owners: 2 }).ok, role).toBe(managers.includes(role));
+      expect(decideRemoval({ actorRole: role, self: false, targetRole: "viewer", owners: 2 }).ok, role).toBe(managers.includes(role));
+      expect(decideTransfer({ actorRole: role, self: false }).ok, role).toBe(organizers.includes(role));
+    }
   });
 });
 

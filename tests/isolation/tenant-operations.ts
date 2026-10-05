@@ -1,6 +1,7 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  changeMemberRole, listMembers, removeMember, resolveOrgContext, resolveSiteContext, transferOwnership, updateOrganization, type OrgContext,
+  can, canActOn, changeMemberRole, listMembers, PERMISSIONS, removeMember, resolveOrgContext, resolveSiteContext, transferOwnership, updateOrganization,
+  type OrgContext, type OwnedResource, type OwnScope, type Permission,
 } from "@/modules/tenancy";
 
 /**
@@ -18,6 +19,14 @@ import {
  * id or a slug here. An action or a handler is registered through the function
  * it calls, with the context it would resolve; when action wrappers exist
  * (M3-3) they can be registered directly, returning their `ActionResult`.
+ *
+ * Since M3-2 the suite also runs every entry as a member of A who holds no
+ * permission to manage anything (a Viewer). There the requirement is that the
+ * answer for B's identifiers is the same as for identifiers that exist nowhere:
+ * `Forbidden` is fine, as long as it is `Forbidden` for both.
+ *
+ * A policy that is handed a resource (a row someone already loaded) goes in
+ * `tenantPolicyChecks` below.
  */
 
 /** Who is asking: a user who belongs to A (as an Owner, so permission is never the reason for a refusal). */
@@ -66,4 +75,18 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
     run: ({ ctx }, b) => updateOrganization(ctx, { name: "Still A", id: b.orgId, organizationId: b.orgId, orgSlug: b.orgSlug } as { name: string }),
   },
   { name: "tenancy.listMembers()", run: ({ ctx }) => listMembers(ctx) },
+];
+
+/**
+ * Permission checks that are handed a resource (M3-2). The suite gives each one
+ * a resource that belongs to B and was made by the caller's own user: the case
+ * most likely to slip through an "is it theirs?" rule. Each returns the keys it
+ * wrongly allowed, and must return none. Register the policy of every later
+ * module here (`canUpdateEntry`, `canDeleteMedia`, …).
+ */
+const OWN_SCOPES: OwnScope[] = ["entries.post.update", "entries.post.publish", "entries.post.delete", "media.update", "media.delete"];
+
+export const tenantPolicyChecks: { name: string; run: (ctx: OrgContext, resource: OwnedResource) => string[] }[] = [
+  { name: "tenancy.can(every permission, the resource)", run: (ctx, resource) => PERMISSIONS.filter((key: Permission) => can(ctx, key, resource)) },
+  { name: "tenancy.canActOn(every own/any scope, the resource)", run: (ctx, resource) => OWN_SCOPES.filter((scope) => canActOn(ctx, scope, resource)) },
 ];

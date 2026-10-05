@@ -13,6 +13,43 @@ async function restrictedImports(code: string, filePath: string) {
   return (result?.messages ?? []).filter((m) => m.ruleId === "no-restricted-imports");
 }
 
+async function roleChecks(code: string, filePath: string) {
+  const [result] = await eslint.lintText(code, { filePath });
+  return (result?.messages ?? []).filter((m) => m.ruleId === "no-restricted-syntax");
+}
+
+describe("authorization goes through the permission catalog (ADR 0009)", () => {
+  const adHoc = [
+    `export const f = (member: { role: string }) => member.role === "owner";\n`,
+    `export const f = (ctx: { membership: { role: string } }) => ctx.membership.role !== "viewer";\n`,
+    `export const f = (role: string) => role == "admin";\n`,
+    `export const f = (actorRole: string) => "editor" === actorRole;\n`,
+    `export function f(m: { role: string }) { switch (m.role) { case "owner": return 1; default: return 0; } }\n`,
+  ];
+
+  it.each(adHoc)("rejects a decision made by comparing a role, outside modules/tenancy: %s", async (code) => {
+    for (const filePath of ["src/modules/content/entry.service.ts", "src/app/(admin)/example.tsx", "src/components/admin/example.tsx", "src/platform/example.ts"]) {
+      const errors = await roleChecks(code, filePath);
+      expect(errors, filePath).toHaveLength(1);
+      expect(errors[0]!.message).toMatch(/can\(ctx, permission\)/);
+    }
+  });
+
+  it("leaves the tenancy module, where the Owner invariants live, alone", async () => {
+    for (const code of adHoc) expect(await roleChecks(code, "src/modules/tenancy/membership-rules.ts")).toHaveLength(0);
+  });
+
+  it("does not mistake other comparisons for role checks", async () => {
+    const fine = [
+      `export const f = (el: { role: string }) => el.role === "alert";\n`, // ARIA
+      `export const f = (kind: string) => kind === "owner";\n`, // not a role
+      `export const f = (member: { role: string }, other: { role: string }) => member.role === other.role;\n`,
+      `export const f = (plan: string) => plan === "admin";\n`,
+    ];
+    for (const code of fine) expect(await roleChecks(code, "src/modules/content/entry.service.ts"), code).toHaveLength(0);
+  });
+});
+
 describe("module boundaries", () => {
   it("rejects deep imports into another module from app/", async () => {
     const errors = await restrictedImports(

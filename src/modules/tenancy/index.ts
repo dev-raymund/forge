@@ -1,17 +1,20 @@
 import "server-only";
 
 /**
- * Public server API of the tenancy module (M3-1): organizations, memberships,
- * and the resolver that turns a session and a URL into a tenant context.
+ * Public server API of the tenancy module: organizations, memberships, the
+ * resolver that turns a session and a URL into a tenant context (M3-1), and
+ * what a member may do there: the permission catalog and `can()` (M3-2).
  *
- * Permissions (`can()`, the catalog) are M3-2; invitations and the screens are
- * M3-3 and M3-4. What is here is what they stand on.
+ * Invitations and the screens are M3-3 and M3-4. What is here is what they
+ * stand on.
  */
 export {
-  assertContext, canAccessSite, inTenant, requireOrgContext, requireSiteContext, resolveOrgContext, resolveSiteContext, resolveSiteWithin,
+  assertContext, canAccessSite, inTenant, isContext, requireOrgContext, requireSiteContext, resolveOrgContext, resolveSiteContext, resolveSiteWithin,
 } from "./context";
 export type { OrgContext, RequestMeta, SiteContext, UserActor } from "./context";
 export { createOrganization, listOrganizations, updateOrganization } from "./organizations.service";
 export { changeMemberRole, leaveOrganization, listMembers, removeMember, transferOwnership } from "./members.service";
-export { canManageMembers, canManageOrganization } from "./membership-rules";
+export { PERMISSIONS, isPermission, permissionsForRole } from "./permissions";
+export type { OwnedResource, OwnScope, Permission, PermissionSet } from "./permissions";
+export { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, requirePermission } from "./policies";
 export type { MemberSummary, OrganizationStatus, OrganizationSummary, RoleKey } from "./shared";

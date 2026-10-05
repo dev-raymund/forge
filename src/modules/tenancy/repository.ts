@@ -27,6 +27,15 @@ export async function roleIdFor(tx: Tx, key: RoleKey): Promise<string> {
   return id;
 }
 
+/**
+ * A membership's role, joined only when it is one of the five system roles
+ * (`organization_id` NULL). Permissions for those are defined in code. A role
+ * row that belongs to an organization has none defined anywhere in V1,
+ * whatever its key says, so its members are treated like an unknown role:
+ * as not being members at all.
+ */
+const systemRole = and(eq(roles.id, organizationMembers.roleId), isNull(roles.organizationId));
+
 const membershipColumns = {
   id: organizations.id,
   slug: organizations.slug,
@@ -54,7 +63,7 @@ export async function findMembershipBySlug(tx: UserTx, userId: string, slug: str
     .select(membershipColumns)
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .innerJoin(roles, eq(roles.id, organizationMembers.roleId))
+    .innerJoin(roles, systemRole)
     .where(and(eq(organizationMembers.userId, userId), eq(organizations.slug, slug), isNull(organizations.deletedAt)));
   return row ? toMembership(row) : null;
 }
@@ -65,7 +74,7 @@ export async function listMemberships(tx: UserTx, userId: string): Promise<Membe
     .select(membershipColumns)
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .innerJoin(roles, eq(roles.id, organizationMembers.roleId))
+    .innerJoin(roles, systemRole)
     .where(and(eq(organizationMembers.userId, userId), isNull(organizations.deletedAt)))
     .orderBy(organizations.name, organizations.id);
   return rows.map(toMembership).filter((row): row is MembershipRow => row !== null);
@@ -91,7 +100,7 @@ export async function findMember(tx: TenantTx, organizationId: string, memberId:
   const [row] = await tx
     .select({ id: organizationMembers.id, userId: organizationMembers.userId, roleKey: roles.key })
     .from(organizationMembers)
-    .innerJoin(roles, eq(roles.id, organizationMembers.roleId))
+    .innerJoin(roles, systemRole)
     .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.id, memberId)));
   return row && isRoleKey(row.roleKey) ? { id: row.id, userId: row.userId, role: row.roleKey } : null;
 }
@@ -116,7 +125,7 @@ export async function listMembers(tx: TenantTx, organizationId: string): Promise
     })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .innerJoin(roles, eq(roles.id, organizationMembers.roleId))
+    .innerJoin(roles, systemRole)
     .where(eq(organizationMembers.organizationId, organizationId))
     .orderBy(organizationMembers.createdAt, organizationMembers.id);
   return rows.filter((row) => isRoleKey(row.roleKey)).map(({ roleKey, ...row }) => ({ ...row, role: roleKey as RoleKey }));

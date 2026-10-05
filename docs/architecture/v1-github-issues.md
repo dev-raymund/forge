@@ -494,6 +494,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M3-2 · Permission catalog, policies, context resolvers
 **Labels:** `area:tenancy` `type:feature` `risk:high`
 
+**Status:** ✔ done (2026-10-05). See ADR 0009.
+
 **Description:** Authorization for everything that follows.
 
 *From M3-1: the context resolvers exist (`modules/tenancy/context.ts`): they answer "which organization and site, and is the user a member". What remains here is "what may they do": the catalog, `can()`, and `policies.ts`. Add `permissions` to the context where it is built (`resolveOrgContext`), not beside it. The four membership rules in `membership-rules.ts` include `canManageMembers` / `canManageOrganization`: express those two through the catalog (`org.members.manage`, `org.manage`) and keep the invariants (last Owner, only an Owner grants Owner) where they are. Contexts are sealed: build one only through the resolver, including in tests.*
@@ -501,10 +503,20 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M3-1
 
 **Acceptance criteria:**
-- [ ] `permissions.ts` catalog (plan §13), with role → permission sets in code and `entries.{type}.{action}` keys
-- [ ] `can(ctx, permission, resource?)` with `.own` ownership rules; unknown roles hold nothing
-- [x] `requireOrgContext(orgSlug)` and `requireSiteContext(orgSlug, siteSlug)` (React `cache`) → context; 404 for non-members *(delivered in M3-1; this issue adds `permissions` to it)*
-- [ ] `policies.ts` helpers used by later modules
+- [x] `permissions.ts` catalog (plan §13), with role → permission sets in code and `entries.{type}.{action}` keys *(29 keys; the one wildcard is `entries.*.{action}`, in the type segment only)*
+- [x] `can(ctx, permission, resource?)` with `.own` ownership rules; unknown roles hold nothing *(and `requirePermission()`, which throws `Forbidden`; `can()` never throws)*
+- [x] `requireOrgContext(orgSlug)` and `requireSiteContext(orgSlug, siteSlug)` (React `cache`) → context; 404 for non-members *(delivered in M3-1; this issue added `ctx.permissions`)*
+- [x] `policies.ts` helpers used by later modules *(`can`, `requirePermission`, `canActOn` for own/any pairs, and the tenancy policies `canUpdateOrganization`, `canTransferOwnership`, `canManageMembers`)*
+
+**Also delivered:**
+- The M3-1 services now ask the catalog: a policy check on the request's context first, then the same permission on the role re-read under the organization lock, then the membership rules. `canManageMembers(role)` / `canManageOrganization(role)` are gone.
+- A member without the permission is refused before their input is read (`Forbidden` whatever id they name; before M3-2 a malformed or foreign id answered `NotFound` and a bad role `Validation` first). Members with the permission see no change.
+- A `roles` row that is not one of the five system rows gives its members nothing, whatever its key (the repository joins system roles only).
+- ESLint: outside `modules/tenancy`, comparing a role with a role name fails lint and points at `can()`.
+- The isolation suite runs every registered operation a second time as a Viewer, and has a registry for policies that take a resource (`tenantPolicyChecks`).
+- A race in an M2-2 browser test, found here: "the keyboard alone is enough to log in" pressed Enter before the account menu had moved focus (Radix moves it on a 0 ms timer), so on a fast machine it opened Account instead of logging out. It failed on the M3-1 commit as well. The test now waits to see focus land, which also asserts where focus is.
+
+**Not here, by design:** no read permissions for the organization, its members or its sites (membership grants them); no entry or media policies yet (their modules add them on `canActOn`); no screens.
 
 **Likely files/modules:** `src/modules/tenancy/{permissions,policies,context}.ts`
 
@@ -512,6 +524,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 - generated matrix test (catalog × roles)
 - wildcard and unknown-role cases
 - context returns 404 for a non-member
+
+✔ `src/modules/tenancy/permissions.test.ts` (173: the matrix is 145 of them, plus the ADR's table against the code), `src/modules/tenancy/policies.test.ts` (28), `tests/integration/permissions.test.ts` (30, real Postgres), `tests/integration/isolation.test.ts` (46, +12), `tests/unit/lint-boundaries.test.ts` (+7), `tests/e2e/tenancy.spec.ts` (+1).
 
 ### M3-3 · Onboarding (organization), org switcher, org settings, ownership transfer
 **Labels:** `area:tenancy` `type:feature`
@@ -521,6 +535,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M2-2: `/` is currently a placeholder protected page (`src/app/(admin)/page.tsx`): header with `AccountMenu`, the `VerifyEmailBanner`, and `requireUserOrLogin("/")` inside `<Suspense>`. Replace its body with the redirect, and reuse the header in the admin shell. Protected layouts call `requireUserOrLogin(path)`; the proxy's login redirect is only a convenience. After sign-up the user lands on `/verify-email` and continues to `/`.*
 
 *From M3-1: the services exist. `createOrganization(actor, { name, slug })` creates the organization, the Owner membership and the 14-day trial in one transaction; `suggestOrgSlug(name)` and `checkOrgSlug(slug)` (client-safe, `modules/tenancy/shared`) are for the form; `listOrganizations(actor)` is the switcher's query; `updateOrganization(ctx, …)` and `transferOwnership(ctx, { memberId })` are for the settings page. This issue is the screens, their Server Actions, and the `/` redirect. Layouts call `requireOrgContext(params.orgSlug)` and map `NotFound` to `notFound()`, `Unauthenticated` to the login redirect, and `Forbidden` (a suspended organization) to a page that says so. Register each action in `tests/isolation/tenant-operations.ts`.*
+
+*From M3-2 (ADR 0009): decide what a screen shows with the tenancy policies on the request's context (`canUpdateOrganization(ctx)`, `canTransferOwnership(ctx)`, or `can(ctx, permission)`), in Server Components; pass booleans to Client Components, never the role. The services check again whatever the screen showed. `updateOrganization` and `transferOwnership` already start with `requirePermission(ctx, "org.manage")`. Add browser tests here for what each role sees and for the 403 and 404 pages: M3-2 had no organization routes to drive. Register the new Server Actions in `tests/isolation/tenant-operations.ts`.*
 
 **Depends on:** M3-2
 
@@ -540,6 +556,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Invite users and manage roles.
 
 *From M3-1: `listMembers`, `changeMemberRole`, `removeMember` and `leaveOrganization` exist with the last-Owner rule under a row lock, and are tested under concurrency. This issue adds invitations and the screens. `acceptInvitation` must insert the membership inside the invited organization's tenant context (`withTenant` with the organization id that `resolve_invitation()` returned): since migration 0004 a membership cannot be written from a user-only context. A member is named by membership id, never by user id.*
+
+*From M3-2 (ADR 0009): inviting takes `org.members.manage` (`requirePermission(ctx, "org.members.manage")` first, then the plan limit, then validation). The two rules that are not permissions apply to invitations too: only an Owner may invite someone as an Owner. The members screen uses `canManageMembers(ctx)` to decide what to show; the role select must not offer Owner to an Admin, and the service refuses it regardless.*
 
 **Depends on:** M3-3, M1-4
 
@@ -561,6 +579,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M2-4: `modules/audit` already has `recordPlatformEvent()` for org-less account events (`auth.login`, `auth.logout`, `auth.password_changed`), written after Better Auth's own queries, so not in their transaction. Add `audit.record(tx, …)` for tenant mutations next to it. **No application role can read org-less rows**: the policy's `USING` clause needs an organization, and `FORCE ROW LEVEL SECURITY` applies it to the owner too. That is right for tenants; the staff console (M12-1) will need a definer function or a platform policy to read them. The integration tests read them as the owner with `FORCE` lifted inside a rolled-back transaction (`tests/integration/auth-account.test.ts`).*
 
 *From M3-1: the tenancy services do not write audit rows yet (`audit.record` did not exist). Add them inside the same `inTenant(ctx, …)` transactions: organization created / renamed / slug changed, role changed, member removed or left, ownership handed over. The context already carries `requestId`, `ip` and the actor.*
+
+*From M3-2 (ADR 0009): the activity page takes `org.activity.read` (Owner and Admin): `requirePermission(ctx, "org.activity.read")` in the query, not only in the page. A refused attempt (`Forbidden`) is not an audit event in V1.*
 
 **Depends on:** M3-1
 
@@ -585,6 +605,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Sites and their site address (`/s/{address}` in V1; `{address}.<sites domain>` post-V1, ADR 0006).
 
 *From M3-1: `modules/sites` has its read side (`findSiteBySlug`, `siteAddress`) and `requireSiteContext(orgSlug, siteSlug)` resolves a site for an admin request. A site's **slug** (admin URLs, unique per organization) and its **address** (public URLs, unique on the platform) are different values; the test factory still sets them equal. The database already refuses a duplicate address, an uppercase address, and a `domains` row whose site belongs to another organization (tested in `tests/integration/tenancy.test.ts`). `createSite` takes a context from the resolver and opens its transaction with `inTenant(ctx, …)`.*
+
+*From M3-2 (ADR 0009): `createSite` takes `sites.create`, `deleteSite` takes `sites.delete` (Owner only), `changeSiteAddress` takes `site.settings.manage`. Order: `requirePermission` → `assertLimit` (the plan, a separate question from the role) → validate → write. Listing an organization's sites takes membership only.*
 
 **Depends on:** M3-2
 
@@ -714,6 +736,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** The core write paths.
 
+*From M3-2 (ADR 0009): add `modules/content/policies.ts`. Pages have plain keys (`entries.page.update`); posts have own/any pairs, for which `canActOn(ctx, "entries.post.update", { organizationId: entry.organizationId, ownerId: entry.authorId })` is the whole policy. Reading (`entries.{type}.read`) is held by every role. Build the key from the entry's type through the content-type registry, never from request input. Register each policy in `tenantPolicyChecks` (`tests/isolation/tenant-operations.ts`). A content type added to the registry needs its keys added to the catalog: a unit test fails until the catalog's entry types and `ENTRY_TYPES` agree.*
+
 **Depends on:** M5-2, M3-5
 
 **Acceptance criteria:**
@@ -841,6 +865,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 - *`createUpload` already signs type and size; `head` + `readRange` serve `completeUpload`.*
 - *The `/media/{key}` route (M6-2) reads with `platformStorage().get()`.*
 - *Delete the `/api/dev/storage` dev route once real uploads exist.*
+
+*From M3-2 (ADR 0009): `requestUploads` takes `media.upload`. Updating and deleting are own/any pairs: `canActOn(ctx, "media.delete", { organizationId: item.organizationId, ownerId: item.uploadedBy })`. An item whose uploader was deleted (`uploaded_by` NULL) is nobody's own: only `.any` reaches it.*
 
 **Depends on:** M1-5, M3-2
 
@@ -1159,6 +1185,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Entitlements without Stripe.
+
+*From M3-2 (ADR 0009): entitlements are a separate axis from roles. `assertLimit` runs after `requirePermission` and before validation, and knows nothing about roles; the permission catalog has no plan keys and must not gain any. `org.billing.manage` (Owner only) is the permission to open billing, not a statement about the plan.*
 
 **Depends on:** M3-1
 

@@ -73,12 +73,14 @@ export async function seedUser(name = "E2E User"): Promise<{ id: string; email: 
 /**
  * Makes an existing user (by email) a member of an organization, the way
  * accepting an invitation will (M3-4): inside the organization's own context.
+ * For someone who is already a member, it changes their role.
  */
 export async function addMember(orgId: string, email: string, role: "owner" | "admin" | "editor" | "author" | "viewer" = "owner") {
   await inTenant(orgId, (c) =>
     c.query(
       `insert into organization_members (id, organization_id, user_id, role_id)
-       select $1, $2, u.id, r.id from users u, roles r where u.email = $3 and r.key = $4 and r.organization_id is null`,
+       select $1, $2, u.id, r.id from users u, roles r where u.email = $3 and r.key = $4 and r.organization_id is null
+       on conflict (organization_id, user_id) do update set role_id = excluded.role_id`,
       [uuidv7(), orgId, email, role],
     ),
   );
