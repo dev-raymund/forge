@@ -530,6 +530,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M3-3 · Onboarding (organization), org switcher, org settings, ownership transfer
 **Labels:** `area:tenancy` `type:feature`
 
+**Status:** ✔ done (2026-10-05). See the M3-3 addenda in ADR 0001 and ADR 0009.
+
 **Description:** Create and manage organizations.
 
 *From M2-2: `/` is currently a placeholder protected page (`src/app/(admin)/page.tsx`): header with `AccountMenu`, the `VerifyEmailBanner`, and `requireUserOrLogin("/")` inside `<Suspense>`. Replace its body with the redirect, and reuse the header in the admin shell. Protected layouts call `requireUserOrLogin(path)`; the proxy's login redirect is only a convenience. After sign-up the user lands on `/verify-email` and continues to `/`.*
@@ -541,14 +543,28 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M3-2
 
 **Acceptance criteria:**
-- [ ] `/onboarding` step 1 creates the org, the Owner membership and a trial subscription (14 days)
-- [ ] `/` redirects to the last org's sites, or `/onboarding`
-- [ ] Org switcher in the admin shell (URL-based, D-08)
-- [ ] `/{org}/settings`: rename, change slug (with redirect from the old slug for 30 days, optional), transfer ownership (Owner only)
+- [x] `/onboarding` step 1 creates the org, the Owner membership and a trial subscription (14 days) *(the form calls `createOrganization`, the one transaction from M3-1; a user who already has an organization is sent to it)*
+- [x] `/` redirects to the last org's sites, or `/onboarding` *(a route handler: a real 307. "Last" is the organization the user joined most recently, worked out from their memberships on every request; nothing is stored. The destination is `/{org}` until `/{org}/sites` exists, M4-1)*
+- [x] Org switcher in the admin shell (URL-based, D-08) *(a menu of links to `/{org}`; also on `/account`)*
+- [x] `/{org}/settings`: rename, change slug, transfer ownership (Owner only) *(the 30-day redirect from the old slug is the optional part and was not built: the old URL is a 404 at once)*
+
+**Decisions taken here (the pasted issue text and the plan left them open; all are in the ADR addenda):**
+- **Who may open `/{org}/settings`: Owner and Admin.** Plan §19 says "Owner", plan §13 says "only Owner/Admin see settings", and the owner's instruction for this issue was not to make the whole page Owner-only. An Admin sees the name and URL read-only; every form is Owner-only (`org.manage`). Editors, Authors and Viewers get a "no access" page. The entry check is `canViewOrganizationSettings(ctx)` = holds `org.manage` or `org.members.manage`: no key was added to the catalog.
+- **Transfer needs a typed confirmation** (the organization's slug), checked by the server as well as the dialog. No re-authentication: the architecture has none.
+- **`/onboarding` is the first run only.** The screen sends a user who already has an organization to it. The service still allows a user to own several (M3-1), but no screen offers a second one yet: see the note on M11-1.
+- **404 and "no access" pages under `/{org}` are sent with HTTP 200 to a signed-in visitor.** With Cache Components the admin shell starts streaming before the membership is known, so the status is already sent (Next.js behaviour; the page carries `noindex`). The content is identical for "not yours" and "does not exist". Signed-out visitors get a real redirect to the login page from the proxy, as before.
+
+**Also delivered:**
+- The admin's form kit (`Field`, `FormAlert`, `SubmitButton`, the form hook) moved from `modules/auth/ui` to `components/admin/form.tsx`, with `FormState` in `platform/forms.ts` and the failure mapping in `platform/form-failure.ts`. The auth module re-exports them, so its files did not change.
+- Each form's logic lives in `modules/tenancy/organization-forms.ts` (`submit…`), apart from the `"use server"` file, so the whole path runs against real Postgres in tests and is registered in the isolation suite. The actions add only `revalidatePath`, `refresh()` and `redirect()`.
+- `requireOrgPage(orgSlug)`: what every page and layout under `/{org}` starts with (login redirect, 404, or "suspended"). A unit test fails when a page under `[orgSlug]` does not call it, and when anything per-user is cached.
+- A fix in `modules/auth`: in a route handler Better Auth deletes the cookie of a dead session, so `requireAuthOrLogin` now reads the cookie before resolving the session. Without it `/` lost the "your session has ended" notice.
 
 **Likely files/modules:** `src/app/(admin)/onboarding/*`, `src/app/(admin)/[orgSlug]/*`, `src/modules/tenancy/*`
 
 **Testing:** E2E sign up → onboarding → org created; two orgs open in two tabs work independently.
+
+✔ `tests/e2e/organizations.spec.ts` (9: the new-user flow, the switcher with two tabs, settings per role, rename and URL change, a member demoted or removed behind an open page, ownership transfer between two browsers, cross-tenant 404, a suspended organization, a phone), `tests/integration/organization-forms.test.ts` (26, real Postgres), `tests/integration/isolation.test.ts` (60, +14), `src/modules/tenancy/home.test.ts` (10), `src/modules/tenancy/ui/ui.test.tsx` (13), `src/modules/tenancy/policies.test.ts` (29, +1), `tests/unit/organization-pages.test.ts` (40).
 
 ### M3-4 · Invitations and member management
 **Labels:** `area:tenancy` `type:feature`
@@ -558,6 +574,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-1: `listMembers`, `changeMemberRole`, `removeMember` and `leaveOrganization` exist with the last-Owner rule under a row lock, and are tested under concurrency. This issue adds invitations and the screens. `acceptInvitation` must insert the membership inside the invited organization's tenant context (`withTenant` with the organization id that `resolve_invitation()` returned): since migration 0004 a membership cannot be written from a user-only context. A member is named by membership id, never by user id.*
 
 *From M3-2 (ADR 0009): inviting takes `org.members.manage` (`requirePermission(ctx, "org.members.manage")` first, then the plan limit, then validation). The two rules that are not permissions apply to invitations too: only an Owner may invite someone as an Owner. The members screen uses `canManageMembers(ctx)` to decide what to show; the role select must not offer Owner to an Admin, and the service refuses it regardless.*
+
+*From M3-3: the organization shell exists (`src/app/(admin)/[orgSlug]/layout.tsx`). Add "Members" to its links (every member may read the list; managing takes `canManageMembers(ctx)`), and start the page with `requireOrgPage(orgSlug, …)`: a unit test fails for a page under `[orgSlug]` that does not. Follow the forms' shape: logic in a `submit…` function that takes the session's actor and the URL's slug (`modules/tenancy/organization-forms.ts`), a thin `"use server"` action around it, and an entry in `tenantForms` (`tests/isolation/tenant-operations.ts`). The form kit is `@/components/admin/form`. Until this issue an Owner has nobody to transfer to in a real organization: once invitations exist, add one browser test that goes invite → accept → transfer. In browser tests, look only at what is on screen (`.filter({ visible: true })` or a role locator): after a client-side navigation Next keeps the previous page in the document, hidden. `tests/e2e/helpers/orgs.ts` seeds and inspects organizations.*
 
 **Depends on:** M3-3, M1-4
 
@@ -581,6 +599,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-1: the tenancy services do not write audit rows yet (`audit.record` did not exist). Add them inside the same `inTenant(ctx, …)` transactions: organization created / renamed / slug changed, role changed, member removed or left, ownership handed over. The context already carries `requestId`, `ip` and the actor.*
 
 *From M3-2 (ADR 0009): the activity page takes `org.activity.read` (Owner and Admin): `requirePermission(ctx, "org.activity.read")` in the query, not only in the page. A refused attempt (`Forbidden`) is not an audit event in V1.*
+
+*From M3-3: the organization screens write no audit rows either: creating, renaming, changing the URL and transferring all go through the M3-1 services, so adding `audit.record(tx, …)` there covers the screens too. Add "Activity" to the organization's links for members who hold `org.activity.read`.*
 
 **Depends on:** M3-1
 
@@ -608,6 +628,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 *From M3-2 (ADR 0009): `createSite` takes `sites.create`, `deleteSite` takes `sites.delete` (Owner only), `changeSiteAddress` takes `site.settings.manage`. Order: `requirePermission` → `assertLimit` (the plan, a separate question from the role) → validate → write. Listing an organization's sites takes membership only.*
 
+*From M3-3: `/{orgSlug}` is a small page for now (`src/app/(admin)/[orgSlug]/page.tsx`: the organization's name, the member's role, an empty "Sites" box). When `/{orgSlug}/sites` exists, turn it into the redirect plan §19 describes and add "Sites" to the shell's links. `/` (`src/app/(admin)/route.ts`) redirects to `homePath(...)`, which is `/{orgSlug}`; nothing else needs to change for it to reach the sites.*
+
 **Depends on:** M3-2
 
 **Acceptance criteria:**
@@ -627,6 +649,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:sites` `type:feature`
 
 **Description:** Configure a site.
+
+*From M3-3: `/onboarding` is step 1 only, and sends a user who already has an organization straight to it. Making the wizard resumable (plan §3) changes that one rule in `src/app/(admin)/onboarding/page.tsx`: an organization without a site continues at step 2 instead of leaving. After creating the organization the action redirects to `/{orgSlug}`; point it at step 2 here.*
 
 **Depends on:** M4-1, M4-4
 
@@ -1188,6 +1212,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 *From M3-2 (ADR 0009): entitlements are a separate axis from roles. `assertLimit` runs after `requirePermission` and before validation, and knows nothing about roles; the permission catalog has no plan keys and must not gain any. `org.billing.manage` (Owner only) is the permission to open billing, not a statement about the plan.*
 
+*From M3-3: every organization a user creates starts its own 14-day Pro trial, and `createOrganization` does not limit how many a user may create. No screen offers a second organization yet (onboarding is the first run only), but the Server Action behind it would accept one. Decide here whether creating further organizations is a product feature (then it needs a screen and a rule about trials) or is refused.*
+
 **Depends on:** M3-1
 
 **Acceptance criteria:**
@@ -1224,6 +1250,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:ops` `type:infra` `risk:high`
 
 **Description:** Make it safe to operate.
+
+*From M3-3: under `/{orgSlug}` the 404 and "no access" pages reach a signed-in visitor with HTTP 200, because the admin shell streams before the membership is known (Cache Components). If real 404/403 status codes are wanted for the admin, the check has to happen in `proxy.ts` before rendering; that means a membership query per admin request there, so weigh it. Also: `/favicon.ico` and other stray first segments now reach the `[orgSlug]` route (answered as 404 without touching the session or the database); a real favicon would stop the request altogether.*
 
 **Depends on:** all feature milestones
 

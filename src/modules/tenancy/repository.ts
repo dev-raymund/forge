@@ -42,15 +42,18 @@ const membershipColumns = {
   name: organizations.name,
   status: organizations.status,
   membershipId: organizationMembers.id,
+  joinedAt: organizationMembers.createdAt,
   roleKey: roles.key,
 };
 
-export type MembershipRow = OrganizationSummary & { membershipId: string };
+export type MembershipRow = OrganizationSummary & { membershipId: string; joinedAt: Date };
 
 /** A role key this code does not know holds nothing (plan §13): the membership is treated as absent. */
-function toMembership(row: { id: string; slug: string; name: string; status: OrganizationSummary["status"]; membershipId: string; roleKey: string }): MembershipRow | null {
+function toMembership(row: {
+  id: string; slug: string; name: string; status: OrganizationSummary["status"]; membershipId: string; joinedAt: Date; roleKey: string;
+}): MembershipRow | null {
   if (!isRoleKey(row.roleKey)) return null;
-  return { id: row.id, slug: row.slug, name: row.name, status: row.status, role: row.roleKey, membershipId: row.membershipId };
+  return { id: row.id, slug: row.slug, name: row.name, status: row.status, role: row.roleKey, membershipId: row.membershipId, joinedAt: row.joinedAt };
 }
 
 /**

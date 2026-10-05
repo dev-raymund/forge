@@ -10,7 +10,7 @@ vi.mock("../actions", () => ({
 
 import { ChangePasswordForm, ProfileForm, SessionList, SetPasswordPrompt, type SessionRow } from "./account-forms";
 import { AccountSection, EmailStatus, SignInMethodList } from "./account-section";
-import { AuthCard } from "./auth-card";
+import { AuthCard, AuthLink } from "./auth-card";
 import { ForgotPasswordForm } from "./forgot-password-form";
 import { Field, FormAlert, PasswordField, SubmitButton } from "./form";
 import { GoogleButton } from "./google-button";
@@ -402,7 +402,7 @@ describe("markup", () => {
       )),
     ];
     for (const screen of screens) {
-      const out = html(<AuthCard title="T" footer={<a href="/x">x</a>}>{screen}</AuthCard>);
+      const out = html(<AuthCard title="T" footer={<AuthLink href="/x">x</AuthLink>}>{screen}</AuthCard>);
       const paragraphs = [...out.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/g)].map((match) => match[1]!);
       expect(paragraphs.length).toBeGreaterThan(0);
       for (const inner of paragraphs) expect(inner).not.toMatch(/<(form|div|p|ul|h[1-6]|header|main)[\s>]/);
@@ -412,7 +412,7 @@ describe("markup", () => {
 
 describe("shell pieces", () => {
   it("every account screen has exactly one h1 inside main", () => {
-    const out = html(<AuthCard title="Log in to Forge" description="Welcome back." footer={<a href="/signup">Sign up</a>}>body</AuthCard>);
+    const out = html(<AuthCard title="Log in to Forge" description="Welcome back." footer={<AuthLink href="/signup">Sign up</AuthLink>}>body</AuthCard>);
     expect(out.match(/<h1/g)).toHaveLength(1);
     expect(out).toMatch(/<main[^>]*>.*<h1[^>]*>Log in to Forge<\/h1>.*<\/main>/s);
   });

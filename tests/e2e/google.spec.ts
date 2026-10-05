@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { asUniqueVisitor, currentSession, logOut, newEmail, PASSWORD, submitLogin } from "./helpers/auth";
+import { accountMenu, asUniqueVisitor, currentSession, landing, logOut, newEmail, PASSWORD, submitLogin } from "./helpers/auth";
 import { E2E_GOOGLE_CLIENT_ID, E2E_MAIN_ORIGIN } from "./helpers/env";
 
 /**
@@ -19,7 +19,6 @@ import { E2E_GOOGLE_CLIENT_ID, E2E_MAIN_ORIGIN } from "./helpers/env";
  */
 
 const formAlert = (page: Page) => page.locator('[data-form-alert][role="alert"]');
-const home = (page: Page) => page.getByRole("heading", { level: 1, name: /^Welcome, / });
 
 test.beforeEach(async ({ page }) => {
   await asUniqueVisitor(page);
@@ -130,7 +129,8 @@ test("email and password work as before on a server with Google configured", asy
   await main.dispose();
 
   await submitLogin(page, email);
-  await expect(home(page)).toHaveText("Welcome, Ada E2E");
+  await expect(landing(page)).toBeVisible();
+  await expect(accountMenu(page)).toContainText("Ada E2E");
   expect((await currentSession(page)).body).toMatchObject({ user: { email } });
   await logOut(page);
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();

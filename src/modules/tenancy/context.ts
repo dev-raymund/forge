@@ -149,7 +149,8 @@ export async function resolveSiteContext(actor: Actor, orgSlug: string, siteSlug
 
 // ── The current request ──────────────────────────────────────────────────────
 
-async function requestMeta(): Promise<RequestMeta> {
+/** The request id and client address of the current request, for contexts resolved outside `requireOrgContext` (Server Actions). */
+export async function currentRequestMeta(): Promise<RequestMeta> {
   const incoming = await headers();
   return { requestId: requestIdFrom(incoming), ip: incoming.get("x-forwarded-for")?.split(",")[0]?.trim().slice(0, 64) || undefined };
 }
@@ -161,7 +162,7 @@ async function requestMeta(): Promise<RequestMeta> {
  * Throws the same errors as `resolveOrgContext`.
  */
 export const requireOrgContext = cache(async (orgSlug: string): Promise<OrgContext> => {
-  return resolveOrgContext(await getCurrentActor(), orgSlug, await requestMeta());
+  return resolveOrgContext(await getCurrentActor(), orgSlug, await currentRequestMeta());
 });
 
 /** The same for `/{orgSlug}/sites/{siteSlug}/…`. */

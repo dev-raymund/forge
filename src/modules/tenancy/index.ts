@@ -5,16 +5,34 @@ import "server-only";
  * resolver that turns a session and a URL into a tenant context (M3-1), and
  * what a member may do there: the permission catalog and `can()` (M3-2).
  *
- * Invitations and the screens are M3-3 and M3-4. What is here is what they
- * stand on.
+ * The organization screens (onboarding, the switcher, settings) are M3-3;
+ * invitations and the member screens are M3-4.
  */
 export {
-  assertContext, canAccessSite, inTenant, isContext, requireOrgContext, requireSiteContext, resolveOrgContext, resolveSiteContext, resolveSiteWithin,
+  assertContext, canAccessSite, currentRequestMeta, inTenant, isContext, requireOrgContext, requireSiteContext, resolveOrgContext, resolveSiteContext, resolveSiteWithin,
 } from "./context";
 export type { OrgContext, RequestMeta, SiteContext, UserActor } from "./context";
-export { createOrganization, listOrganizations, updateOrganization } from "./organizations.service";
+export { createOrganization, homeOrganization, listOrganizations, updateOrganization } from "./organizations.service";
 export { changeMemberRole, leaveOrganization, listMembers, removeMember, transferOwnership } from "./members.service";
 export { PERMISSIONS, isPermission, permissionsForRole } from "./permissions";
 export type { OwnedResource, OwnScope, Permission, PermissionSet } from "./permissions";
-export { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, requirePermission } from "./policies";
+export { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, canViewOrganizationSettings, requirePermission } from "./policies";
+
+// The organization screens (M3-3). Pages in app/(admin) compose these; the
+// forms call this module's Server Actions (./actions.ts), which are the only way in.
+export { chooseHomeOrganization, homePath } from "./home";
+export { requireOrgPage } from "./page-access";
+export type { OrgPageAccess } from "./page-access";
+export { ONBOARDING_PATH, orgPath, orgSettingsPath } from "./paths";
+export { ROLE_LABELS } from "./shared";
+export {
+  SETTINGS_NOTICES, submitChangeOrganizationSlug, submitCreateOrganization, submitRenameOrganization, submitTransferOwnership,
+} from "./organization-forms";
+export type { FormOutcome, SettingsNotice } from "./organization-forms";
+export { OrgSwitcher } from "./ui/org-switcher";
+export type { SwitcherOrganization } from "./ui/org-switcher";
+export { CreateOrganizationForm } from "./ui/create-organization-form";
+export { ChangeOrganizationSlugForm, RenameOrganizationForm, TransferOwnership } from "./ui/organization-settings";
+export type { TransferCandidate } from "./ui/organization-settings";
+export { OrganizationSettingsView } from "./ui/organization-settings-view";
 export type { MemberSummary, OrganizationStatus, OrganizationSummary, RoleKey } from "./shared";

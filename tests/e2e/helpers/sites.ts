@@ -9,7 +9,7 @@ import { uuidv7 } from "uuidv7";
  */
 const url = process.env.DATABASE_URL ?? "postgres://forge_app:forge_app@localhost:6432/forge";
 
-async function inTenant<T>(orgId: string, work: (c: pg.Client) => Promise<T>): Promise<T> {
+export async function inTenant<T>(orgId: string, work: (c: pg.Client) => Promise<T>): Promise<T> {
   const client = new pg.Client({ connectionString: url });
   await client.connect();
   try {

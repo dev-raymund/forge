@@ -26,7 +26,7 @@ vi.mock("./repository", () => ({ findMembershipBySlug: async () => state.members
 import { isAppError, problemResponse } from "@/platform/errors";
 import { requireOrgContext, resolveOrgContext, resolveSiteWithin, type OrgContext } from "./context";
 import { NO_PERMISSIONS, PERMISSIONS, permissionsForRole, type OwnedResource, type Permission } from "./permissions";
-import { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, requirePermission } from "./policies";
+import { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, canViewOrganizationSettings, requirePermission } from "./policies";
 import { ROLE_KEYS, type RoleKey } from "./schema";
 
 const ORG = "0199a000-0000-7000-8000-00000000000a";
@@ -190,6 +190,7 @@ describe("can()", () => {
       expect(canManageMembers(fake)).toBe(false);
       expect(canUpdateOrganization(fake)).toBe(false);
       expect(canTransferOwnership(fake)).toBe(false);
+      expect(canViewOrganizationSettings(fake)).toBe(false);
       expect(canActOn(fake, "media.delete", mine)).toBe(false);
     }
   });
@@ -247,6 +248,20 @@ describe("policies", () => {
     expect(await allowed(canUpdateOrganization)).toEqual(["owner"]);
     expect(await allowed(canTransferOwnership)).toEqual(["owner"]);
     expect(await allowed(canManageMembers)).toEqual(["owner", "admin"]);
+  });
+
+  it("organization settings: Owners and Admins may open them; changing anything there is still each form's own permission", async () => {
+    expect(await allowed(canViewOrganizationSettings)).toEqual(["owner", "admin"]);
+    // Opening the page is not a permission to change it: an Admin gets in and may change nothing.
+    const admin = await contextAs("admin");
+    expect({ open: canViewOrganizationSettings(admin), update: canUpdateOrganization(admin), transfer: canTransferOwnership(admin) }).toEqual({ open: true, update: false, transfer: false });
+    // Whoever may change the organization may also open the page to do it.
+    for (const role of ROLE_KEYS) {
+      const ctx = await contextAs(role);
+      if (canUpdateOrganization(ctx) || canTransferOwnership(ctx)) expect(canViewOrganizationSettings(ctx), role).toBe(true);
+    }
+    // An unknown role opens nothing.
+    expect(canViewOrganizationSettings(await contextAs("superuser"))).toBe(false);
   });
 
   it("canActOn: anyone's with `.any`, one's own with `.own`, nothing without either", async () => {

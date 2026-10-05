@@ -2,9 +2,10 @@ import "server-only";
 import { parseSetCookieHeader, toCookieOptions } from "better-auth/cookies";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { asAppError, isAppError } from "@/platform/errors";
+import { isAppError } from "@/platform/errors";
+import { formFailure } from "@/platform/form-failure";
 import { loginPath } from "@/platform/routing/admin-access";
-import { reportError, requestIdFrom } from "@/platform/observability";
+import { requestIdFrom } from "@/platform/observability";
 import type { FormState } from "./validation";
 
 /** Helpers for ./actions.ts (a "use server" file may export only actions). */
@@ -20,26 +21,9 @@ export async function applyAuthCookies(setCookies: string[]): Promise<void> {
   }
 }
 
-/**
- * A thrown error → what the form shows. Expected failures carry Forge's own
- * message. Anything else is reported (log + Sentry, never the form's values)
- * and the user gets a generic message with the request id.
- */
+/** A thrown error → what the form shows (platform/form-failure.ts), reported under this module's name. */
 export async function failureState(error: unknown, values: Record<string, string> = {}): Promise<FormState> {
-  const appError = asAppError(error);
-  if (!appError) {
-    const requestId = requestIdFrom(await headers());
-    reportError(error, { module: "auth", requestId });
-    return { status: "error", message: `Something went wrong. Please try again. Reference: ${requestId}`, values };
-  }
-  const { _form, ...fieldErrors } = appError.fieldErrors ?? {};
-  const hasFieldErrors = Object.keys(fieldErrors).length > 0;
-  return {
-    status: "error",
-    message: _form?.[0] ?? (hasFieldErrors ? undefined : appError.message),
-    ...(hasFieldErrors ? { fieldErrors } : {}),
-    values,
-  };
+  return formFailure(error, { module: "auth", requestId: requestIdFrom(await headers()), values });
 }
 
 /**

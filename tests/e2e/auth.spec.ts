@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
-  asUniqueVisitor, browserPost, currentSession, expireSessionsOf, logOut, newEmail, PASSWORD, passwordField, SESSION_COOKIE,
-  sessionCookie, signUp, submitLogin,
+  accountMenu, asUniqueVisitor, browserPost, currentSession, expireSessionsOf, landing, LANDING_PATH, logOut, newEmail, PASSWORD, passwordField,
+  SESSION_COOKIE, sessionCookie, signUp, submitLogin,
 } from "./helpers/auth";
 import { countEmails, emailHeaders, firstLink, waitForEmail } from "./helpers/mailbox";
 import { seedSite } from "./helpers/sites";
@@ -14,7 +14,6 @@ import { seedSite } from "./helpers/sites";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const NEW_PASSWORD = "an entirely new passphrase";
-const home = (page: import("@playwright/test").Page) => page.getByRole("heading", { level: 1, name: /^Welcome, / });
 // Next's own route announcer is also role="alert"; this is the form's.
 const alert = (page: import("@playwright/test").Page) => page.locator('[data-form-alert][role="alert"]');
 const notice = (page: import("@playwright/test").Page) => page.locator('[data-form-alert][role="status"]');
@@ -80,7 +79,8 @@ test("sign up → verification pending → verify by email → log out → no ac
 
   // The app is usable before verification, with a banner until it is done.
   await page.getByRole("link", { name: "Continue to Forge" }).click();
-  await expect(home(page)).toHaveText("Welcome, Ada E2E");
+  await expect(landing(page)).toBeVisible();
+  await expect(accountMenu(page)).toContainText("Ada E2E");
   await expect(page.getByTestId("verify-email-banner")).toBeVisible();
 
   // The email arrives through the job runner; its link verifies the address.
@@ -94,7 +94,7 @@ test("sign up → verification pending → verify by email → log out → no ac
   await expect(page).toHaveURL(`${baseURL}/verify-email?status=verified`);
   await expect(page.getByTestId("verify-state")).toHaveAttribute("data-state", "verified");
   await page.getByRole("link", { name: "Continue to Forge" }).click();
-  await expect(home(page)).toBeVisible();
+  await expect(landing(page)).toBeVisible();
   await expect(page.getByTestId("verify-email-banner")).toHaveCount(0);
   expect((await currentSession(page)).body).toMatchObject({ user: { email, emailVerified: true } });
 
@@ -124,10 +124,11 @@ test("sign up → verification pending → verify by email → log out → no ac
 
   // Log in.
   await submitLogin(page, email);
-  await expect(home(page)).toHaveText("Welcome, Ada E2E");
+  await expect(landing(page)).toBeVisible();
+  await expect(accountMenu(page)).toContainText("Ada E2E");
   expect((await currentSession(page)).body).toMatchObject({ user: { email, emailVerified: true } });
   // Also a full page load: the login form, and the password typed into it, are gone.
-  await expect(page.locator("input")).toHaveCount(0);
+  await expect(page.locator('input[type="password"], input[name="password"], input[name="email"]')).toHaveCount(0);
   // The signed-in page is never stored by the browser or a cache (`next dev` sets its own headers).
   const signedIn = (await page.reload())!;
   if (process.env.E2E_SERVER !== "dev") expect(signedIn.headers()["cache-control"]).toContain("no-store");
@@ -147,11 +148,11 @@ test("log in returns to the page that was asked for, and never leaves the app", 
 
   // Already signed in: the login and sign-up pages pass straight through.
   await page.goto("/login");
-  await expect(home(page)).toBeVisible();
+  await expect(landing(page)).toBeVisible();
   await page.goto("/signup");
-  await expect(home(page)).toBeVisible();
+  await expect(landing(page)).toBeVisible();
 
-  // Anything that isn't a path on this app falls back to the home page.
+  // Anything that isn't a path on this app falls back to `/`: the user's own start page.
   // (The full table of rejected values is in the unit tests of safeNextPath.)
   for (const next of ["https://evil.example/", "//evil.example", "/s/some-site"]) {
     await asUniqueVisitor(page);
@@ -159,8 +160,8 @@ test("log in returns to the page that was asked for, and never leaves the app", 
     await page.goto(`/login?next=${encodeURIComponent(next)}`);
     await expect(page.locator('input[name="next"]')).toHaveValue("/");
     await submitLogin(page, email);
-    await expect(page, next).toHaveURL(`${baseURL}/`);
-    await expect(home(page)).toBeVisible();
+    await expect(page, next).toHaveURL(`${baseURL}${LANDING_PATH}`); // `/`, which sends this user on to onboarding
+    await expect(landing(page)).toBeVisible();
   }
 
   // A forged hidden field is checked again on the server.
@@ -169,14 +170,14 @@ test("log in returns to the page that was asked for, and never leaves the app", 
   await page.goto("/login");
   await page.locator('input[name="next"]').evaluate((input: HTMLInputElement) => (input.value = "https://evil.example/"));
   await submitLogin(page, email);
-  await expect(page).toHaveURL(`${baseURL}/`);
+  await expect(page).toHaveURL(`${baseURL}${LANDING_PATH}`);
 });
 
 test("an expired or invalid session ends on the login page with an explanation", async ({ page, baseURL }) => {
   const email = newEmail();
   await signUp(page, email);
   await page.goto("/");
-  await expect(home(page)).toBeVisible();
+  await expect(landing(page)).toBeVisible();
 
   // Expired on the server: the browser still has the cookie, the page decides.
   await expireSessionsOf(email);
@@ -192,7 +193,7 @@ test("an expired or invalid session ends on the login page with an explanation",
 
   // Logging in again from there works.
   await submitLogin(page, email);
-  await expect(home(page)).toBeVisible();
+  await expect(landing(page)).toBeVisible();
 });
 
 test("forms validate in the browser and on the server, and say what is wrong", async ({ page }) => {
@@ -264,7 +265,7 @@ test("the keyboard alone is enough to log in", async ({ page }) => {
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Log in" })).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(home(page)).toBeVisible();
+  await expect(landing(page)).toBeVisible();
 
   // The account menu too.
   await page.getByRole("button", { name: "Account menu" }).focus();
@@ -357,7 +358,7 @@ test("password reset by email: forgot → email → new password → log in", as
   await submitLogin(reset, email, PASSWORD);
   await expect(alert(reset)).toHaveText("Email or password is incorrect.");
   await submitLogin(reset, email, NEW_PASSWORD);
-  await expect(home(reset)).toBeVisible();
+  await expect(landing(reset)).toBeVisible();
   await other.close();
 });
 
@@ -459,13 +460,13 @@ test.describe("on a phone", () => {
     const email = newEmail();
     await signUp(page, email);
     await page.getByRole("link", { name: "Continue to Forge" }).click();
-    await expect(home(page)).toBeVisible();
+    await expect(landing(page)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
     // Controls are large enough to tap (WCAG 2.2 target size: 24px minimum).
     const menu = await page.getByRole("button", { name: "Account menu" }).boundingBox();
     expect(Math.min(menu!.width, menu!.height)).toBeGreaterThanOrEqual(24);
     await logOut(page);
     await submitLogin(page, email);
-    await expect(home(page)).toBeVisible();
+    await expect(landing(page)).toBeVisible();
   });
 });

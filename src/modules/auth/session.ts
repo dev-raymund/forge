@@ -122,9 +122,12 @@ export async function requireVerifiedUser(): Promise<AuthUser> {
  * a round trip; it never decides access.
  */
 export async function requireAuthOrLogin(next: string): Promise<Authenticated> {
+  // Looked at before the session is resolved. Where cookies can be written (a
+  // route handler, a Server Action), Better Auth removes the cookie of a session
+  // it finds dead, and afterwards there would be nothing left to explain.
+  const hadSession = findSessionCookie((await currentHeaders()).get("cookie")) !== null;
   const auth = await getCurrentAuth();
   if (auth) return auth;
-  const hadSession = findSessionCookie((await currentHeaders()).get("cookie")) !== null;
   redirect(loginPath({ next, reason: hadSession ? "session" : undefined }));
 }
 

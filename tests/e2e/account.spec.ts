@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
-  anotherBrowser, asUniqueVisitor, currentSession, logOut, newEmail, PASSWORD, passwordField, sessionCookie, signUp, submitLogin,
+  anotherBrowser, asUniqueVisitor, currentSession, LANDING_PATH, logOut, newEmail, PASSWORD, passwordField, sessionCookie, signUp, submitLogin,
 } from "./helpers/auth";
 import { waitForEmail } from "./helpers/mailbox";
 
@@ -231,7 +231,7 @@ test("change password: errors in place, then the change logs out the other sessi
   await submitLogin(page, email, PASSWORD);
   await expect(formAlert(page)).toHaveText("Email or password is incorrect.");
   await submitLogin(page, email, NEW_PASSWORD);
-  await expect(page).toHaveURL(`${baseURL}/`);
+  await expect(page).toHaveURL(`${baseURL}${LANDING_PATH}`);
   await b.context.close();
 });
 

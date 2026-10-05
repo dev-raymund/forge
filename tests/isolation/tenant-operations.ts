@@ -1,7 +1,8 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  can, canActOn, changeMemberRole, listMembers, PERMISSIONS, removeMember, resolveOrgContext, resolveSiteContext, transferOwnership, updateOrganization,
-  type OrgContext, type OwnedResource, type OwnScope, type Permission,
+  can, canActOn, changeMemberRole, listMembers, PERMISSIONS, removeMember, resolveOrgContext, resolveSiteContext, submitChangeOrganizationSlug,
+  submitCreateOrganization, submitRenameOrganization, submitTransferOwnership, transferOwnership, updateOrganization,
+  type FormOutcome, type OrgContext, type OwnedResource, type OwnScope, type Permission,
 } from "@/modules/tenancy";
 
 /**
@@ -75,6 +76,50 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
     run: ({ ctx }, b) => updateOrganization(ctx, { name: "Still A", id: b.orgId, organizationId: b.orgId, orgSlug: b.orgSlug } as { name: string }),
   },
   { name: "tenancy.listMembers()", run: ({ ctx }) => listMembers(ctx) },
+  // The forms (M3-3), on the caller's own URL, with B's identifiers in fields no form has.
+  {
+    name: "tenancy.submitRenameOrganization(A's slug, extra fields naming B)",
+    run: ({ actor, orgSlug }, b) => submitRenameOrganization(actor, orgSlug, form({ name: "Still A", id: b.orgId, organizationId: b.orgId, orgSlug: b.orgSlug, slug: b.orgSlug })),
+  },
+  {
+    name: "tenancy.submitCreateOrganization(extra fields naming B)",
+    run: ({ actor }, b) =>
+      submitCreateOrganization(actor, form({ name: "Another Of A's", slug: `iso-${b.orgId.slice(-12)}-${Date.now().toString(36)}`, id: b.orgId, organizationId: b.orgId, ownerId: b.userId })),
+  },
+];
+
+/**
+ * The form submissions behind the Server Actions (M3-3). They take the slug
+ * from the page's URL and answer with a form state instead of throwing. Given
+ * B's slug, or B's member on A's own page, each must be refused as `NotFound`,
+ * send the browser nowhere, and leave B as it was. Register every new form
+ * action here through its `submit…` function.
+ */
+const form = (fields: Record<string, string>) => {
+  const data = new FormData();
+  for (const [name, value] of Object.entries(fields)) data.set(name, value);
+  return data;
+};
+
+export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign) => Promise<FormOutcome> }[] = [
+  { name: "tenancy.submitRenameOrganization(B's slug)", run: ({ actor }, b) => submitRenameOrganization(actor, b.orgSlug, form({ name: "Hijacked" })) },
+  { name: "tenancy.submitChangeOrganizationSlug(B's slug)", run: ({ actor }, b) => submitChangeOrganizationSlug(actor, b.orgSlug, form({ slug: `hijacked-${b.orgId.slice(-12)}` })) },
+  {
+    name: "tenancy.submitTransferOwnership(B's slug, B's member)",
+    run: ({ actor }, b) => submitTransferOwnership(actor, b.orgSlug, form({ memberId: b.memberId, confirm: b.orgSlug })),
+  },
+  {
+    name: "tenancy.submitTransferOwnership(B's slug, the caller's own membership)",
+    run: ({ actor, ctx }, b) => submitTransferOwnership(actor, b.orgSlug, form({ memberId: ctx.membership.id, confirm: b.orgSlug })),
+  },
+  {
+    name: "tenancy.submitTransferOwnership(A's slug, B's member)",
+    run: ({ actor, orgSlug }, b) => submitTransferOwnership(actor, orgSlug, form({ memberId: b.memberId, confirm: orgSlug })),
+  },
+  {
+    name: "tenancy.submitTransferOwnership(A's slug, B's user id as the member)",
+    run: ({ actor, orgSlug }, b) => submitTransferOwnership(actor, orgSlug, form({ memberId: b.userId, confirm: orgSlug })),
+  },
 ];
 
 /**

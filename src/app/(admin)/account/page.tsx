@@ -3,8 +3,9 @@ import { Suspense } from "react";
 import { AppHeader } from "@/components/admin/app-header";
 import {
   AccountSection, ChangePasswordForm, EmailStatus, listSessions, ProfileForm, requireAuthOrLogin, SessionList, SetPasswordPrompt,
-  SignInMethodList, signInMethods, VerifyEmailBanner,
+  SignInMethodList, signInMethods, toActor, VerifyEmailBanner,
 } from "@/modules/auth";
+import { listOrganizations } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Account" };
 
@@ -21,11 +22,12 @@ export default function AccountPage() {
 async function Account() {
   const auth = await requireAuthOrLogin("/account");
   const { user } = auth;
-  const [sessions, methods] = await Promise.all([listSessions(auth), signInMethods(user.id)]);
+  // The organizations are for the header's switcher: the way back from this page to one of them.
+  const [sessions, methods, organizations] = await Promise.all([listSessions(auth), signInMethods(user.id), listOrganizations(toActor(auth))]);
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppHeader user={user} />
+      <AppHeader user={user} organizations={organizations} />
       {user.emailVerified ? null : <VerifyEmailBanner />}
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
         <h1 className="mb-8 text-2xl font-semibold tracking-tight">Account</h1>

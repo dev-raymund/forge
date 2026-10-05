@@ -132,3 +132,69 @@ They are different columns and different code paths. The admin resolver does not
 
 Mutation checks: accepting a hand-built context, dropping the organization filter on member lookups, or removing the lock each fails tests.
 
+
+---
+
+## Addendum (M3-3, 2026-10-05): the organization screens
+
+No decision above changes. This records how the screens sit on the tenancy module, and the choices the plan left open.
+
+### Routes
+
+```text
+/                        route handler   307 → /{org}, or /onboarding, or /login
+/onboarding              page            step 1: create the organization (steps 2–3 are M4-2)
+/{orgSlug}               layout + page   the organization's shell, and its home
+/{orgSlug}/settings      page            name, URL, transfer ownership
+```
+
+- **The organization is the one in the URL, everywhere.** Pages read the slug from the route segment. Server Actions get it as an argument bound by the page. Either way it only says which organization is meant: `resolveOrgContext` checks the session's user against that organization's members on every request and every action. No organization id is sent by a form.
+- **`/` keeps no state.** "The last organization" (plan §19) is the one the user joined most recently, among those that are not suspended, worked out from the membership rows each time (`modules/tenancy/home.ts`). There is no "current organization" in the session, a cookie or anywhere else, so two tabs on two organizations stay where their URLs say.
+- **Onboarding is the first run.** A user who already has an organization is sent to it.
+
+### How a page under `/{orgSlug}` begins
+
+`requireOrgPage(orgSlug)` is the first line of every page and of the layout:
+
+| Who is asking | What happens |
+|---|---|
+| Not signed in | Redirect to the login page, and back afterwards |
+| Signed in, not a member, or no such organization | The 404 page. One answer for both |
+| Member of a suspended organization | The header with the switcher, and a notice. No context is returned, so nothing of the organization is read |
+| Member | The context, with the member's permissions (ADR 0009) |
+
+- **A page checks for itself even though the layout does**, because a layout is not rendered again when the browser moves between its pages. The membership query still runs once per request (`requireOrgContext` is cached). A unit test reads the route files and fails when one does not call `requireOrgPage`.
+- **A first segment that cannot be a slug** (`/favicon.ico`, `/robots.txt`) is answered as 404 before the session or the database is touched.
+
+### Status codes: 404 and "no access" arrive as HTTP 200 for a signed-in visitor
+
+- With Cache Components every dynamic route sends its static shell first, so the status is `200` before the membership is known. A `notFound()` after that is rendered into the page, with `noindex` (Next.js behaviour, documented under "Streaming").
+- What matters for isolation holds: the page for another organization's slug is identical, status included, to the page for a slug that does not exist, and nothing of the organization's shell is rendered.
+- A signed-out visitor gets a real `307` to the login page from the proxy, for any slug.
+- A real `404`/`403` would need the membership check in `proxy.ts`, which means a database query there on every admin request. Not done; noted for M12-1.
+
+### Forms
+
+```text
+form (client)  →  Server Action ("use server": session, bound slug)  →  submit…(actor, orgSlug, formData)  →  tenancy service
+                   └ adds revalidatePath / refresh() / redirect()        └ modules/tenancy/organization-forms.ts
+```
+
+- **The logic is outside the `"use server"` file** so it can be run against a real database and registered in the isolation suite (`tenantForms`). The action only adds what needs a request: invalidation and the redirect.
+- **Changing the URL** redirects to the new one. The old URL is a 404 at once: the optional 30-day redirect was not built (it needs a table of former slugs).
+- **Transferring ownership** takes a dialog, a chosen member and the organization's slug typed out. The server checks the confirmation too, after it has checked that the caller may transfer at all.
+- **Nothing per user is cached on the server.** The organization list and every organization page are rendered per request, so there is no shared cache entry to invalidate or to leak. After a change the action calls `revalidatePath` for that organization's own admin URLs and `refresh()`, which is what makes the browser's router drop its copies. A unit test fails if a caching directive appears in this code.
+
+### What remains
+
+- **Audit rows** for these changes (M3-5).
+- **Members and invitations** (M3-4). Until then an Owner of a real organization has nobody to transfer it to.
+- **Whether a user may create further organizations from a screen**, and what that means for trials (M11-1).
+- **A preference cookie for the last organization used**, which the long-term architecture mentions, was not added. The rule above needs none; if one is wanted later it changes `chooseHomeOrganization` only, and must stay a hint.
+
+### Evidence
+
+- `tests/e2e/organizations.spec.ts` (9 browser tests): the new-user flow; the switcher, with two tabs; settings per role; rename and URL change; a member demoted or removed while the page is open; transfer between two browsers; cross-tenant 404; a suspended organization; a phone.
+- `tests/integration/organization-forms.test.ts` (26, real Postgres): every form through its `submit…` function, including what it refuses and where it may send the browser.
+- `tests/integration/isolation.test.ts`: each form given another organization's slug or member is refused as `NotFound`, redirects nowhere, and leaves that organization unchanged; asked by a Viewer, it answers the same as for something that does not exist.
+- `src/modules/tenancy/home.test.ts`, `ui/ui.test.tsx`, `tests/unit/organization-pages.test.ts`: the `/` rule; what the settings page shows for each combination of permissions; the two source-level rules above.

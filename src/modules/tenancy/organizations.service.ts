@@ -7,6 +7,7 @@ import { startTrial } from "@/modules/billing";
 import { isUniqueViolation, withTenant, withUser } from "@/platform/db";
 import { fieldErrorsFrom, forbidden, notFound, unauthenticated, validationError } from "@/platform/errors";
 import { inTenant, type OrgContext } from "./context";
+import { chooseHomeOrganization } from "./home";
 import { roleHolds } from "./permissions";
 import { requirePermission } from "./policies";
 import { findMember, listMemberships, lockOrganization, roleIdFor } from "./repository";
@@ -56,6 +57,18 @@ export async function listOrganizations(actor: Actor): Promise<OrganizationSumma
   if (actor.kind !== "user") throw unauthenticated();
   const rows = await withUser(actor.userId, (tx) => listMemberships(tx, actor.userId));
   return rows.map(({ id, slug, name, status, role }) => ({ id, slug, name, status, role }));
+}
+
+/**
+ * The organization `/` takes the caller to, or null when they have none yet
+ * (./home.ts has the rule). Read from the caller's own memberships on every
+ * request: no "current organization" is stored anywhere.
+ */
+export async function homeOrganization(actor: Actor): Promise<OrganizationSummary | null> {
+  if (actor.kind !== "user") throw unauthenticated();
+  const rows = await withUser(actor.userId, (tx) => listMemberships(tx, actor.userId));
+  const chosen = chooseHomeOrganization(rows);
+  return chosen ? { id: chosen.id, slug: chosen.slug, name: chosen.name, status: chosen.status, role: chosen.role } : null;
 }
 
 /**

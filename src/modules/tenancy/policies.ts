@@ -61,6 +61,14 @@ export function canActOn(ctx: OrgContext, scope: OwnScope, resource: OwnedResour
 // What each operation of this module takes. Reading the organization and its
 // member list takes membership and nothing more, so there is no policy for it.
 
+/**
+ * Open the organization's settings. Plan §13: "only Owner/Admin see settings".
+ * The catalog has no key for looking, so this is the members who administer
+ * the organization in some way: they may change it, or manage who is in it.
+ * What can be CHANGED there is each form's own permission, below.
+ */
+export const canViewOrganizationSettings = (ctx: OrgContext): boolean => can(ctx, "org.manage") || can(ctx, "org.members.manage");
+
 /** Rename the organization or change its slug. */
 export const canUpdateOrganization = (ctx: OrgContext): boolean => can(ctx, "org.manage");
 

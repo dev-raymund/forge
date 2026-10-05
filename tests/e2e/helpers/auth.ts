@@ -34,11 +34,22 @@ export async function anotherBrowser(browser: Browser, email: string, password =
   const page = await context.newPage();
   const ip = await asUniqueVisitor(page);
   await submitLogin(page, email, password);
-  await expect(page.getByRole("heading", { level: 1, name: /^Welcome, / })).toBeVisible();
+  await expect(landing(page)).toBeVisible();
   return { context, page, ip };
 }
 
 // ── The pages ────────────────────────────────────────────────────────────────
+
+/**
+ * Where a signed-in user with no organization arrives: `/` sends them to
+ * onboarding (M3-3). The accounts these tests create have no organization
+ * unless a test gives them one.
+ */
+export const landing = (page: Page) => page.getByRole("heading", { level: 1, name: "Create your organization" });
+export const LANDING_PATH = "/onboarding";
+
+/** The account menu's button. It carries the signed-in user's name. */
+export const accountMenu = (page: Page) => page.getByRole("button", { name: "Account menu" });
 
 /** A password input by its exact label ("Show password" buttons share the word). `scope`: the page, or a part of it. */
 export const passwordField = (scope: Page | Locator, label = "Password") => scope.getByLabel(label, { exact: true });
@@ -64,7 +75,7 @@ export async function submitLogin(page: Page, email: string, password = PASSWORD
   await page.getByRole("button", { name: "Log in" }).click();
 }
 
-/** Logs out through the account menu (on the home page, going there first if needed). */
+/** Logs out through the account menu (going to a signed-in page first if needed). */
 export async function logOut(page: Page) {
   const menu = page.getByRole("button", { name: "Account menu" });
   if (!(await menu.isVisible())) await page.goto("/");

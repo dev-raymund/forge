@@ -11,7 +11,7 @@ import { isAppError } from "@/platform/errors";
 import { createTenantGraph, createUser } from "../fixtures/factories";
 import { addUser } from "../fixtures/tenants";
 import { auditRlsCoverage } from "../isolation/coverage";
-import { contextBoundOperations, tenantOperations, tenantPolicyChecks, type Caller, type Foreign } from "../isolation/tenant-operations";
+import { contextBoundOperations, tenantForms, tenantOperations, tenantPolicyChecks, type Caller, type Foreign } from "../isolation/tenant-operations";
 import { tenantReads } from "../isolation/tenant-reads";
 
 /**
@@ -25,6 +25,8 @@ import { tenantReads } from "../isolation/tenant-reads";
  *     whatever they are told about B's identifiers, they are told the same
  *     about identifiers that do not exist, and B is exactly as it was.
  *  5. Policies handed a resource of B allow nothing, even to the user who made it.
+ *  6. The form submissions behind the Server Actions (M3-3), given B's slug or
+ *     B's member: refused as NotFound, no redirect, B exactly as it was.
  */
 
 describe("catalog coverage", () => {
@@ -134,6 +136,19 @@ describe("registered operations given another tenant's identifiers answer NotFou
     expect(await fingerprintOf(foreign.orgId), "organization B changed").toBe(before);
   });
 
+  it.each(tenantForms.map((op) => [op.name, op] as const))("%s", async (_name, submission) => {
+    const before = await fingerprintOf(foreign.orgId);
+    const outcome = await submission.run(caller, foreign);
+    expect(outcome.refused).toBe("NotFound");
+    expect(outcome.state.status).toBe("error");
+    expect(outcome.redirectTo, "a refused form sends the browser nowhere").toBeUndefined();
+    expect(outcome.revalidate).toBeUndefined();
+    // What the server adds to the answer says nothing of B. (`values` is the caller's own input, handed back to refill the form.)
+    const said = JSON.stringify({ message: outcome.state.message, fieldErrors: outcome.state.fieldErrors });
+    for (const secret of [foreign.orgId, foreign.orgSlug, foreign.memberId, foreign.userId]) expect(said).not.toContain(secret);
+    expect(await fingerprintOf(foreign.orgId), "organization B changed").toBe(before);
+  });
+
   describe("asked by a member of A who may manage nothing", () => {
     const answerOf = async (run: () => Promise<unknown>) => {
       try {
@@ -158,6 +173,17 @@ describe("registered operations given another tenant's identifiers answer NotFou
       const aboutNothing = await answerOf(() => operation.run(bystander, nowhere));
       expect(aboutB).toEqual(aboutNothing);
       expect(["NotFound", "Forbidden"]).toContain(aboutB.kind);
+      expect(await fingerprintOf(foreign.orgId), "organization B changed").toBe(before);
+    });
+
+    it.each(tenantForms.map((op) => [op.name, op] as const))("%s: the same answer as for something that does not exist", async (_name, submission) => {
+      const before = await fingerprintOf(foreign.orgId);
+      const [aboutB, aboutNothing] = [await submission.run(bystander, foreign), await submission.run(bystander, nowhere)];
+      expect({ refused: aboutB.refused, message: aboutB.state.message, fieldErrors: aboutB.state.fieldErrors }).toEqual({
+        refused: aboutNothing.refused, message: aboutNothing.state.message, fieldErrors: aboutNothing.state.fieldErrors,
+      });
+      expect(["NotFound", "Forbidden"]).toContain(aboutB.refused);
+      expect(aboutB.redirectTo).toBeUndefined();
       expect(await fingerprintOf(foreign.orgId), "organization B changed").toBe(before);
     });
   });

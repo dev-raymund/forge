@@ -194,3 +194,21 @@ Custom roles, site-specific roles, per-record or per-user permissions, teams or 
 - Content and media policies are one line each on `canActOn` (M5-3, M6-1).
 - The organization and member screens (M3-3, M3-4) use the three tenancy policies to decide what to show, and add browser tests for what each role sees.
 - Plan limits and the trial (M11-1) are checked after the policy and before validation, by their own module.
+
+---
+
+## Addendum (M3-3, 2026-10-05): who may open the organization's settings
+
+The catalog has keys for changing things and none for looking at a settings page. Plan §13 says "only Owner/Admin see settings"; plan §19 lists `/{org}/settings` under "Owner".
+
+| | |
+|---|---|
+| **Decision** | `canViewOrganizationSettings(ctx)` = the member holds `org.manage` or `org.members.manage`. In V1 that is Owner and Admin. An Admin sees the name and URL read-only; the forms on the page are each their own permission (`org.manage`: Owner). Editors, Authors and Viewers get a "no access" page |
+| **Reason** | It is the §13 rule, written with keys that exist. Adding a key (`org.settings.read`) would have changed the approved catalog for one page |
+| **Tradeoff** | The entry rule is derived, not a key of its own, so it cannot be granted separately. An Admin opens a page on which they can change nothing until member and activity links join it (M3-4, M3-5) |
+| **Reconsider when** | The owner wants the page Owner-only (one line in `policies.ts`), or custom roles need to grant "view settings" by itself |
+
+Two things the screens made concrete:
+
+- **A screen shows; an action decides.** The settings page renders forms from booleans (`canUpdate`, `canTransfer`) and is never told a role. Each action resolves the context and asks again. A browser test demotes an Owner while the page is open and submits the form that is still on screen: the server refuses.
+- **The order holds for forms too.** The transfer form checks `org.manage` before it reads the chosen member or the typed confirmation, so a member who may not transfer gets the same `Forbidden` whatever they send.
