@@ -17,3 +17,11 @@ export function useLocalDay(iso: string): string {
 export function Day({ iso }: { iso: string }) {
   return <time dateTime={iso}>{useLocalDay(iso)}</time>;
 }
+
+const formatMoment = (iso: string, timeZone?: string) => new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone }).format(new Date(iso));
+
+/** A day and a time, in the viewer's time zone. Until the browser has taken over it is shown in UTC, and says so. */
+export function Moment({ iso }: { iso: string }) {
+  const text = useSyncExternalStore(noSubscription, () => formatMoment(iso), () => `${formatMoment(iso, "UTC")} UTC`);
+  return <time dateTime={iso}>{text}</time>;
+}

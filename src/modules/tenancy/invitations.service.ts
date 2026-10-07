@@ -1,4 +1,5 @@
 import "server-only";
+import { record, type AuditRequest } from "@/modules/audit";
 import type { Actor } from "@/modules/auth";
 import { env } from "@/platform/config/env";
 import { isUniqueViolation, withPlatform, withTenant, type TenantTx } from "@/platform/db";
@@ -128,6 +129,8 @@ export async function inviteMember(ctx: OrgContext, input: { email: string; role
         organizationId: ctx.org.id, email, roleId: await roleIdFor(tx, role), tokenHash, invitedBy: ctx.actor.userId, expiresAt,
       });
       await queueEmail(tx, { template: "organization-invitation", invitationId: id, url: invitationUrl(token) });
+      // Who was invited, and as what. Never the token, its hash or the link.
+      await record(tx, { action: "member.invited", resourceType: "invitation", resourceId: id, metadata: { email, role } }, ctx);
       const created = await findInvitation(tx, ctx.org.id, id);
       return toSummary(created!, now);
     });
@@ -161,6 +164,7 @@ export async function resendInvitation(ctx: OrgContext, input: { invitationId: s
     const expiresAt = invitationExpiry(now);
     await replaceInvitationToken(tx, ctx.org.id, invitation.id, { tokenHash, expiresAt });
     await queueEmail(tx, { template: "organization-invitation", invitationId: invitation.id, url: invitationUrl(token) });
+    await record(tx, { action: "invitation.resent", resourceType: "invitation", resourceId: invitation.id, metadata: { email: invitation.email } }, ctx);
     return toSummary({ ...invitation, expiresAt }, now);
   });
 }
@@ -175,6 +179,7 @@ export async function revokeInvitation(ctx: OrgContext, input: { invitationId: s
     const invitation = await findInvitation(tx, ctx.org.id, input.invitationId);
     if (!invitation || !isOpenInvitation(invitationState(invitation, now))) throw notFound();
     await markInvitationRevoked(tx, ctx.org.id, invitation.id, now);
+    await record(tx, { action: "invitation.revoked", resourceType: "invitation", resourceId: invitation.id, metadata: { email: invitation.email } }, ctx);
   });
 }
 
@@ -226,11 +231,12 @@ export type AcceptedInvitation = {
  * whose own address, as the database has it, is the address invited, and to no
  * other account that happens to hold the link.
  *
- * One transaction, under the organization lock: the membership row and the
- * invitation's `accepted_at` are written together, so a link is used once
- * however many times, or from however many tabs, it is submitted.
+ * One transaction, under the organization lock: the membership row, the
+ * invitation's `accepted_at` and the line in the organization's activity log
+ * are written together, so a link is used once however many times, or from
+ * however many tabs, it is submitted.
  */
-export async function acceptInvitation(actor: Actor, token: string): Promise<AcceptedInvitation> {
+export async function acceptInvitation(actor: Actor, token: string, request: AuditRequest = {}): Promise<AcceptedInvitation> {
   if (actor.kind !== "user") throw unauthenticated();
   if (!looksLikeInvitationToken(token)) throw notFound();
   const tokenHash = hashInvitationToken(token);
@@ -259,6 +265,12 @@ export async function acceptInvitation(actor: Actor, token: string): Promise<Acc
     // Already a member some other way: the invitation is used up, and their role stays what it is.
     if (!member) await insertMember(tx, { organizationId: organization.id, userId: actor.userId, roleId: invitation.roleId });
     await markInvitationAccepted(tx, organization.id, invitation.id, now);
+    // The person joining is the actor: the transaction carries their id, and the organization is the one being joined.
+    await record(
+      tx,
+      { action: "invitation.accepted", resourceType: "invitation", resourceId: invitation.id, metadata: { role: invitation.role, ...(member ? { alreadyMember: true as const } : {}) } },
+      request,
+    );
     return { organization: joinedOrganization, joined: !member };
   });
 }

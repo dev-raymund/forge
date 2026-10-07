@@ -3,7 +3,9 @@ import { AppHeader } from "@/components/admin/app-header";
 import { ShellSkeleton } from "@/components/admin/page-skeleton";
 import { SectionNav } from "@/components/admin/section-nav";
 import { getCurrentActor, VerifyEmailBanner } from "@/modules/auth";
-import { canViewOrganizationSettings, listOrganizations, orgMembersPath, orgPath, orgSettingsPath, requireOrgPage } from "@/modules/tenancy";
+import {
+  canReadActivity, canViewOrganizationSettings, listOrganizations, orgActivityPath, orgMembersPath, orgPath, orgSettingsPath, requireOrgPage,
+} from "@/modules/tenancy";
 
 /**
  * The shell of every page of one organization (`/{orgSlug}/…`): the header
@@ -38,6 +40,7 @@ async function OrganizationShell({ params }: Pick<LayoutProps<"/[orgSlug]">, "pa
           { href: orgPath(access.ctx.org.slug), label: "Overview" },
           // Every member may see who else is here; what they may do there is the page's business.
           { href: orgMembersPath(access.ctx.org.slug), label: "Members" },
+          ...(canReadActivity(access.ctx) ? [{ href: orgActivityPath(access.ctx.org.slug), label: "Activity" }] : []),
           ...(canViewOrganizationSettings(access.ctx) ? [{ href: orgSettingsPath(access.ctx.org.slug), label: "Settings" }] : []),
         ]
       : [];

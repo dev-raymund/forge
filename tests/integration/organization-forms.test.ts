@@ -28,7 +28,7 @@ const FORBIDDEN = "You don't have permission to do that.";
 const NOT_FOUND = "Not found.";
 
 /** The admin URLs of an organization that show its name, its URL or its people: what a change makes stale. */
-const pages = (slug: string) => [`/${slug}`, `/${slug}/settings`, `/${slug}/members`];
+const pages = (slug: string) => [`/${slug}`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`];
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData();

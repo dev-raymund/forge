@@ -1,4 +1,5 @@
 import "server-only";
+import { record } from "@/modules/audit";
 import type { TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound, validationError } from "@/platform/errors";
 import { assertContext, inTenant, type OrgContext } from "./context";
@@ -23,6 +24,10 @@ import type { MemberSummary } from "./shared";
  *
  * The member to change is named by membership id and looked up inside the
  * context's organization only: an id from another organization is not found.
+ *
+ * Each change writes its line of the activity log in the same transaction
+ * (`audit.record`, D-30). If that line cannot be written, the change is rolled
+ * back with it.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,7 +62,13 @@ export async function changeMemberRole(ctx: OrgContext, input: { memberId: strin
   await inTenant(ctx, async (tx) => {
     const { actor, target, owners } = await factsFor(tx, ctx, input.memberId);
     enforce(decideRoleChange({ actorRole: actor.role, self: actor.id === target.id, currentRole: target.role, newRole: input.role, owners }));
-    if (target.role !== input.role) await setMemberRole(tx, ctx.org.id, target.id, input.role);
+    if (target.role === input.role) return; // nothing changes, so there is nothing to record
+    await setMemberRole(tx, ctx.org.id, target.id, input.role);
+    await record(
+      tx,
+      { action: "member.role_changed", resourceType: "membership", resourceId: target.id, metadata: { memberName: target.name, previousRole: target.role, newRole: input.role } },
+      ctx,
+    );
   });
 }
 
@@ -69,6 +80,9 @@ export async function removeMember(ctx: OrgContext, input: { memberId: string })
     const { actor, target, owners } = await factsFor(tx, ctx, input.memberId);
     enforce(decideRemoval({ actorRole: actor.role, self: actor.id === target.id, targetRole: target.role, owners }));
     await deleteMember(tx, ctx.org.id, target.id);
+    // Naming oneself is leaving, and is recorded as that.
+    if (actor.id === target.id) await record(tx, { action: "member.left", resourceType: "membership", resourceId: actor.id, metadata: { role: actor.role } }, ctx);
+    else await record(tx, { action: "member.removed", resourceType: "membership", resourceId: target.id, metadata: { memberName: target.name, role: target.role } }, ctx);
   });
 }
 
@@ -78,6 +92,7 @@ export async function leaveOrganization(ctx: OrgContext): Promise<void> {
     const { actor, owners } = await factsFor(tx, ctx, ctx.membership.id);
     enforce(decideRemoval({ actorRole: actor.role, self: true, targetRole: actor.role, owners }));
     await deleteMember(tx, ctx.org.id, actor.id);
+    await record(tx, { action: "member.left", resourceType: "membership", resourceId: actor.id, metadata: { role: actor.role } }, ctx);
   });
 }
 
@@ -93,5 +108,7 @@ export async function transferOwnership(ctx: OrgContext, input: { memberId: stri
     enforce(decideTransfer({ actorRole: actor.role, self: actor.id === target.id }));
     await setMemberRole(tx, ctx.org.id, target.id, "owner");
     await setMemberRole(tx, ctx.org.id, actor.id, "admin");
+    // One event for the two role changes: they are one act, and happen together or not at all.
+    await record(tx, { action: "organization.ownership_transferred", resourceType: "organization", resourceId: ctx.org.id, metadata: { newOwnerName: target.name } }, ctx);
   });
 }

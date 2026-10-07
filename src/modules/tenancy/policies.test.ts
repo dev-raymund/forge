@@ -26,7 +26,9 @@ vi.mock("./repository", () => ({ findMembershipBySlug: async () => state.members
 import { isAppError, problemResponse } from "@/platform/errors";
 import { requireOrgContext, resolveOrgContext, resolveSiteWithin, type OrgContext } from "./context";
 import { NO_PERMISSIONS, PERMISSIONS, permissionsForRole, type OwnedResource, type Permission } from "./permissions";
-import { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, canViewOrganizationSettings, requirePermission } from "./policies";
+import {
+  can, canActOn, canManageMembers, canReadActivity, canTransferOwnership, canUpdateOrganization, canViewOrganizationSettings, requirePermission,
+} from "./policies";
 import { ROLE_KEYS, type RoleKey } from "./schema";
 
 const ORG = "0199a000-0000-7000-8000-00000000000a";
@@ -262,6 +264,16 @@ describe("policies", () => {
     }
     // An unknown role opens nothing.
     expect(canViewOrganizationSettings(await contextAs("superuser"))).toBe(false);
+  });
+
+  it("the activity log is for those who hold org.activity.read: Owners and Admins", async () => {
+    expect(await allowed(canReadActivity)).toEqual(["owner", "admin"]);
+    for (const role of ROLE_KEYS) {
+      const ctx = await contextAs(role);
+      expect(canReadActivity(ctx), role).toBe(can(ctx, "org.activity.read"));
+    }
+    expect(canReadActivity(await contextAs("superuser"))).toBe(false);
+    for (const fake of [undefined, null, {}, { permissions: permissionsForRole("owner") }] as unknown as OrgContext[]) expect(canReadActivity(fake)).toBe(false);
   });
 
   it("canActOn: anyone's with `.any`, one's own with `.own`, nothing without either", async () => {

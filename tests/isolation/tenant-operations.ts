@@ -1,6 +1,6 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  acceptInvitation, can, canActOn, changeMemberRole, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
+  acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
   resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitChangeOrganizationSlug, submitCreateOrganization,
   submitInviteMember, submitLeaveOrganization, submitRemoveMember, submitRenameOrganization, submitResendInvitation, submitRevokeInvitation,
   submitTransferOwnership, transferOwnership, updateOrganization,
@@ -96,6 +96,8 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
     run: ({ actor }, b) =>
       submitCreateOrganization(actor, form({ name: "Another Of A's", slug: `iso-${b.orgId.slice(-12)}-${Date.now().toString(36)}`, id: b.orgId, organizationId: b.orgId, ownerId: b.userId })),
   },
+  // The activity log (M3-5): filters that name B narrow A's own log, and write nothing anywhere.
+  { name: "tenancy.listActivity(filters naming B's member and site)", run: ({ ctx }, b) => listActivity(ctx, { member: b.memberId, site: b.siteId }) },
   // Members and invitations (M3-4).
   { name: "tenancy.listInvitations()", run: ({ ctx }) => listInvitations(ctx) },
   {

@@ -83,3 +83,6 @@ export const canTransferOwnership = (ctx: OrgContext): boolean => can(ctx, "org.
  * touch (Owners), and that one Owner always remains, are the membership rules.
  */
 export const canManageMembers = (ctx: OrgContext): boolean => can(ctx, "org.members.manage");
+
+/** Read the organization's activity log (`/{org}/activity`). */
+export const canReadActivity = (ctx: OrgContext): boolean => can(ctx, "org.activity.read");

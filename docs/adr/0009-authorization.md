@@ -232,3 +232,9 @@ No key was added. What the members page and invitations take:
 - **Assignable roles** are Admin, Editor, Author and Viewer (`ASSIGNABLE_ROLES`). They are what an invitation can carry and what the role form accepts. Owner is not among them, for an Owner either: that is the transfer in the settings.
 - **A verified email is not a permission.** It is a condition on one action, checked after the permission. An Editor with a verified email still cannot invite.
 - **The order holds.** A member without `org.members.manage` gets the same `Forbidden` whatever member, invitation, address or role they name.
+
+---
+
+## Addendum (M3-5, 2026-10-07): the activity log
+
+`org.activity.read` (Owner and Admin) now has its use: `listActivity(ctx, …)` starts with `requirePermission(ctx, "org.activity.read")`, and the page and the organization's links use `canReadActivity(ctx)`. No key was added. Editors, Authors and Viewers get the "no access" page and no link. See ADR 0010.

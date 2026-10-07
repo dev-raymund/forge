@@ -91,7 +91,7 @@ export async function submitRevokeInvitation(actor: Actor, orgSlug: string, form
  */
 export async function submitAcceptInvitation(actor: Actor, token: string, meta: RequestMeta = {}): Promise<FormOutcome> {
   try {
-    const { organization } = await acceptInvitation(actor, token);
+    const { organization } = await acceptInvitation(actor, token, meta);
     return { state: { status: "success" }, redirectTo: orgPath(organization.slug), revalidate: pagesOf(organization.slug) };
   } catch (error) {
     // The way back after logging in is the invitation itself, and only if it has the shape of one.

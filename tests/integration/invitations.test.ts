@@ -53,6 +53,8 @@ const form = (fields: Record<string, string>) => {
   for (const [name, value] of Object.entries(fields)) data.set(name, value);
   return data;
 };
+/** The admin URLs of an organization that a change makes stale, its activity log among them. */
+const pages = (slug: string) => [`/${slug}`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`];
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const runEmails = () => runJobs({ registry: createJobRegistry([emailSend]), budgetMs: 20_000, random: () => 0.5 });
 
@@ -591,7 +593,7 @@ describe("the members page's forms", () => {
     const outcome = await submitInviteMember(a.actor, a.org.slug, form({ email: ` ${email.toUpperCase()}`, role: "editor" }));
     expect(outcome).toEqual({
       state: { status: "success", message: `Invitation sent to ${email}.`, values: { email: "", role: "editor" } },
-      revalidate: [`/${a.org.slug}`, `/${a.org.slug}/settings`, `/${a.org.slug}/members`],
+      revalidate: pages(a.org.slug),
       emailQueued: true,
     });
     const [invitation] = await listInvitations(a.ctx);
@@ -664,7 +666,7 @@ describe("the members page's forms", () => {
 
     // Leaving: a member takes themselves out, and goes on to wherever they belong next. Here, nowhere yet: onboarding.
     expect(await submitLeaveOrganization(two.actor, a.org.slug, new FormData())).toEqual({
-      state: { status: "success" }, redirectTo: "/onboarding", revalidate: [`/${a.org.slug}`, `/${a.org.slug}/settings`, `/${a.org.slug}/members`],
+      state: { status: "success" }, redirectTo: "/onboarding", revalidate: pages(a.org.slug),
     });
     await expect(resolveOrgContext(two.actor, a.org.slug)).rejects.toMatchObject({ kind: "NotFound" });
     expectRefused(await submitLeaveOrganization(two.actor, a.org.slug, new FormData()), "NotFound", "Not found.");
@@ -721,7 +723,7 @@ describe("the members page's forms", () => {
     expectRefused(await submitAcceptInvitation(actor, "a".repeat(43)), "NotFound", "This invitation is no longer valid. Ask the person who invited you to send a new one.");
 
     expect(await submitAcceptInvitation(actor, token)).toEqual({
-      state: { status: "success" }, redirectTo: `/${a.org.slug}`, revalidate: [`/${a.org.slug}`, `/${a.org.slug}/settings`, `/${a.org.slug}/members`],
+      state: { status: "success" }, redirectTo: `/${a.org.slug}`, revalidate: pages(a.org.slug),
     });
   });
 

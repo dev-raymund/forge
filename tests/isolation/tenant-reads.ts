@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { listOrganizations } from "@/modules/tenancy";
+import { listActivity, listOrganizations, resolveOrgContext } from "@/modules/tenancy";
 import { tablesOfClass, type TableName } from "@/platform/db/table-classes";
 import { withTenant, withUser } from "@/platform/db/tenant";
 
@@ -37,6 +37,22 @@ export const tenantReads: TenantRead[] = [
     name: "tenancy.listOrganizations (user context, no organization chosen)",
     read: (ctx) =>
       listOrganizations({ kind: "user", userId: ctx.userId, sessionId: ctx.userId, emailVerified: true }).then((rows) => rows.map((r) => r.id)),
+  },
+  // M3-5: the activity log as its page reads it. Each event it returns is looked up again for the organization it belongs to.
+  {
+    name: "tenancy.listActivity (the organization's activity page)",
+    read: async (ctx) => {
+      const actor = { kind: "user", userId: ctx.userId, sessionId: ctx.userId, emailVerified: true } as const;
+      const [org] = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => (await tx.execute<{ slug: string }>(sql`select slug from organizations where id = ${ctx.orgId}`)).rows);
+      const page = await listActivity(await resolveOrgContext(actor, org!.slug));
+      // Read without any tenant filter of its own: whatever organization each returned event really belongs to.
+      const owners = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => {
+        const res = await tx.execute<{ id: string; org: string }>(sql`select id, organization_id as org from audit_logs`);
+        return new Map(res.rows.map((row) => [row.id, row.org]));
+      });
+      // An event the organization's own context cannot see would not be its own: name it, so the suite fails.
+      return page.items.map((item) => owners.get(item.id) ?? `not-visible-to-${ctx.orgId}`);
+    },
   },
   ...(["organizations", "organization_members"] as const).map((table): TenantRead => ({
     name: `table ${table} under a user-only context (no WHERE clause)`,

@@ -12,5 +12,7 @@ export const orgSettingsPath = (orgSlug: string): string => `/${orgSlug}/setting
 
 export const orgMembersPath = (orgSlug: string): string => `/${orgSlug}/members`;
 
+export const orgActivityPath = (orgSlug: string): string => `/${orgSlug}/activity`;
+
 /** Where an invitation link leads. The token is the only thing in it. */
 export const invitationPath = (token: string): string => `/invite/${token}`;

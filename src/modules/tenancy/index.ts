@@ -16,7 +16,9 @@ export { createOrganization, homeOrganization, listOrganizations, updateOrganiza
 export { changeMemberRole, leaveOrganization, listMembers, removeMember, transferOwnership } from "./members.service";
 export { PERMISSIONS, isPermission, permissionsForRole } from "./permissions";
 export type { OwnedResource, OwnScope, Permission, PermissionSet } from "./permissions";
-export { can, canActOn, canManageMembers, canTransferOwnership, canUpdateOrganization, canViewOrganizationSettings, requirePermission } from "./policies";
+export {
+  can, canActOn, canManageMembers, canReadActivity, canTransferOwnership, canUpdateOrganization, canViewOrganizationSettings, requirePermission,
+} from "./policies";
 
 // The organization screens (M3-3). Pages in app/(admin) compose these; the
 // forms call this module's Server Actions (./actions.ts), which are the only way in.
@@ -36,6 +38,10 @@ export { CreateOrganizationForm } from "./ui/create-organization-form";
 export { ChangeOrganizationSlugForm, RenameOrganizationForm, TransferOwnership } from "./ui/organization-settings";
 export type { TransferCandidate } from "./ui/organization-settings";
 export { OrganizationSettingsView } from "./ui/organization-settings-view";
+
+// The activity log (M3-5): who may read it. The rows themselves are the audit module's.
+export { listActivity } from "./activity.service";
+export { orgActivityPath } from "./paths";
 
 // Members and invitations (M3-4).
 export { acceptInvitation, inviteMember, listInvitations, previewInvitation, resendInvitation, revokeInvitation } from "./invitations.service";

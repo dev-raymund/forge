@@ -92,7 +92,7 @@ export async function lockOrganization(tx: TenantTx, organizationId: string): Pr
   await tx.execute(sql`select 1 from ${organizations} where ${organizations.id} = ${organizationId} for update`);
 }
 
-export type MemberRow = { id: string; userId: string; role: RoleKey };
+export type MemberRow = { id: string; userId: string; role: RoleKey; /** As it stands now: what the activity log calls them. */ name: string };
 
 /**
  * One membership of THIS organization. The organization is in the WHERE clause
@@ -101,11 +101,18 @@ export type MemberRow = { id: string; userId: string; role: RoleKey };
  */
 export async function findMember(tx: TenantTx, organizationId: string, memberId: string): Promise<MemberRow | null> {
   const [row] = await tx
-    .select({ id: organizationMembers.id, userId: organizationMembers.userId, roleKey: roles.key })
+    .select({ id: organizationMembers.id, userId: organizationMembers.userId, roleKey: roles.key, name: users.name })
     .from(organizationMembers)
     .innerJoin(roles, systemRole)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.id, memberId)));
-  return row && isRoleKey(row.roleKey) ? { id: row.id, userId: row.userId, role: row.roleKey } : null;
+  return row && isRoleKey(row.roleKey) ? { id: row.id, userId: row.userId, role: row.roleKey, name: row.name } : null;
+}
+
+/** The organization's name and slug as they are now. Read under the lock, so a change can be recorded as "from … to …". */
+export async function findOrganizationNames(tx: TenantTx, organizationId: string): Promise<{ name: string; slug: string } | null> {
+  const [row] = await tx.select({ name: organizations.name, slug: organizations.slug }).from(organizations).where(eq(organizations.id, organizationId));
+  return row ?? null;
 }
 
 export async function countOwners(tx: TenantTx, organizationId: string): Promise<number> {

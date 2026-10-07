@@ -124,3 +124,33 @@ export async function setInvitationExpiry(orgId: string, email: string, minutes:
 
 /** As if an open invitation had been sent `minutes` ago (an invitation lasts 7 days from when it is sent). */
 export const invitationSentMinutesAgo = (orgId: string, email: string, minutes: number) => setInvitationExpiry(orgId, email, 7 * 24 * 60 - minutes);
+
+// ── The activity log (M3-5) ──────────────────────────────────────────────────
+
+export type AuditRecord = { action: string; actor_label: string; resource_type: string; request_id: string; ip: string; metadata: Record<string, unknown> };
+
+/** Everything recorded for the organization, oldest first, as the database has it (including what the page never shows). */
+export async function auditOf(orgId: string): Promise<AuditRecord[]> {
+  const { rows } = await inTenant(orgId, (c) =>
+    c.query<AuditRecord>("select action, actor_label, resource_type, request_id, ip, metadata from audit_logs where organization_id = $1 order by created_at, id", [orgId]),
+  );
+  return rows;
+}
+
+/**
+ * `count` older events for the organization, one a minute going back from an
+ * hour ago, by the user with this email. Written as the application's own
+ * database role would write them: it may add to the log, and nothing else.
+ */
+export async function seedActivity(orgId: string, email: string, count: number) {
+  await inTenant(orgId, async (c) => {
+    for (let i = 0; i < count; i++) {
+      await c.query(
+        `insert into audit_logs (id, organization_id, actor_type, actor_id, actor_label, action, resource_type, metadata, created_at)
+         select $1, $2, 'user', u.id, u.email, 'member.role_changed', 'membership', $3::jsonb, now() - make_interval(mins => 60 + $4)
+         from users u where u.email = $5`,
+        [uuidv7(), orgId, JSON.stringify({ memberName: `Seeded ${String(i + 1).padStart(3, "0")}`, previousRole: "viewer", newRole: "author" }), i, email],
+      );
+    }
+  });
+}

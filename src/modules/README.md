@@ -12,7 +12,7 @@ Everything else in the module is private. ESLint enforces this: code outside a m
 | File | Role |
 |---|---|
 | `schema.ts` | Drizzle tables owned by the module |
-| `*.service.ts` | Use cases: authorize → validate → load → decide → persist → audit → return events |
+| `*.service.ts` | Use cases: authorize → validate → load → decide → persist → audit → return events. Audit is `record(tx, …)` from `@/modules/audit`, in the same transaction (ADR 0010) |
 | `*.repository.ts` | Drizzle queries that take a tenant transaction (`tx`) |
 | `queries.ts` | Read models for Server Components |
 | `actions.ts` | `"use server"` adapters: parse → context → service → invalidate |

@@ -1,6 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
+import { record, type AuditRequest } from "@/modules/audit";
 import type { Actor } from "@/modules/auth";
 import { startTrial } from "@/modules/billing";
 import { isUniqueViolation, withTenant, withUser } from "@/platform/db";
@@ -9,7 +10,7 @@ import { inTenant, type OrgContext } from "./context";
 import { chooseHomeOrganization } from "./home";
 import { roleHolds } from "./permissions";
 import { requirePermission } from "./policies";
-import { findMember, listMemberships, lockOrganization, roleIdFor } from "./repository";
+import { findMember, findOrganizationNames, listMemberships, lockOrganization, roleIdFor } from "./repository";
 import { organizationMembers, organizations } from "./schema";
 import type { OrganizationSummary } from "./shared";
 import { createOrganizationSchema, parseInput, updateOrganizationSchema, type CreateOrganizationInput, type UpdateOrganizationInput } from "./validation";
@@ -21,14 +22,15 @@ const SLUG_TAKEN = "That URL is already taken.";
 const SLUG_UNIQUE = "organizations_slug_unique";
 
 /**
- * Creates an organization with the caller as its Owner and its trial
- * subscription, in one transaction: all three rows exist, or none does. There
- * is never a committed organization without an Owner.
+ * Creates an organization with the caller as its Owner, its trial
+ * subscription and the first line of its activity log, in one transaction:
+ * all of them exist, or none does. There is never a committed organization
+ * without an Owner.
  *
  * The new organization's id is generated here, and the transaction's tenant
  * context is that id: RLS admits the three inserts and nothing else.
  */
-export async function createOrganization(actor: Actor, input: CreateOrganizationInput): Promise<OrganizationSummary> {
+export async function createOrganization(actor: Actor, input: CreateOrganizationInput, request: AuditRequest = {}): Promise<OrganizationSummary> {
   if (actor.kind !== "user") throw unauthenticated();
   const { name, slug } = parseInput(createOrganizationSchema, input);
   const id = uuidv7();
@@ -37,6 +39,8 @@ export async function createOrganization(actor: Actor, input: CreateOrganization
       await tx.insert(organizations).values({ id, name, slug, createdBy: actor.userId });
       await tx.insert(organizationMembers).values({ organizationId: id, userId: actor.userId, roleId: await roleIdFor(tx, "owner") });
       await startTrial(tx, id);
+      // The first line of the new organization's activity, in the transaction that makes it.
+      await record(tx, { action: "organization.created", resourceType: "organization", resourceId: id, metadata: { name, slug } }, request);
     });
   } catch (error) {
     if (isUniqueViolation(error, SLUG_UNIQUE)) throw validationError({ slug: [SLUG_TAKEN] });
@@ -78,12 +82,20 @@ export async function updateOrganization(ctx: OrgContext, input: UpdateOrganizat
       const actor = await findMember(tx, ctx.org.id, ctx.membership.id);
       if (!actor) throw notFound();
       if (!roleHolds(actor.role, "org.manage")) throw forbidden();
+      const before = await findOrganizationNames(tx, ctx.org.id);
+      if (!before) throw notFound();
       const [row] = await tx
         .update(organizations)
         .set({ ...(changes.name !== undefined ? { name: changes.name } : {}), ...(changes.slug !== undefined ? { slug: changes.slug } : {}) })
         .where(eq(organizations.id, ctx.org.id))
         .returning({ id: organizations.id, slug: organizations.slug, name: organizations.name, status: organizations.status });
       if (!row) throw notFound();
+      // Recorded only if something is different now: saving the same name again is not an event.
+      const renamed = row.name !== before.name ? { previousName: before.name, newName: row.name } : {};
+      const moved = row.slug !== before.slug ? { previousSlug: before.slug, newSlug: row.slug } : {};
+      if (row.name !== before.name || row.slug !== before.slug) {
+        await record(tx, { action: "organization.updated", resourceType: "organization", resourceId: ctx.org.id, metadata: { ...renamed, ...moved } }, ctx);
+      }
       return { ...row, role: actor.role };
     });
   } catch (error) {

@@ -958,7 +958,7 @@ forge/
 | `/{orgSlug}/members` | Members, invitations, roles. Invitations and the role list offer Admin, Editor, Author, Viewer; ownership is the transfer in settings (M3-4) | Admin (Viewer+ read the members) | 3 |
 | `/{orgSlug}/billing` | Plan, trial, upgrade, portal | Owner | 11 |
 | `/{orgSlug}/settings` | Org name/slug, transfer ownership | Owner to change anything; an Admin may open it read-only (§13, M3-3, ADR 0009) | 3 |
-| `/{orgSlug}/activity` | Audit log | Admin | 3 |
+| `/{orgSlug}/activity` | Audit log: sentences, newest first, 25 a page; filters for event, person and day (M3-5, ADR 0010) | Admin (`org.activity.read`) | 3 |
 | `/{orgSlug}/sites/{siteSlug}` | Site overview + publish site + checklist | Viewer | 4 |
 | `/…/pages`, `/…/pages/new`, `/…/pages/[entryId]` | Page tree, new-page form, editor | Viewer (read) / Editor | 5 |
 | `/…/posts`, `/…/posts/new`, `/…/posts/[entryId]` | Post list, new-post form, editor | Viewer (read) / Author | 5 |

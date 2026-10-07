@@ -611,6 +611,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M3-5 · Audit log and activity page
 **Labels:** `area:audit` `type:feature`
 
+**Status:** ✔ done (2026-10-07). See ADR 0010.
+
 **Description:** Transactional audit trail.
 
 *From M2-4: `modules/audit` already has `recordPlatformEvent()` for org-less account events (`auth.login`, `auth.logout`, `auth.password_changed`), written after Better Auth's own queries, so not in their transaction. Add `audit.record(tx, …)` for tenant mutations next to it. **No application role can read org-less rows**: the policy's `USING` clause needs an organization, and `FORCE ROW LEVEL SECURITY` applies it to the owner too. That is right for tenants; the staff console (M12-1) will need a definer function or a platform policy to read them. The integration tests read them as the owner with `FORCE` lifted inside a rolled-back transaction (`tests/integration/auth-account.test.ts`).*
@@ -638,13 +640,27 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M3-1
 
 **Acceptance criteria:**
-- [ ] `audit_logs` table; `forge_app` has INSERT/SELECT only
-- [ ] `audit.record(tx, { action, resourceType, resourceId, metadata })` taking actor, request ID and IP from the context
-- [ ] `/{org}/activity`: paginated list with filters (site, user, action, date); Admin+
+- [x] `audit_logs` table; `forge_app` has INSERT/SELECT only *(both from M1-1; verified here in every context, with TRUNCATE)*
+- [x] `audit.record(tx, { action, resourceType, resourceId, metadata })` taking actor, request ID and IP from the context *(the actor and the organization are read from the transaction's own context in SQL, so they cannot be passed at all; request id and address come from the request's context)*
+- [x] `/{org}/activity`: paginated list with filters (site, user, action, date); Admin+ *(25 a page by cursor; filters for event, person and day in the form; `site` is read from the URL and applied, and gets its drop-down with the first site-level events, M4-1)*
+
+**Decisions taken here (ADR 0010):**
+- **Event names follow the owner's M3-5 instruction where it differs from the table above:** leaving is `member.left` (the table says `organization.left`), and a rename and a URL change are both `organization.updated`, told apart by their details.
+- **An audit failure fails the change** (D-30). Tested for all eleven mutations.
+- **Stored and shown are different things.** The request's address and id are stored; the activity page's query does not select them, or any user id.
+- **Not recorded:** a refused attempt; a change that changes nothing; the expired invitation that a new invitation to the same address replaces (the new `member.invited` is the record).
+- **Nothing is ever deleted.** No retention job exists in V1.
+
+**Also delivered:**
+- A typed event vocabulary (`modules/audit/events.ts`): ten events, each with a schema of what may be stored and a sentence for the page.
+- `listActivity(ctx, query)` in the tenancy module holds the permission check (`org.activity.read`); the audit module holds the rows and depends on no other module.
+- A bug found by a browser test: after "Clear filters" the form's fields kept the old values. The form is now keyed by the filters in the URL.
 
 **Likely files/modules:** `src/modules/audit/*`, activity page
 
 **Testing:** a rolled-back mutation leaves no audit row; UPDATE on `audit_logs` fails for `forge_app`.
+
+✔ `tests/integration/audit.test.ts` (34), `tests/integration/isolation.test.ts` (97, +5), `tests/e2e/activity.spec.ts` (6), `src/modules/audit/events.test.ts` (32), `src/modules/audit/activity-query.test.ts` (9), `src/modules/audit/ui/ui.test.tsx` (9), `tests/unit/audit-writer.test.ts` (4), `src/modules/tenancy/policies.test.ts` (+1), `tests/unit/organization-pages.test.ts` (56, +3: the activity route and service are under the same source-level rules).
 
 ---
 
@@ -662,6 +678,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-2 (ADR 0009): `createSite` takes `sites.create`, `deleteSite` takes `sites.delete` (Owner only), `changeSiteAddress` takes `site.settings.manage`. Order: `requirePermission` → `assertLimit` (the plan, a separate question from the role) → validate → write. Listing an organization's sites takes membership only.*
 
 *From M3-3: `/{orgSlug}` is a small page for now (`src/app/(admin)/[orgSlug]/page.tsx`: the organization's name, the member's role, an empty "Sites" box). When `/{orgSlug}/sites` exists, turn it into the redirect plan §19 describes and add "Sites" to the shell's links. `/` (`src/app/(admin)/route.ts`) redirects to `homePath(...)`, which is `/{orgSlug}`; nothing else needs to change for it to reach the sites.*
+
+*From M3-5 (ADR 0010): record each site change with `record(tx, …)` from `@/modules/audit`, in the transaction that makes it. Add the events to `modules/audit/events.ts` first (`site.created`, `site.deleted`, `site.address_changed`: a name, what it is about, a schema of the details, a sentence). `record` does not take a site yet: add an optional `siteId` to the entry there, checked as a UUID, when the first site-level event exists. The activity page already reads `?site=` and filters by it; add the drop-down to its filter form (`modules/audit/ui/activity-view.tsx`) once sites can be listed. An audit failure fails the change, by design.*
 
 **Depends on:** M3-2
 
@@ -1019,6 +1037,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 *V1 (ADR 0006): on Vercel Hobby the job runs when the runner is next called. That is the minute scheduler (optional, free, external) or the daily cron. Without a scheduler, a post can publish up to a day late: a known V1 limitation.*
 
+*From M3-5 (ADR 0010): a scheduled publish has no user in its transaction, and `record()` refuses to write without one. Add a system actor to the audit writer as an explicit, typed caller (the table already allows `actor_type = 'system'`), not as a free parameter.*
+
 **Depends on:** M7-1, M1-3
 
 **Acceptance criteria:**
@@ -1205,6 +1225,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Safe read access for other systems.
 
+*From M3-5 (ADR 0010): the same for API keys: an `api_key` actor in the audit writer, with the key's name as the label, added as an explicit caller when the first write endpoint exists (M10-2).*
+
 **Depends on:** M5-6, M6-2
 
 **Acceptance criteria:**
@@ -1287,6 +1309,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Make it safe to operate.
 
 *From M3-3: under `/{orgSlug}` the 404 and "no access" pages reach a signed-in visitor with HTTP 200, because the admin shell streams before the membership is known (Cache Components). If real 404/403 status codes are wanted for the admin, the check has to happen in `proxy.ts` before rendering; that means a membership query per admin request there, so weigh it. Also: `/favicon.ico` and other stray first segments now reach the `[orgSlug]` route (answered as 404 without touching the session or the database); a real favicon would stop the request altogether.*
+
+*From M3-5 (ADR 0010): the audit log is never purged in V1 (no `audit_purge_before()`), and platform events (logins, password changes: rows with no organization) still have no reader. Both are this issue's: a definer function or platform policy for staff to read them, and the retention decision. The activity page shows tenants neither the client address nor the request id that every row stores; the staff view is where those are for.*
 
 **Depends on:** all feature milestones
 

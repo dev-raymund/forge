@@ -4,7 +4,7 @@ import { formFailure } from "@/platform/form-failure";
 import type { FormState } from "@/platform/forms";
 import { loginPath } from "@/platform/routing/admin-access";
 import type { RequestMeta } from "./context";
-import { orgMembersPath, orgPath, orgSettingsPath } from "./paths";
+import { orgActivityPath, orgMembersPath, orgPath, orgSettingsPath } from "./paths";
 
 /** What a form submission of this module comes to (./organization-forms.ts, ./member-forms.ts). */
 export type FormOutcome = {
@@ -20,8 +20,8 @@ export type FormOutcome = {
   emailQueued?: boolean;
 };
 
-/** The pages of an organization that show its name, its URL or who is in it. */
-export const pagesOf = (orgSlug: string): string[] => [orgPath(orgSlug), orgSettingsPath(orgSlug), orgMembersPath(orgSlug)];
+/** The pages of an organization that show its name, its URL, who is in it, or what was just done there (the activity log). */
+export const pagesOf = (orgSlug: string): string[] => [orgPath(orgSlug), orgSettingsPath(orgSlug), orgMembersPath(orgSlug), orgActivityPath(orgSlug)];
 
 /** A thrown error → what the form shows. A session that ended leaves for the login page and comes back. */
 export function refusal(error: unknown, meta: RequestMeta, values: Record<string, string>, next: string, messages: Partial<Record<AppErrorKind, string>> = {}): FormOutcome {

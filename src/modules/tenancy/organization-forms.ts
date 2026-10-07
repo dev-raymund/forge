@@ -33,7 +33,7 @@ const settingsWithNotice = (orgSlug: string, notice: SettingsNotice) => `${orgSe
 export async function submitCreateOrganization(actor: Actor, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
   const values = { name: text(formData.get("name")), slug: text(formData.get("slug")) };
   try {
-    const organization = await createOrganization(actor, values);
+    const organization = await createOrganization(actor, values, meta);
     return { state: { status: "success" }, redirectTo: orgPath(organization.slug), revalidate: pagesOf(organization.slug) };
   } catch (error) {
     return refusal(error, meta, values, ONBOARDING_PATH);
