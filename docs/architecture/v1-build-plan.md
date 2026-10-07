@@ -949,13 +949,13 @@ forge/
 | Route | Purpose | Minimum role | Phase |
 |---|---|---|---|
 | `/login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password` | Authentication | — | 2 |
-| `/invite/[token]` | Accept invitation | — | 3 |
+| `/invite/[token]` | Accept invitation: an account with the invited address; single use; 7 days (M3-4, ADR 0001) | — | 3 |
 | `/onboarding` | Org → site → theme wizard | signed in | 3–4 |
 | `/account` | Profile, password, sessions | signed in | 2 |
 | `/` | Redirect to last org's sites, or `/onboarding`. "Last" is the organization joined most recently, from the memberships; nothing is stored (M3-3) | signed in | 3 |
 | `/{orgSlug}` | Redirect to `/{orgSlug}/sites`. Until that page exists (phase 4) it is the organization's home | Viewer | 3 |
 | `/{orgSlug}/sites`, `/{orgSlug}/sites/new` | Site list; create site | Viewer; Admin | 4 |
-| `/{orgSlug}/members` | Members, invitations, roles | Admin (Viewer+ read) | 3 |
+| `/{orgSlug}/members` | Members, invitations, roles. Invitations and the role list offer Admin, Editor, Author, Viewer; ownership is the transfer in settings (M3-4) | Admin (Viewer+ read the members) | 3 |
 | `/{orgSlug}/billing` | Plan, trial, upgrade, portal | Owner | 11 |
 | `/{orgSlug}/settings` | Org name/slug, transfer ownership | Owner to change anything; an Admin may open it read-only (§13, M3-3, ADR 0009) | 3 |
 | `/{orgSlug}/activity` | Audit log | Admin | 3 |

@@ -1,11 +1,10 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
-import type { z } from "zod";
 import type { Actor } from "@/modules/auth";
 import { startTrial } from "@/modules/billing";
 import { isUniqueViolation, withTenant, withUser } from "@/platform/db";
-import { fieldErrorsFrom, forbidden, notFound, unauthenticated, validationError } from "@/platform/errors";
+import { forbidden, notFound, unauthenticated, validationError } from "@/platform/errors";
 import { inTenant, type OrgContext } from "./context";
 import { chooseHomeOrganization } from "./home";
 import { roleHolds } from "./permissions";
@@ -13,19 +12,13 @@ import { requirePermission } from "./policies";
 import { findMember, listMemberships, lockOrganization, roleIdFor } from "./repository";
 import { organizationMembers, organizations } from "./schema";
 import type { OrganizationSummary } from "./shared";
-import { createOrganizationSchema, updateOrganizationSchema, type CreateOrganizationInput, type UpdateOrganizationInput } from "./validation";
+import { createOrganizationSchema, parseInput, updateOrganizationSchema, type CreateOrganizationInput, type UpdateOrganizationInput } from "./validation";
 
 /** Organizations: create one, list mine, rename or re-address one (M3-1). */
 
 const SLUG_TAKEN = "That URL is already taken.";
 /** The unique constraint on `organizations.slug`. */
 const SLUG_UNIQUE = "organizations_slug_unique";
-
-function parse<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
-  const result = schema.safeParse(input);
-  if (!result.success) throw validationError(fieldErrorsFrom(result.error));
-  return result.data;
-}
 
 /**
  * Creates an organization with the caller as its Owner and its trial
@@ -37,7 +30,7 @@ function parse<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
  */
 export async function createOrganization(actor: Actor, input: CreateOrganizationInput): Promise<OrganizationSummary> {
   if (actor.kind !== "user") throw unauthenticated();
-  const { name, slug } = parse(createOrganizationSchema, input);
+  const { name, slug } = parseInput(createOrganizationSchema, input);
   const id = uuidv7();
   try {
     await withTenant({ orgId: id, userId: actor.userId }, async (tx) => {
@@ -77,7 +70,7 @@ export async function homeOrganization(actor: Actor): Promise<OrganizationSummar
  */
 export async function updateOrganization(ctx: OrgContext, input: UpdateOrganizationInput): Promise<OrganizationSummary> {
   requirePermission(ctx, "org.manage");
-  const changes = parse(updateOrganizationSchema, input);
+  const changes = parseInput(updateOrganizationSchema, input);
   try {
     return await inTenant(ctx, async (tx) => {
       await lockOrganization(tx, ctx.org.id);

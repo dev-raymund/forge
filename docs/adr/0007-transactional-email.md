@@ -95,3 +95,15 @@ Mutation checks: random idempotency keys fail the exactly-once test, and removin
 | Required locally | none (defaults to the console provider) |
 | Optional locally | `EMAIL_PROVIDER=mailpit` (inbox at `localhost:8025`), `MAILPIT_URL`, `EMAIL_FROM` |
 | Required for Resend (production) | `RESEND_API_KEY`, `EMAIL_FROM` (on a domain verified in Resend, e.g. `Forge <no-reply@cms.forgelinetechnologies.com>`); `EMAIL_PROVIDER=resend` is implied on Vercel production |
+
+---
+
+## Addendum (M3-4, 2026-10-07): invitation emails are in use
+
+The `organization-invitation` template and its handling in `email.send` were built in M1-4. M3-4 is their first caller, and nothing in the job changed:
+
+- The email is queued by `inviteMember` / `resendInvitation` **inside the transaction** that writes the invitation, so there is an invitation exactly when its email is on its way.
+- **The recipient is the invitation's address, read by the job** under the organization's RLS context. The caller passes an invitation id and a link, never an address.
+- **The link is the only copy of the token.** The job checks that it points at the app's origin, sends it, and replaces it with `[redacted]` in the stored payload.
+- An invitation that was revoked, accepted or has expired by the time the job runs sends nothing.
+- The Server Action calls `kickEmail()` after the commit; the cron runner is the guarantee.

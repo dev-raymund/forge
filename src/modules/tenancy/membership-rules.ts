@@ -32,6 +32,8 @@ const no = (reason: Refusal): Decision => ({ ok: false, reason });
 
 /** Rule 2: the one role that may make, change or remove an Owner. */
 const isOwner = (role: RoleKey) => role === "owner";
+/** For code of this module that has to tell an Owner's row from the others (the members page). */
+export const isOwnerRole = isOwner;
 
 export type RoleChange = {
   actorRole: RoleKey;

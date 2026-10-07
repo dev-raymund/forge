@@ -4,12 +4,20 @@ import { describe, expect, it, vi } from "vitest";
 // The forms import their Server Actions; rendering needs only their identity.
 vi.mock("../actions", () => ({
   createOrganizationAction: vi.fn(), renameOrganizationAction: vi.fn(), changeOrganizationSlugAction: vi.fn(), transferOwnershipAction: vi.fn(),
+  inviteMemberAction: vi.fn(), resendInvitationAction: vi.fn(), revokeInvitationAction: vi.fn(), changeMemberRoleAction: vi.fn(),
+  removeMemberAction: vi.fn(), leaveOrganizationAction: vi.fn(), acceptInvitationAction: vi.fn(),
 }));
 const location = vi.hoisted(() => ({ pathname: "/acme" }));
 vi.mock("next/navigation", () => ({ usePathname: () => location.pathname }));
 
 import { SectionNav } from "@/components/admin/section-nav";
+import type { InvitationSummary } from "../invitations.service";
+import { describeMembers } from "../members-view";
+import type { RoleKey } from "../schema";
+import type { MemberSummary } from "../shared";
+import { AcceptInvitationForm } from "./accept-invitation";
 import { CreateOrganizationForm } from "./create-organization-form";
+import { MembersPage } from "./members-view";
 import { OrganizationSettingsView, type OrganizationSettingsViewProps } from "./organization-settings-view";
 import { OrgSwitcher } from "./org-switcher";
 
@@ -165,5 +173,118 @@ describe("the onboarding form", () => {
     expect(count(out, /<button[^>]*type="submit"/g)).toBe(1);
     // The form sends a name and a URL. Who the Owner is, is not a field.
     expect(out).not.toMatch(/name="(id|organizationId|ownerId|userId|role|status|planKey)"/);
+  });
+});
+
+describe("the members page: what is on it follows what the viewer may do", () => {
+  const person = (role: RoleKey, name: string): MemberSummary => ({
+    id: `m-${role}`, userId: `u-${role}`, name, email: `${role}@example.test`, role, joinedAt: new Date("2026-10-01T09:00:00Z"),
+  });
+  const people = [person("owner", "Olive Owner"), person("admin", "Adam Admin"), person("editor", "Edith Editor"), person("viewer", "Vic Viewer")];
+  const invitation = (over: Partial<InvitationSummary> = {}): InvitationSummary => ({
+    id: "0199a000-0000-7000-8000-0000000000e1", email: "newcomer@example.test", role: "author", invitedByName: "Olive Owner",
+    createdAt: new Date("2026-10-05T09:00:00Z"), expiresAt: new Date("2026-10-12T09:00:00Z"), expired: false, ...over,
+  });
+  const page = (role: RoleKey, options: { emailVerified?: boolean; invitations?: InvitationSummary[] } = {}) => {
+    const view = describeMembers({ membershipId: `m-${role}`, role, emailVerified: options.emailVerified ?? true }, people);
+    return html(<MembersPage organization={organization} view={view} invitations={view.canManage ? (options.invitations ?? []) : []} />);
+  };
+  const rowOf = (out: string, name: string) => out.match(new RegExp(`<tr[^>]*data-testid="member"[^>]*>(?:(?!</tr>).)*${name}(?:(?!</tr>).)*</tr>`, "s"))?.[0] ?? "";
+
+  it("every member sees everyone: name, address, role and when they joined", () => {
+    for (const role of ["owner", "admin", "editor", "viewer"] as const) {
+      const out = page(role);
+      expect(count(out, /data-testid="member"/g), role).toBe(4);
+      for (const p of people) {
+        expect(rowOf(out, p.name)).toContain(p.email);
+      }
+      expect(rowOf(out, "Olive Owner")).toMatch(/data-testid="role"[^>]*>Owner</);
+      expect(rowOf(out, "Edith Editor")).toMatch(/data-testid="role"[^>]*>Editor</);
+      expect(out).toMatch(/<time dateTime="2026-10-01T09:00:00.000Z">Oct 1, 2026<\/time>/);
+      expect(count(out, /<h1/g)).toBe(1);
+    }
+  });
+
+  it("someone who cannot manage members gets the list, their own way out, and nothing else", () => {
+    const out = page("viewer", { invitations: [invitation()] });
+    expect(out).not.toContain("Invite member");
+    expect(out).not.toContain("Invitations");
+    expect(out).not.toContain("newcomer@example.test"); // who has been invited is not theirs to see
+    expect(out).not.toMatch(/aria-label="Actions for /);
+    expect(out).not.toContain("Resend");
+    // Their own row is marked, and has the one thing they can do.
+    expect(rowOf(out, "Vic Viewer")).toContain(">You<");
+    expect(rowOf(out, "Vic Viewer")).toMatch(/<button[^>]*>Leave<\/button>/);
+    expect(count(out, /<button/g)).toBe(1);
+  });
+
+  it("an Admin gets the invite button and a menu on everyone they may manage: not the Owner, not themselves", () => {
+    const out = page("admin");
+    expect(count(out, /<button[^>]*>Invite member<\/button>/g)).toBe(1);
+    expect(rowOf(out, "Edith Editor")).toMatch(/aria-label="Actions for Edith Editor"/);
+    expect(rowOf(out, "Vic Viewer")).toMatch(/aria-label="Actions for Vic Viewer"/);
+    expect(rowOf(out, "Olive Owner")).not.toMatch(/<button/);
+    expect(rowOf(out, "Adam Admin")).not.toMatch(/aria-label="Actions for/);
+    expect(rowOf(out, "Adam Admin")).toMatch(/<button[^>]*>Leave<\/button>/);
+    expect(out).toContain("ownership is not a role to pick from a list");
+  });
+
+  it("the Owner gets a menu on everyone else; on their own row only the way out, which the page knows is closed to them", () => {
+    const out = page("owner");
+    for (const name of ["Adam Admin", "Edith Editor", "Vic Viewer"]) expect(rowOf(out, name)).toMatch(new RegExp(`aria-label="Actions for ${name}"`));
+    expect(rowOf(out, "Olive Owner")).not.toMatch(/aria-label="Actions for/);
+    expect(rowOf(out, "Olive Owner")).toMatch(/<button[^>]*>Leave<\/button>/);
+  });
+
+  it("a manager whose own email is not verified is told so, and is not offered the invite button", () => {
+    for (const role of ["owner", "admin"] as const) {
+      const out = page(role, { emailVerified: false });
+      expect(out).not.toContain("Invite member");
+      expect(out).toMatch(/role="status"[^>]*>.*Verify your email address to invite people\./s);
+      expect(out).toContain('href="/verify-email"');
+      // Managing who is already here does not need it.
+      expect(out).toMatch(/aria-label="Actions for Vic Viewer"/);
+    }
+    expect(page("viewer", { emailVerified: false })).not.toContain("Verify your email address to invite people.");
+  });
+
+  it("pending invitations: the address, the role, who invited, when it ends, and the two things that can be done with it", () => {
+    const out = page("admin", { invitations: [invitation(), invitation({ id: "0199a000-0000-7000-8000-0000000000e2", email: "late@example.test", role: "viewer", expired: true, invitedByName: null })] });
+    expect(count(out, /data-testid="invitation"/g)).toBe(2);
+    const [first, second] = [...out.matchAll(/<li[^>]*data-testid="invitation"[^>]*>(.*?)<\/li>/gs)].map((m) => m[1]!);
+    expect(first).toContain("newcomer@example.test");
+    expect(first).toContain(">Author<");
+    expect(first).toContain("Invited by Olive Owner.");
+    expect(first).toContain("Expires on ");
+    expect(first).not.toContain(">Expired<");
+    expect(first).toMatch(/aria-label="Send the invitation to newcomer@example.test again"/);
+    expect(first).toMatch(/aria-label="Revoke the invitation to newcomer@example.test"/);
+    // Each button's form names the invitation by its id and carries nothing else.
+    expect([...first!.matchAll(/<input[^>]*type="hidden"[^>]*>/g)].map((m) => attr(m[0], "name"))).toEqual(["invitationId", "invitationId"]);
+    expect(second).toContain(">Expired<");
+    expect(second).toContain("Expired on ");
+    expect(second).not.toContain("Invited by");
+
+    expect(page("owner", { invitations: [] })).toContain('data-testid="no-invitations"');
+  });
+
+  it("nothing on the page carries an organization id, a user id or a permission for the browser to send back", () => {
+    for (const role of ["owner", "admin", "viewer"] as const) {
+      const out = page(role, { invitations: [invitation()] });
+      expect(out).not.toMatch(/name="(organizationId|orgId|userId|actorRole|permissions?)"/);
+      expect(out).not.toMatch(/u-(owner|admin|editor|viewer)/); // user ids never reach the markup; members are named by membership id
+      expect(out).not.toMatch(/org\.members\.manage|org\.manage/);
+    }
+  });
+});
+
+describe("the invitation page's button", () => {
+  it("is one form with one button: there is no field for an address, a role or an organization", () => {
+    const out = html(<AcceptInvitationForm action={vi.fn()} />);
+    expect(out).toMatch(/<form[^>]*aria-label="Accept invitation"/);
+    expect(count(out, /<button[^>]*type="submit"/g)).toBe(1);
+    expect(out).toContain("Accept invitation");
+    expect(out).not.toMatch(/<input(?![^>]*type="hidden")/);
+    expect(out).not.toMatch(/name="(email|role|organizationId|token)"/);
   });
 });

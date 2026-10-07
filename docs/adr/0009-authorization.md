@@ -212,3 +212,23 @@ Two things the screens made concrete:
 
 - **A screen shows; an action decides.** The settings page renders forms from booleans (`canUpdate`, `canTransfer`) and is never told a role. Each action resolves the context and asks again. A browser test demotes an Owner while the page is open and submits the form that is still on screen: the server refuses.
 - **The order holds for forms too.** The transfer form checks `org.manage` before it reads the chosen member or the typed confirmation, so a member who may not transfer gets the same `Forbidden` whatever they send.
+
+---
+
+## Addendum (M3-4, 2026-10-07): members and invitations
+
+No key was added. What the members page and invitations take:
+
+| Action | Takes | Also |
+|---|---|---|
+| See the member list | membership | |
+| See pending invitations | `org.members.manage` | |
+| Invite, re-send | `org.members.manage` | a verified email of the caller's own (plan §12); the role must be assignable |
+| Revoke an invitation | `org.members.manage` | |
+| Change a role, remove a member | `org.members.manage` | the membership rules (an Admin cannot touch an Owner; an Owner always remains) |
+| Leave | membership | the last Owner cannot |
+| Accept an invitation | nothing: the caller is not a member yet | a valid link, and an account with the invited address |
+
+- **Assignable roles** are Admin, Editor, Author and Viewer (`ASSIGNABLE_ROLES`). They are what an invitation can carry and what the role form accepts. Owner is not among them, for an Owner either: that is the transfer in the settings.
+- **A verified email is not a permission.** It is a condition on one action, checked after the permission. An Editor with a verified email still cannot invite.
+- **The order holds.** A member without `org.members.manage` gets the same `Forbidden` whatever member, invitation, address or role they name.

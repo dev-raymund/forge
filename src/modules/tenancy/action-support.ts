@@ -1,8 +1,9 @@
 import "server-only";
 import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { kickEmail } from "@/platform/email";
 import type { FormState } from "@/platform/forms";
-import type { FormOutcome } from "./organization-forms";
+import type { FormOutcome } from "./form-outcome";
 
 /** Helpers for ./actions.ts (a "use server" file may export only actions). */
 
@@ -18,6 +19,8 @@ import type { FormOutcome } from "./organization-forms";
  * `refresh()` re-renders the page the form is on, header included.
  */
 export function finish(outcome: FormOutcome): FormState {
+  // The email is already queued, in the transaction that made the invitation. This only sends it sooner.
+  if (outcome.emailQueued) kickEmail();
   for (const path of outcome.revalidate ?? []) revalidatePath(path);
   if (outcome.redirectTo) redirect(outcome.redirectTo);
   if (outcome.state.status === "success") refresh();

@@ -4,6 +4,10 @@ import { getCurrentActor } from "@/modules/auth";
 import type { FormState } from "@/platform/forms";
 import { finish } from "./action-support";
 import { currentRequestMeta } from "./context";
+import {
+  submitAcceptInvitation, submitChangeMemberRole, submitInviteMember, submitLeaveOrganization, submitRemoveMember, submitResendInvitation,
+  submitRevokeInvitation,
+} from "./member-forms";
 import { submitChangeOrganizationSlug, submitCreateOrganization, submitRenameOrganization, submitTransferOwnership } from "./organization-forms";
 
 /**
@@ -29,4 +33,35 @@ export async function changeOrganizationSlugAction(orgSlug: string, _previous: F
 
 export async function transferOwnershipAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitTransferOwnership(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+// ── Members and invitations (M3-4): ./member-forms.ts ───────────────────────
+
+export async function inviteMemberAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitInviteMember(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+export async function resendInvitationAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitResendInvitation(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+export async function revokeInvitationAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitRevokeInvitation(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+export async function changeMemberRoleAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitChangeMemberRole(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+export async function removeMemberAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitRemoveMember(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+export async function leaveOrganizationAction(orgSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitLeaveOrganization(await getCurrentActor(), orgSlug, formData, await currentRequestMeta()));
+}
+
+/** `token` is bound by the invitation page from its own URL. It is the secret itself: never logged, never echoed. */
+export async function acceptInvitationAction(token: string): Promise<FormState> {
+  return finish(await submitAcceptInvitation(await getCurrentActor(), token, await currentRequestMeta()));
 }

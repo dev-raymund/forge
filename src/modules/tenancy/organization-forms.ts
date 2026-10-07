@@ -1,10 +1,9 @@
 import "server-only";
 import type { Actor } from "@/modules/auth";
-import { asAppError, validationError, type AppErrorKind } from "@/platform/errors";
-import { formFailure } from "@/platform/form-failure";
-import { text, type FormState } from "@/platform/forms";
-import { loginPath } from "@/platform/routing/admin-access";
+import { validationError } from "@/platform/errors";
+import { text } from "@/platform/forms";
 import { resolveOrgContext, type RequestMeta } from "./context";
+import { pagesOf, refusal, type FormOutcome } from "./form-outcome";
 import { transferOwnership } from "./members.service";
 import { createOrganization, updateOrganization } from "./organizations.service";
 import { ONBOARDING_PATH, orgPath, orgSettingsPath } from "./paths";
@@ -25,34 +24,10 @@ import { requirePermission } from "./policies";
  * a real database in tests, and registered in the isolation suite.
  */
 
-export type FormOutcome = {
-  /** What the form shows. The only part that is sent to the browser. */
-  state: FormState;
-  /** Why it was refused, for callers and tests. */
-  refused?: AppErrorKind | "Internal";
-  /** Where the browser goes next. */
-  redirectTo?: string;
-  /** Admin URLs that now show something out of date. */
-  revalidate?: string[];
-};
-
-/** The pages of an organization that show its name or its URL. */
-const pagesOf = (orgSlug: string) => [orgPath(orgSlug), orgSettingsPath(orgSlug)];
-
 /** Query values the settings page turns into a confirmation after a redirect. */
 export const SETTINGS_NOTICES = ["url", "owner"] as const;
 export type SettingsNotice = (typeof SETTINGS_NOTICES)[number];
 const settingsWithNotice = (orgSlug: string, notice: SettingsNotice) => `${orgSettingsPath(orgSlug)}?changed=${notice}`;
-
-/** A thrown error → what the form shows. A session that ended leaves for the login page and comes back. */
-function refusal(error: unknown, meta: RequestMeta, values: Record<string, string>, next: string, messages: Partial<Record<AppErrorKind, string>> = {}): FormOutcome {
-  const appError = asAppError(error);
-  const state = formFailure(error, { module: "tenancy", requestId: meta.requestId ?? "", values });
-  if (!appError) return { state, refused: "Internal" };
-  if (appError.kind === "Unauthenticated") return { state, refused: "Unauthenticated", redirectTo: loginPath({ next, reason: "session" }) };
-  const message = messages[appError.kind];
-  return { state: message ? { ...state, message } : state, refused: appError.kind };
-}
 
 /** Onboarding, step 1: the organization, its Owner (the caller) and its trial, together (`createOrganization`). */
 export async function submitCreateOrganization(actor: Actor, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {

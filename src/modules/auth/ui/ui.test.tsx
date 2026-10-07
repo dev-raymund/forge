@@ -423,3 +423,29 @@ describe("shell pieces", () => {
     expect(out).toContain('href="/verify-email"');
   });
 });
+
+describe("signing up on the way to somewhere (an invitation)", () => {
+  it("carries the destination through the form, the Google button and the 'already have an account' link, and starts with the address given", () => {
+    const next = "/invite/abcDEF_123-token";
+    const out = html(<SignUpForm googleEnabled next={next} email="ivy@example.test" />);
+    expect(attr(tag(out, /<input[^>]*name="next"[^>]*>/), "value")).toBe(next);
+    // In the sign-up form and in the Google button's form.
+    expect([...out.matchAll(/<input[^>]*name="next"[^>]*>/g)].map((match) => attr(match[0], "value"))).toEqual([next, next]);
+    expect(attr(tag(out, /<input[^>]*name="email"[^>]*>/), "value")).toBe("ivy@example.test");
+    // The address is a starting value in an ordinary field: it can be changed, and nothing hidden repeats it.
+    expect(tag(out, /<input[^>]*name="email"[^>]*>/)).not.toMatch(/\s(readOnly|disabled)=|type="hidden"/);
+    expect(out.match(/ivy@example\.test/g)).toHaveLength(1);
+  });
+
+  it("without a destination behaves as before: home, and an empty address", () => {
+    const out = html(<SignUpForm />);
+    expect(attr(tag(out, /<input[^>]*name="next"[^>]*>/), "value")).toBe("/");
+    expect(attr(tag(out, /<input[^>]*name="email"[^>]*>/), "value")).toBe("");
+  });
+
+  it("the login form starts with the address given, too", () => {
+    const out = html(<LoginForm next="/invite/abc" email="ivy@example.test" />);
+    expect(attr(tag(out, /<input[^>]*name="email"[^>]*>/), "value")).toBe("ivy@example.test");
+    expect(attr(tag(out, /<input[^>]*name="next"[^>]*>/), "value")).toBe("/invite/abc");
+  });
+});

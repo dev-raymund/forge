@@ -26,6 +26,7 @@ export { VerifyEmailPanel } from "./ui/verify-email-panel";
 export { verifyEmailView } from "./verify-email-view";
 export type { VerifyEmailView } from "./verify-email-view";
 export { AccountMenu } from "./ui/account-menu";
+export { SwitchAccountButton } from "./ui/switch-account-button";
 export { VerifyEmailBanner } from "./ui/verify-email-banner";
 
 // The account page (M2-4).

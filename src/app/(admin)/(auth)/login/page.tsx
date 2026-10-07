@@ -37,6 +37,8 @@ async function Login({ searchParams }: { searchParams: SearchParams }) {
       googleEnabled={googleSignInEnabled()}
       // A Google sign-in that failed comes back here with `?error=<code>`; only our own wording is shown.
       oauthError={oauthErrorMessage(first(query.error))}
+      // Only a starting value for the field (an invitation's address). Logging in still takes the password.
+      email={(first(query.email) ?? "").slice(0, 254)}
     />
   );
 }

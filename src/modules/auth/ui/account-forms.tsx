@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState, useSyncExternalStore } from "react";
+import { useActionState, useState } from "react";
+import { Day, useLocalDay } from "@/components/admin/local-day";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { changePasswordAction, revokeOtherSessionsAction, revokeSessionAction, sendSetPasswordLinkAction, updateProfileAction } from "../actions";
@@ -80,22 +81,6 @@ export type SessionRow = {
   signedInAt: string;
   lastActiveAt: string;
 };
-
-const formatDay = (iso: string, timeZone?: string) => new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone }).format(new Date(iso));
-const noSubscription = () => () => {};
-
-/**
- * A day, in the viewer's time zone. The server does not know that zone, so it
- * renders the UTC day and the browser corrects it after hydration (a login at
- * 01:00 in Manila is still "yesterday" in UTC).
- */
-function useLocalDay(iso: string): string {
-  return useSyncExternalStore(noSubscription, () => formatDay(iso), () => formatDay(iso, "UTC"));
-}
-
-function Day({ iso }: { iso: string }) {
-  return <time dateTime={iso}>{useLocalDay(iso)}</time>;
-}
 
 function RevokeButton({ session, busy }: { session: SessionRow; busy: boolean }) {
   const signedIn = useLocalDay(session.signedInAt);

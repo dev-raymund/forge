@@ -33,4 +33,28 @@ describe("scrubEvent", () => {
     expect(event.tags).toEqual({ orgId: "org-1" });
     expect(JSON.stringify(event)).not.toMatch(/hunter2|secret|abc|1\.2\.3\.4|alice@|bob@|Bearer/);
   });
+
+  it("keeps an invitation token out of everything, wherever the link appears", () => {
+    const token = "Zk3rT0kenThatMustNeverLeave_abcdefghijklmnop-12";
+    const event = scrubEvent({
+      type: undefined,
+      message: `GET /invite/${token} failed`,
+      transaction: `/invite/${token}`,
+      request: { url: `https://app.forge.test/invite/${token}?x=1`, method: "GET", headers: { referer: `https://app.forge.test/invite/${token}` } },
+      exception: { values: [{ type: "Error", value: `redirect to /login?next=%2Finvite%2F${token}&email=a%40b.test` }] },
+      breadcrumbs: [
+        { category: "navigation", message: `to /invite/${token}`, data: { url: `https://app.forge.test/invite/${token}`, method: "GET", status_code: 200 } },
+        { category: "fetch", data: { url: `https://app.forge.test/login?next=%2Finvite%2F${token}`, method: "GET", status_code: 200 } },
+      ],
+    } as ErrorEvent);
+
+    expect(JSON.stringify(event)).not.toContain(token);
+    expect(event.request?.url).toBe("https://app.forge.test/invite/[token]");
+    expect(event.transaction).toBe("/invite/[token]");
+    expect(event.message).toBe("GET /invite/[token] failed");
+    expect(event.exception?.values?.[0]?.value).toBe("redirect to /login?next=%2Finvite%2F[token]&email=a%40b.test");
+    expect(event.breadcrumbs?.[0]).toMatchObject({ message: "to /invite/[token]", data: { url: "https://app.forge.test/invite/[token]" } });
+    // The route's own name stays readable.
+    expect(scrubEvent({ type: undefined, transaction: "/invite/[token]" } as ErrorEvent).transaction).toBe("/invite/[token]");
+  });
 });

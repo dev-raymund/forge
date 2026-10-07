@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import pg from "pg";
 import { uuidv7 } from "uuidv7";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/modules/auth/shared";
 import { resolveOrgContext } from "@/modules/tenancy";
 import { getPool } from "@/platform/db/client";
@@ -69,6 +69,11 @@ describe("registered tenant reads return only the caller's rows", () => {
   });
 });
 
+// A registered form may queue an email (an invitation). Leave the worker's queue as we found it: other suites count the jobs they run.
+afterAll(async () => {
+  await getPool().query("delete from jobs where type = 'email.send'");
+});
+
 describe("registered operations given another tenant's identifiers answer NotFound", () => {
   let caller: Caller;
   /** A member of A with the least a member can have: a Viewer. */
@@ -101,12 +106,14 @@ describe("registered operations given another tenant's identifiers answer NotFou
     const memberOfB = await withTenant({ orgId: B.org.id }, (tx) =>
       tx.execute<{ id: string }>(sql`select id from organization_members where organization_id = ${B.org.id} limit 1`),
     );
-    foreign = { orgId: B.org.id, orgSlug: B.org.slug, siteId: B.site.id, siteSlug: B.site.slug, memberId: memberOfB.rows[0]!.id, userId: B.user.id };
+    foreign = {
+      orgId: B.org.id, orgSlug: B.org.slug, siteId: B.site.id, siteSlug: B.site.slug, memberId: memberOfB.rows[0]!.id, userId: B.user.id, invitationId: B.invitation.id,
+    };
 
     const viewer = await addUser(A.org, await createUser(), "viewer");
     bystander = { actor: viewer.actor, ctx: await resolveOrgContext(viewer.actor, A.org.slug), orgSlug: A.org.slug };
     const tail = randomBytes(4).toString("hex");
-    nowhere = { orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7() };
+    nowhere = { orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7(), invitationId: uuidv7() };
   });
 
   it("has operations to check, and the fixtures are what the checks assume", async () => {

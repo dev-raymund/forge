@@ -24,27 +24,40 @@ export const SENTRY_DATA_COLLECTION: InitOptions["dataCollection"] = {
   urlQueryParams: false,
 };
 const EMAIL = /[^\s@"'<>]+@[^\s@"'<>]+\.[a-z]{2,}/gi;
+/**
+ * An invitation link carries its token in the path (`/invite/{token}`, plan
+ * §19), so dropping query strings is not enough for it. The token is replaced
+ * wherever a URL or a message could carry it, also in its encoded form inside
+ * a `next=` value.
+ */
+const INVITE_PATH = /\/invite\/[^\s/?#"'<>&]+/gi;
+const INVITE_ENCODED = /%2Finvite%2F[^\s&#"'<>]+/gi;
 
-const scrubText = (s: string | undefined) => s?.replace(EMAIL, "[email]");
+const scrubText = (s: string | undefined) =>
+  s?.replace(EMAIL, "[email]").replace(INVITE_PATH, "/invite/[token]").replace(INVITE_ENCODED, "%2Finvite%2F[token]");
+/** A URL as Sentry may keep it: no query string, no invitation token. */
+const scrubUrl = (url: string) => scrubText(url.split("?")[0]) as string;
 
 export function scrubEvent<E extends Event>(event: E): E {
   if (event.request) {
     const { url, method, headers } = event.request;
     event.request = {
-      url: url?.split("?")[0],
+      url: url === undefined ? undefined : scrubUrl(url),
       method,
       headers: Object.fromEntries(Object.entries(headers ?? {}).filter(([k]) => SAFE_HEADERS.has(k.toLowerCase()))),
     };
   }
   if (event.user) event.user = event.user.id ? { id: event.user.id } : undefined;
   event.message = scrubText(event.message);
+  // Normally the route pattern (`/invite/[token]`); a raw path would be the link itself.
+  if (typeof event.transaction === "string") event.transaction = scrubText(event.transaction);
   for (const ex of event.exception?.values ?? []) ex.value = scrubText(ex.value);
   if (event.breadcrumbs) {
     event.breadcrumbs = event.breadcrumbs.map((b) => ({
       ...b,
       message: scrubText(b.message),
       // fetch/xhr breadcrumbs carry full URLs and sometimes bodies
-      data: b.data?.url ? { url: String(b.data.url).split("?")[0], method: b.data.method, status_code: b.data.status_code } : undefined,
+      data: b.data?.url ? { url: scrubUrl(String(b.data.url)), method: b.data.method, status_code: b.data.status_code } : undefined,
     }));
   }
   return event;

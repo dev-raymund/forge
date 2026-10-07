@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { fieldErrorsFrom } from "@/platform/errors";
-import { loginPath, safeNextPath } from "@/platform/routing/admin-access";
+import { loginPath, safeNextPath, SIGNED_IN_HOME } from "@/platform/routing/admin-access";
 import { changePassword, updateProfile } from "./account.service";
 import { accountFailure, applyAuthCookies, failureState, leaveFor } from "./action-support";
 import {
@@ -36,8 +36,11 @@ export async function signUpAction(_previous: FormState, formData: FormData): Pr
   } catch (error) {
     return failureState(error, values);
   }
-  // Signed in, not yet verified: say so, instead of dropping the user into the app.
-  return leaveFor("/verify-email");
+  // Signed in, not yet verified: say so, instead of dropping the user into the app. Unless they were on
+  // their way somewhere (an invitation): then that is where they continue, and the app's banner says it.
+  // `next` comes from the URL, so it is untrusted: only a path on this app is followed.
+  const next = safeNextPath(formData.get("next"));
+  return leaveFor(next === SIGNED_IN_HOME ? "/verify-email" : next);
 }
 
 export async function signInAction(_previous: FormState, formData: FormData): Promise<FormState> {

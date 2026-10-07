@@ -14,6 +14,11 @@ export { ONBOARDING_PATH, orgPath, orgSettingsPath } from "./paths";
 
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 
+export { ASSIGNABLE_ROLES, INVITATION_DAYS } from "./invitation-rules";
+export type { AssignableRole } from "./invitation-rules";
+export { orgMembersPath } from "./paths";
+export { changeMemberRoleSchema, inviteMemberSchema } from "./validation";
+
 /** What a role is called on screen. For display only: what a role may do is `can()` (ADR 0009). */
 export const ROLE_LABELS: Readonly<Record<RoleKey, string>> = { owner: "Owner", admin: "Admin", editor: "Editor", author: "Author", viewer: "Viewer" };
 
@@ -35,4 +40,13 @@ export type MemberSummary = {
   email: string;
   role: RoleKey;
   joinedAt: Date;
+};
+
+/** One line on what each role is for, shown where a role is chosen. The catalog (ADR 0009) is what decides. */
+export const ROLE_DESCRIPTIONS: Readonly<Record<RoleKey, string>> = {
+  owner: "Everything, including billing, deleting sites and handing the organization over.",
+  admin: "Manages members and sites, and can do everything an Editor can.",
+  editor: "Creates, edits and publishes all pages and posts. Manages menus, SEO, categories and media.",
+  author: "Writes and publishes their own posts, and uploads media.",
+  viewer: "Can see everything in the admin, and change nothing.",
 };

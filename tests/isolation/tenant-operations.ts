@@ -1,7 +1,9 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  can, canActOn, changeMemberRole, listMembers, PERMISSIONS, removeMember, resolveOrgContext, resolveSiteContext, submitChangeOrganizationSlug,
-  submitCreateOrganization, submitRenameOrganization, submitTransferOwnership, transferOwnership, updateOrganization,
+  acceptInvitation, can, canActOn, changeMemberRole, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
+  resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitChangeOrganizationSlug, submitCreateOrganization,
+  submitInviteMember, submitLeaveOrganization, submitRemoveMember, submitRenameOrganization, submitResendInvitation, submitRevokeInvitation,
+  submitTransferOwnership, transferOwnership, updateOrganization,
   type FormOutcome, type OrgContext, type OwnedResource, type OwnScope, type Permission,
 } from "@/modules/tenancy";
 
@@ -42,6 +44,8 @@ export type Foreign = {
   /** A membership row of B (its Owner's). */
   memberId: string;
   userId: string;
+  /** An open invitation of B. Its id, which is not its token. */
+  invitationId: string;
 };
 
 export type TenantOperation = {
@@ -63,6 +67,12 @@ export const tenantOperations: TenantOperation[] = [
   { name: "tenancy.transferOwnership(B's member)", run: ({ ctx }, b) => transferOwnership(ctx, { memberId: b.memberId }) },
   { name: "tenancy.changeMemberRole(B's user id as the member id)", run: ({ ctx }, b) => changeMemberRole(ctx, { memberId: b.userId, role: "owner" }) },
   { name: "tenancy.removeMember(B's organization id as the member id)", run: ({ ctx }, b) => removeMember(ctx, { memberId: b.orgId }) },
+
+  // Invitations (M3-4): named by invitation id when managed, by token when answered.
+  { name: "tenancy.resendInvitation(B's invitation)", run: ({ ctx }, b) => resendInvitation(ctx, { invitationId: b.invitationId }) },
+  { name: "tenancy.revokeInvitation(B's invitation)", run: ({ ctx }, b) => revokeInvitation(ctx, { invitationId: b.invitationId }) },
+  { name: "tenancy.revokeInvitation(B's member id as the invitation id)", run: ({ ctx }, b) => revokeInvitation(ctx, { invitationId: b.memberId }) },
+  { name: "tenancy.acceptInvitation(B's invitation id as the token)", run: ({ actor }, b) => acceptInvitation(actor, b.invitationId) },
 ];
 
 /**
@@ -85,6 +95,17 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
     name: "tenancy.submitCreateOrganization(extra fields naming B)",
     run: ({ actor }, b) =>
       submitCreateOrganization(actor, form({ name: "Another Of A's", slug: `iso-${b.orgId.slice(-12)}-${Date.now().toString(36)}`, id: b.orgId, organizationId: b.orgId, ownerId: b.userId })),
+  },
+  // Members and invitations (M3-4).
+  { name: "tenancy.listInvitations()", run: ({ ctx }) => listInvitations(ctx) },
+  {
+    name: "tenancy.submitInviteMember(A's slug, extra fields naming B)",
+    run: ({ actor, orgSlug }, b) =>
+      submitInviteMember(
+        actor,
+        orgSlug,
+        form({ email: `iso-${b.orgId.slice(-12)}-${Date.now().toString(36)}@example.test`, role: "viewer", organizationId: b.orgId, orgSlug: b.orgSlug, invitedBy: b.userId }),
+      ),
   },
 ];
 
@@ -120,6 +141,19 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
     name: "tenancy.submitTransferOwnership(A's slug, B's user id as the member)",
     run: ({ actor, orgSlug }, b) => submitTransferOwnership(actor, orgSlug, form({ memberId: b.userId, confirm: orgSlug })),
   },
+
+  // Members and invitations (M3-4): B's page, or B's member or invitation named on A's page.
+  { name: "tenancy.submitInviteMember(B's slug)", run: ({ actor }, b) => submitInviteMember(actor, b.orgSlug, form({ email: "someone@example.test", role: "viewer" })) },
+  { name: "tenancy.submitResendInvitation(B's slug, B's invitation)", run: ({ actor }, b) => submitResendInvitation(actor, b.orgSlug, form({ invitationId: b.invitationId })) },
+  { name: "tenancy.submitResendInvitation(A's slug, B's invitation)", run: ({ actor, orgSlug }, b) => submitResendInvitation(actor, orgSlug, form({ invitationId: b.invitationId })) },
+  { name: "tenancy.submitRevokeInvitation(B's slug, B's invitation)", run: ({ actor }, b) => submitRevokeInvitation(actor, b.orgSlug, form({ invitationId: b.invitationId })) },
+  { name: "tenancy.submitRevokeInvitation(A's slug, B's invitation)", run: ({ actor, orgSlug }, b) => submitRevokeInvitation(actor, orgSlug, form({ invitationId: b.invitationId })) },
+  { name: "tenancy.submitChangeMemberRole(B's slug, B's member)", run: ({ actor }, b) => submitChangeMemberRole(actor, b.orgSlug, form({ memberId: b.memberId, role: "viewer" })) },
+  { name: "tenancy.submitChangeMemberRole(A's slug, B's member)", run: ({ actor, orgSlug }, b) => submitChangeMemberRole(actor, orgSlug, form({ memberId: b.memberId, role: "viewer" })) },
+  { name: "tenancy.submitRemoveMember(B's slug, B's member)", run: ({ actor }, b) => submitRemoveMember(actor, b.orgSlug, form({ memberId: b.memberId })) },
+  { name: "tenancy.submitRemoveMember(A's slug, B's member)", run: ({ actor, orgSlug }, b) => submitRemoveMember(actor, orgSlug, form({ memberId: b.memberId })) },
+  { name: "tenancy.submitLeaveOrganization(B's slug)", run: ({ actor }, b) => submitLeaveOrganization(actor, b.orgSlug, new FormData()) },
+  { name: "tenancy.submitAcceptInvitation(B's invitation id as the token)", run: ({ actor }, b) => submitAcceptInvitation(actor, b.invitationId) },
 ];
 
 /**

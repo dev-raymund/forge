@@ -28,11 +28,27 @@ export { ROLE_LABELS } from "./shared";
 export {
   SETTINGS_NOTICES, submitChangeOrganizationSlug, submitCreateOrganization, submitRenameOrganization, submitTransferOwnership,
 } from "./organization-forms";
-export type { FormOutcome, SettingsNotice } from "./organization-forms";
+export type { SettingsNotice } from "./organization-forms";
+export type { FormOutcome } from "./form-outcome";
 export { OrgSwitcher } from "./ui/org-switcher";
 export type { SwitcherOrganization } from "./ui/org-switcher";
 export { CreateOrganizationForm } from "./ui/create-organization-form";
 export { ChangeOrganizationSlugForm, RenameOrganizationForm, TransferOwnership } from "./ui/organization-settings";
 export type { TransferCandidate } from "./ui/organization-settings";
 export { OrganizationSettingsView } from "./ui/organization-settings-view";
+
+// Members and invitations (M3-4).
+export { acceptInvitation, inviteMember, listInvitations, previewInvitation, resendInvitation, revokeInvitation } from "./invitations.service";
+export type { AcceptedInvitation, InvitationPreview, InvitationSummary } from "./invitations.service";
+export { ASSIGNABLE_ROLES, INVITATION_DAYS, invitationState, isInvitedAccount } from "./invitation-rules";
+export { describeMembers, membersViewFor } from "./members-view";
+export type { MembersView } from "./members-view";
+export {
+  submitAcceptInvitation, submitChangeMemberRole, submitInviteMember, submitLeaveOrganization, submitRemoveMember, submitResendInvitation,
+  submitRevokeInvitation,
+} from "./member-forms";
+export { acceptInvitationAction } from "./actions";
+export { invitationPath, orgMembersPath } from "./paths";
+export { MembersPage } from "./ui/members-view";
+export { AcceptInvitationForm } from "./ui/accept-invitation";
 export type { MemberSummary, OrganizationStatus, OrganizationSummary, RoleKey } from "./shared";

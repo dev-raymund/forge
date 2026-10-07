@@ -82,3 +82,45 @@ export async function organizationsOf(email: string): Promise<(SeededOrganizatio
     await client.end();
   }
 }
+
+// ── Members and invitations (M3-4) ───────────────────────────────────────────
+
+/** What following the verification link does. Inviting people takes a verified email (plan §12). */
+export async function markEmailVerified(email: string) {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    await client.query("update users set email_verified = true where email = $1", [email]);
+  } finally {
+    await client.end();
+  }
+}
+
+export type InvitationRecord = { email: string; role: Role; state: "pending" | "expired" | "accepted" | "revoked"; token_hash: string };
+
+/** Every invitation of the organization, with where it is in its life. */
+export async function invitationsOf(orgId: string): Promise<InvitationRecord[]> {
+  const { rows } = await inTenant(orgId, (c) =>
+    c.query<InvitationRecord>(
+      `select i.email, r.key as role, i.token_hash,
+              case when i.accepted_at is not null then 'accepted' when i.revoked_at is not null then 'revoked'
+                   when i.expires_at <= now() then 'expired' else 'pending' end as state
+       from organization_invitations i join roles r on r.id = i.role_id where i.organization_id = $1 order by i.created_at, i.id`,
+      [orgId],
+    ),
+  );
+  return rows;
+}
+
+/** Moves an open invitation's expiry, as time would: `minutes` from now (negative: already expired). */
+export async function setInvitationExpiry(orgId: string, email: string, minutes: number) {
+  await inTenant(orgId, (c) =>
+    c.query(
+      "update organization_invitations set expires_at = now() + make_interval(mins => $3) where organization_id = $1 and email = $2 and accepted_at is null and revoked_at is null",
+      [orgId, email, minutes],
+    ),
+  );
+}
+
+/** As if an open invitation had been sent `minutes` ago (an invitation lasts 7 days from when it is sent). */
+export const invitationSentMinutesAgo = (orgId: string, email: string, minutes: number) => setInvitationExpiry(orgId, email, 7 * 24 * 60 - minutes);

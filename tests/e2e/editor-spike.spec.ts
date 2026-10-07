@@ -108,6 +108,12 @@ test("copy/paste inside the editor re-ids the copies", async ({ page }) => {
   expect(await page.evaluate(() => (window as unknown as { __copied: string }).__copied)).toContain("data-pm-slice");
   await page.keyboard.press("ArrowRight"); // collapse to the end of the document
   await expect.poll(() => page.evaluate(() => document.getSelection()?.isCollapsed)).toBe(true);
+  // The editor learns of the new selection a moment after the DOM has it (a `selectionchange` event).
+  // A paste that arrives before that replaces the still-selected document instead of adding to it,
+  // which is what this test saw on a busy machine: wait for the editor's own selection, not the DOM's.
+  await expect
+    .poll(() => page.evaluate(() => (document.querySelector('[data-testid="editor"]') as unknown as { editor: { state: { selection: { empty: boolean } } } }).editor.state.selection.empty))
+    .toBe(true);
   await page.evaluate(() => {
     const clipboardData = new DataTransfer();
     clipboardData.setData("text/html", (window as unknown as { __copied: string }).__copied);

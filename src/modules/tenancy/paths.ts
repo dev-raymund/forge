@@ -9,3 +9,8 @@ export const ONBOARDING_PATH = "/onboarding";
 export const orgPath = (orgSlug: string): string => `/${orgSlug}`;
 
 export const orgSettingsPath = (orgSlug: string): string => `/${orgSlug}/settings`;
+
+export const orgMembersPath = (orgSlug: string): string => `/${orgSlug}/members`;
+
+/** Where an invitation link leads. The token is the only thing in it. */
+export const invitationPath = (token: string): string => `/invite/${token}`;

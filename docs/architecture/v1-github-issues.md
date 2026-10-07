@@ -569,6 +569,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 ### M3-4 · Invitations and member management
 **Labels:** `area:tenancy` `type:feature`
 
+**Status:** ✔ done (2026-10-07). See the M3-4 addenda in ADR 0001, ADR 0004, ADR 0007 and ADR 0009.
+
 **Description:** Invite users and manage roles.
 
 *From M3-1: `listMembers`, `changeMemberRole`, `removeMember` and `leaveOrganization` exist with the last-Owner rule under a row lock, and are tested under concurrency. This issue adds invitations and the screens. `acceptInvitation` must insert the membership inside the invited organization's tenant context (`withTenant` with the organization id that `resolve_invitation()` returned): since migration 0004 a membership cannot be written from a user-only context. A member is named by membership id, never by user id.*
@@ -580,14 +582,31 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M3-3, M1-4
 
 **Acceptance criteria:**
-- [ ] `/{org}/members`: members table, pending invitations, invite dialog (email + role), resend, revoke
-- [ ] `/invite/[token]`: sign in or sign up, email must match, single use, 7-day expiry
-- [ ] Change role, remove member, leave org; last-Owner invariant enforced under a row lock; only an Owner can grant Owner
-- [ ] Requires a verified email to invite
+- [x] `/{org}/members`: members table, pending invitations, invite dialog (email + role), resend, revoke *(every member sees the list; the controls and the pending invitations are for those with `org.members.manage`)*
+- [x] `/invite/[token]`: sign in or sign up, email must match, single use, 7-day expiry *(the account's own address, from the database, must be the invited one; sign-up and login carry the invitation along and return to it)*
+- [x] Change role, remove member, leave org; last-Owner invariant enforced under a row lock; only an Owner can grant Owner *(the services are M3-1's, unchanged; the screens and forms are new)*
+- [x] Requires a verified email to invite *(and to re-send; not to revoke, or to manage existing members)*
+
+**Decisions taken here (the plan left them open; all are in the ADR addenda):**
+- **Nobody is invited as an Owner, and no role drop-down offers Owner.** The assignable roles are Admin, Editor, Author and Viewer. Ownership changes only through the transfer in the settings. This is stricter than the M3-2 hand-off above ("only an Owner may invite someone as an Owner"): a link in an email never carries the organization itself. The M3-1 service rule that an Owner can make another Owner is unchanged; no screen uses it.
+- **Accepting does not need a verified email.** The plan says "email must match". The link went to that address, so holding it is the proof of the mailbox; the account must carry the same address. If you want verification as well, it is one check in `acceptInvitation`.
+- **The same address twice:** already a member → refused; an invitation still pending → refused, with "send it again or revoke it"; an invitation that expired unused → replaced by the new one.
+- **Re-send makes a new link** for another 7 days and the old link stops working (the raw token is never stored, so it cannot be sent twice). At most once a minute per invitation.
+- **Pending invitations are shown to managers only**, not to every member.
+- **A link that cannot be accepted** (used, revoked, expired, unknown, or to a suspended organization) names no organization and nobody's address.
+- **Seat limits are not checked.** Plan §14 counts members plus pending invitations per plan; that is `assertLimit` in M11-1, and `inviteMember` has the place for it (after the permission and the verified-email check, before validation).
+
+**Also delivered:**
+- Sign-up and login accept `next` and a starting `email` in the query. After sign-up with a destination the user continues to it instead of the "verify your email" screen (the verification email is still sent, and the app shows its banner).
+- Sentry: an invitation token is in the URL path, so the scrubber now replaces `/invite/{token}` wherever a URL or message could carry it. Query strings were already dropped.
+- A leaving member is redirected to their next page (another organization, or onboarding) rather than to `/`: a form's redirect has to name a page, and `/` is a route handler.
+- A race in the M0-5 editor browser test ("copy/paste inside the editor re-ids the copies"): it pasted before the editor had registered the collapsed selection, and failed on a busy machine. It now waits for the editor's own selection.
 
 **Likely files/modules:** `src/modules/tenancy/{invitations,members}.*`, member pages
 
 **Testing:** integration of the invariants under concurrency; E2E invite → accept → role enforced (an Author can't open settings).
+
+✔ `tests/e2e/members.spec.ts` (10: invite an existing user, invite a new person, the wrong account, resend/revoke/expiry, role change, remove and leave, invite → accept → transfer, cross-tenant, unverified manager, a phone), `tests/integration/invitations.test.ts` (39, real Postgres, with the email job run against a capturing provider), `tests/integration/isolation.test.ts` (92, +32), `src/modules/tenancy/invitation-rules.test.ts` (13), `src/modules/tenancy/members-view.test.ts` (8), `src/modules/tenancy/ui/ui.test.tsx` (+8), `src/modules/auth/ui/ui.test.tsx` (+3), `src/platform/observability/scrub.test.ts` (+1), `tests/unit/organization-pages.test.ts` (53, +13: the new files and the members route are under the same two source-level rules).
 
 ### M3-5 · Audit log and activity page
 **Labels:** `area:audit` `type:feature`
@@ -601,6 +620,20 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-2 (ADR 0009): the activity page takes `org.activity.read` (Owner and Admin): `requirePermission(ctx, "org.activity.read")` in the query, not only in the page. A refused attempt (`Forbidden`) is not an audit event in V1.*
 
 *From M3-3: the organization screens write no audit rows either: creating, renaming, changing the URL and transferring all go through the M3-1 services, so adding `audit.record(tx, …)` there covers the screens too. Add "Activity" to the organization's links for members who hold `org.activity.read`.*
+
+*From M3-4: the changes to record, each inside the transaction that makes it (all already run under `inTenant` or `withTenant` with the organization lock held):*
+
+| Action | Where | Notes |
+|---|---|---|
+| `member.invited` | `inviteMember` (`invitations.service.ts`) | resource: the invitation; metadata: role. The invited address is personal data: decide whether it goes in metadata |
+| `invitation.resent`, `invitation.revoked` | `resendInvitation`, `revokeInvitation` | |
+| `invitation.accepted` | `acceptInvitation` | the actor is the person joining, who has no context: take the organization from the transaction, and the request id from the action |
+| `member.role_changed` | `changeMemberRole` (`members.service.ts`) | metadata: from, to |
+| `member.removed` | `removeMember` | |
+| `organization.left` | `leaveOrganization` | |
+| `organization.ownership_transferred` | `transferOwnership` | |
+
+*Never put an invitation token, its hash or its link in an audit row.*
 
 **Depends on:** M3-1
 
@@ -1213,6 +1246,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-2 (ADR 0009): entitlements are a separate axis from roles. `assertLimit` runs after `requirePermission` and before validation, and knows nothing about roles; the permission catalog has no plan keys and must not gain any. `org.billing.manage` (Owner only) is the permission to open billing, not a statement about the plan.*
 
 *From M3-3: every organization a user creates starts its own 14-day Pro trial, and `createOrganization` does not limit how many a user may create. No screen offers a second organization yet (onboarding is the first run only), but the Server Action behind it would accept one. Decide here whether creating further organizations is a product feature (then it needs a screen and a rule about trials) or is refused.*
+
+*From M3-4: `inviteMember` does not check a seat limit. Plan §14 counts members plus pending invitations; add `assertLimit(tx, org, "members")` there, under the organization lock it already takes, after the permission and verified-email checks. Re-sending does not add a seat. Accepting an invitation was already counted when it was sent.*
 
 **Depends on:** M3-1
 

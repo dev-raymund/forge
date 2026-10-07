@@ -198,3 +198,69 @@ form (client)  →  Server Action ("use server": session, bound slug)  →  subm
 - `tests/integration/organization-forms.test.ts` (26, real Postgres): every form through its `submit…` function, including what it refuses and where it may send the browser.
 - `tests/integration/isolation.test.ts`: each form given another organization's slug or member is refused as `NotFound`, redirects nowhere, and leaves that organization unchanged; asked by a Viewer, it answers the same as for something that does not exist.
 - `src/modules/tenancy/home.test.ts`, `ui/ui.test.tsx`, `tests/unit/organization-pages.test.ts`: the `/` rule; what the settings page shows for each combination of permissions; the two source-level rules above.
+
+---
+
+## Addendum (M3-4, 2026-10-07): invitations and the members page
+
+No decision above changes. `organization_invitations` and `resolve_invitation()` are used as they were designed in M1-1; no migration was needed.
+
+### Two kinds of caller
+
+```text
+a member managing invitations   has a context     org.members.manage     inTenant(ctx), organization lock
+the person invited              has only a link   token → resolve_invitation() → withTenant(that organization), organization lock
+```
+
+- **Managing** (invite, re-send, revoke, list) works like every other member change: permission on the request's context, then the organization lock, then the permission again on the role as it is now.
+- **Answering** is the one request path where someone who is not a member acts inside an organization. The token is hashed and looked up through `resolve_invitation()`, the `SECURITY DEFINER` function from migration 0002, which answers only for an exact hash and returns the minimum. Everything else is read inside `withTenant` for the organization it named. This is the sanctioned lookup, not a new bypass.
+
+### The token
+
+- 32 random bytes, base64url. It exists in the email's link and in the recipient's address bar. The table has its SHA-256.
+- The email job's stored payload holds the link until the email is sent, then `[redacted]` (M1-4's `redactOnFinish`).
+- The service never returns it. A re-send therefore makes a new one and overwrites the hash: the old link cannot match again.
+- It is in the URL path (`/invite/{token}`, plan §19). The page sets `Referrer-Policy: no-referrer`, and the Sentry scrubber replaces the path segment.
+
+### An invitation's life
+
+```text
+pending ──accept──▶ accepted          (single use: accepted_at and the membership row are written together, under the lock)
+   │ ╲──revoke──▶ revoked
+   │ 7 days
+   ▼
+expired ──resend──▶ pending           (a new link; the old one never works again)
+   ╲──revoke──▶ revoked
+```
+
+Pure rules in `invitation-rules.ts`; the state is derived from the three timestamps.
+
+### Who may accept
+
+The link shows that the caller received the invitation. It does not say who they are. Membership goes to the signed-in account whose own address, **read from the database**, is the address invited.
+
+| Caller | Result |
+|---|---|
+| Not signed in | Asked to create an account or log in; both carry the invitation and return to it |
+| Signed in, same address | Joins with the invited role |
+| Signed in, another address | Refused (`Forbidden`), shown which address it is for, offered a way to switch accounts. The invitation stays open |
+| Already a member | Nothing changes: their role stays, the invitation is used up |
+
+| Decision | Reason | Tradeoff | Reconsider when |
+|---|---|---|---|
+| The address must match; it need not be verified | Plan: "email must match". The link was sent to that address, so holding it is the proof | A leaked link plus an address nobody has registered yet would let someone create that account and join | You want both: one check in `acceptInvitation` |
+| No invitation carries Owner; no role list offers it | An emailed link should never be worth the whole organization. Ownership is handed over on purpose, to a member, with a typed confirmation | An Owner cannot bring in a co-Owner in one step: invite, then transfer | Co-Owners become a wanted feature |
+| A pending address cannot be invited again | A double click sends one email, and the invited person never holds a dead link | To change the role, revoke and invite again | — |
+| Re-send at most once a minute | It sends email to an address outside the organization | — | A real rate limiter exists (M12-1) |
+
+### The members page
+
+- `/{orgSlug}/members`. Every member sees who is in the organization. Controls and pending invitations are rendered for members with `org.members.manage`.
+- Which rows get a menu is worked out on the server from the same pure rules the services apply (`members-view.ts` on `membership-rules.ts`), and handed to the components as booleans. The actions decide again under the lock.
+- Change role, remove, leave, re-send and revoke share one place for their answer (`MembersBoard`), because the row that asked is often gone by the time the answer arrives.
+
+### What remains
+
+- **Audit rows** for these changes (M3-5; the list is in that issue).
+- **Seat limits** on inviting (M11-1).
+- **Invited-but-never-registered addresses** are personal data held for up to 7 days after expiry until someone revokes the row. A cleanup job for long-expired invitations is not built.

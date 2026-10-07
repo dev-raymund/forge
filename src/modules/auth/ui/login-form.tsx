@@ -22,9 +22,11 @@ type LoginFormProps = {
   googleEnabled?: boolean;
   /** Why a Google sign-in that just came back failed (our wording, never the URL's). */
   oauthError?: string;
+  /** An address to start the form with (the one an invitation was sent to). A convenience only. */
+  email?: string;
 };
 
-export function LoginForm({ next, reason, googleEnabled = false, oauthError }: LoginFormProps) {
+export function LoginForm({ next, reason, googleEnabled = false, oauthError, email = "" }: LoginFormProps) {
   const { state, pending, fieldErrors, message, formProps } = useAuthForm(signInAction, signInSchema);
   const notice = reason ? NOTICES[reason] : undefined;
   // The Google failure belongs to the page load that brought it: once the form has been used, it goes.
@@ -62,7 +64,7 @@ export function LoginForm({ next, reason, googleEnabled = false, oauthError }: L
           autoCapitalize="none"
           spellCheck={false}
           required
-          defaultValue={state.values?.email ?? ""}
+          defaultValue={state.values?.email ?? email}
           errors={fieldErrors.email}
         />
         <PasswordField name="password" label="Password" autoComplete="current-password" required errors={fieldErrors.password} />

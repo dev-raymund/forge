@@ -27,6 +27,9 @@ const ANONYMOUS: Actor = { kind: "anonymous" };
 const FORBIDDEN = "You don't have permission to do that.";
 const NOT_FOUND = "Not found.";
 
+/** The admin URLs of an organization that show its name, its URL or its people: what a change makes stale. */
+const pages = (slug: string) => [`/${slug}`, `/${slug}/settings`, `/${slug}/members`];
+
 const form = (fields: Record<string, string>) => {
   const data = new FormData();
   for (const [name, value] of Object.entries(fields)) data.set(name, value);
@@ -67,7 +70,7 @@ describe("onboarding: creating the first organization", () => {
     const before = Date.now();
     const outcome = await submitCreateOrganization(actor, form({ name: "  First Org ", slug: ` ${slug.toUpperCase()} ` }));
 
-    expect(outcome).toEqual({ state: { status: "success" }, redirectTo: `/${slug}`, revalidate: [`/${slug}`, `/${slug}/settings`] });
+    expect(outcome).toEqual({ state: { status: "success" }, redirectTo: `/${slug}`, revalidate: pages(slug) });
     const [organization] = await listOrganizations(actor);
     expect(organization).toEqual({ id: expect.any(String), slug, name: "First Org", status: "active", role: "owner" });
     expect(await rolesOf(organization!.id)).toEqual({ [user.id]: "owner" });
@@ -261,7 +264,7 @@ describe("renaming an organization and changing its URL", () => {
     const outcome = await submitRenameOrganization(a.actor, a.org.slug, form({ name: "  New Name  " }));
     expect(outcome).toEqual({
       state: { status: "success", message: "The organization's name has been updated.", values: { name: "New Name" } },
-      revalidate: [`/${a.org.slug}`, `/${a.org.slug}/settings`],
+      revalidate: pages(a.org.slug),
     });
     expect(await orgRow(a.org.id)).toMatchObject({ name: "New Name", slug: a.org.slug, status: "active" });
 
@@ -289,7 +292,7 @@ describe("renaming an organization and changing its URL", () => {
     expect(outcome).toEqual({
       state: { status: "success" },
       redirectTo: `/${next}/settings?changed=url`,
-      revalidate: [`/${a.org.slug}`, `/${a.org.slug}/settings`, `/${next}`, `/${next}/settings`],
+      revalidate: [...pages(a.org.slug), ...pages(next)],
     });
     expect(await orgRow(a.org.id)).toMatchObject({ slug: next, name: a.org.name });
     // The new URL is the organization; the old one is nobody's.
@@ -356,7 +359,7 @@ describe("transferring ownership", () => {
     expect(outcome).toEqual({
       state: { status: "success" },
       redirectTo: `/${a.org.slug}/settings?changed=owner`,
-      revalidate: [`/${a.org.slug}`, `/${a.org.slug}/settings`],
+      revalidate: pages(a.org.slug),
     });
     expect(await rolesOf(a.org.id)).toEqual({ [a.user.id]: "admin", [target.user.id]: "owner", [bystander.user.id]: "editor" });
 
