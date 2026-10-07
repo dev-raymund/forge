@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { linkPrefetch, SIGNED_IN_HOME } from "@/platform/routing/admin-access";
 
 /**
  * The frame of every account screen: wordmark, one heading, the content, and
@@ -10,7 +11,7 @@ export function AuthCard({ title, description, children, footer }: { title: stri
     <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10 sm:px-6">
       <div className="w-full max-w-sm">
         <p className="mb-8 text-center">
-          <Link href="/" className="rounded-sm text-xl font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-foreground/25">
+          <Link href={SIGNED_IN_HOME} prefetch={false} className="rounded-sm text-xl font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-foreground/25">
             Forge
           </Link>
         </p>
@@ -32,6 +33,7 @@ export function AuthLink({ href, children, className }: { href: string; children
   return (
     <Link
       href={href}
+      prefetch={linkPrefetch(href)}
       className={cn("rounded-sm font-medium text-foreground underline underline-offset-4 outline-none hover:no-underline focus-visible:ring-3 focus-visible:ring-foreground/25", className)}
     >
       {children}

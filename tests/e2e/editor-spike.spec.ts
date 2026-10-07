@@ -43,14 +43,20 @@ test("renders all blocks and autosaves typing", async ({ page }) => {
 });
 
 test("Alt+↓ / Alt+↑ reorder top-level blocks; undo restores the order", async ({ page }) => {
+  const original = ["What we do", expect.stringMatching(/^We build/)];
+  const moved = [expect.stringMatching(/^We build/), "What we do"];
   await topLevel(page).first().click();
   await page.keyboard.press("Alt+ArrowDown");
-  await expect.poll(() => topLevelTexts(page, 2)).toEqual([expect.stringMatching(/^We build/), "What we do"]);
-  await page.keyboard.press("Alt+ArrowUp");
-  await expect.poll(() => topLevelTexts(page, 2)).toEqual(["What we do", expect.stringMatching(/^We build/)]);
-  await page.keyboard.press("Alt+ArrowDown");
+  await expect.poll(() => topLevelTexts(page, 2)).toEqual(moved);
+  // Undo comes straight after a single move. ProseMirror's history makes one
+  // undo step of changes less than half a second apart, so what an undo after
+  // several moves restores depends on how fast the keys arrived (ADR 0003).
   await page.keyboard.press("ControlOrMeta+z");
-  await expect.poll(() => topLevelTexts(page, 2)).toEqual(["What we do", expect.stringMatching(/^We build/)]);
+  await expect.poll(() => topLevelTexts(page, 2)).toEqual(original);
+  await page.keyboard.press("Alt+ArrowDown");
+  await expect.poll(() => topLevelTexts(page, 2)).toEqual(moved);
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect.poll(() => topLevelTexts(page, 2)).toEqual(original);
 });
 
 test("the drag handle moves a top-level block, keeps ids, and undo restores it", async ({ page }) => {

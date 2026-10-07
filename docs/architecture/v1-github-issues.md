@@ -655,6 +655,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 - A typed event vocabulary (`modules/audit/events.ts`): ten events, each with a schema of what may be stored and a sentence for the page.
 - `listActivity(ctx, query)` in the tenancy module holds the permission check (`org.activity.read`); the audit module holds the rows and depends on no other module.
 - A bug found by a browser test: after "Clear filters" the form's fields kept the old values. The form is now keyed by the filters in the URL.
+- A bug found by CI (ADR 0004, M3-5 addendum): a `<Link>` to `/` was prefetched, `/` is a route handler, and against a session that had just been revoked the prefetch removed its cookie before the user did anything. Links to `/` are no longer prefetched (`linkPrefetch`). It dates from M3-3; nothing in the audit log caused it.
 
 **Likely files/modules:** `src/modules/audit/*`, activity page
 
@@ -680,6 +681,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-3: `/{orgSlug}` is a small page for now (`src/app/(admin)/[orgSlug]/page.tsx`: the organization's name, the member's role, an empty "Sites" box). When `/{orgSlug}/sites` exists, turn it into the redirect plan §19 describes and add "Sites" to the shell's links. `/` (`src/app/(admin)/route.ts`) redirects to `homePath(...)`, which is `/{orgSlug}`; nothing else needs to change for it to reach the sites.*
 
 *From M3-5 (ADR 0010): record each site change with `record(tx, …)` from `@/modules/audit`, in the transaction that makes it. Add the events to `modules/audit/events.ts` first (`site.created`, `site.deleted`, `site.address_changed`: a name, what it is about, a schema of the details, a sentence). `record` does not take a site yet: add an optional `siteId` to the entry there, checked as a UUID, when the first site-level event exists. The activity page already reads `?site=` and filters by it; add the drop-down to its filter form (`modules/audit/ui/activity-view.tsx`) once sites can be listed. An audit failure fails the change, by design.*
+
+*From M3-5 (ADR 0004 addendum): a `<Link>` to a route handler must not be prefetched (`prefetch={false}`, or `linkPrefetch(href)` when the address is decided at run time). A prefetch runs the handler for a user who clicked nothing, and a handler can write cookies. `/` is the only such target today.*
 
 **Depends on:** M3-2
 
@@ -860,6 +863,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M0-5: button, columns, embed and spacer already exist in `spikes/editor/`. Decided 2026-10-01 (plan §6.1, §6.3):*
 - *Embeds: YouTube and Vimeo, plus a `generic` https iframe URL only after URL-safety validation (`platform/net/url-safety` must exist first). No provider-specific integrations.*
 - *Top-level drag snaps to the gaps between top-level blocks, with a visible insertion gap. Drops into containers keep ProseMirror's behaviour.*
+- *From M3-5's verification (ADR 0003, discovery 11): block moves less than half a second apart are one undo step today, because ProseMirror's history groups them. Decide here whether each Alt+↑/↓ is its own undo step (`closeHistory(tr)`), and test the choice with moves both quicker and slower than the grouping delay.*
 
 **Depends on:** M5-4
 

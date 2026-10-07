@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AccountMenu } from "@/modules/auth";
 import { OrgSwitcher, orgPath } from "@/modules/tenancy";
+import { linkPrefetch, SIGNED_IN_HOME } from "@/platform/routing/admin-access";
 
 /**
  * The top bar of every signed-in admin page: the wordmark, the organization
@@ -16,11 +17,13 @@ export function AppHeader({
   organizations?: { slug: string; name: string; status: "active" | "suspended" }[];
   currentSlug?: string;
 }) {
+  const home = currentSlug ? orgPath(currentSlug) : SIGNED_IN_HOME;
   return (
     <header className="border-b">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
         <Link
-          href={currentSlug ? orgPath(currentSlug) : "/"}
+          href={home}
+          prefetch={linkPrefetch(home)}
           className="rounded-sm text-lg font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-foreground/25"
         >
           Forge

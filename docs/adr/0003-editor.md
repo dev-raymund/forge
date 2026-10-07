@@ -67,6 +67,7 @@ Build the V1 editor exactly as plan §6 describes, on Tiptap 3 (MIT, pinned 3.31
 9. **Embed "allow-listed form providers" are undefined in the plan.** The spike allows YouTube (`youtube-nocookie.com`) and Vimeo (`dnt=1`) in a sandboxed iframe. M5-5 needs the concrete provider list before adding any.
    **Resolved 2026-10-01:** YouTube, Vimeo, and a `generic` https iframe URL accepted only after URL-safety validation. No provider-specific integrations (plan §6.1).
 10. **Test environment quirks.** happy-dom must not load resources from parsed HTML (it tried to fetch pasted iframe URLs), so the unit project disables that. Its `CSSStyleSheet` lacks the legacy `rules` alias that ProseMirror reads when pasted HTML contains `<style>`, so the test shims it.
+11. **Block moves made within half a second are one undo step** (found 2026-10-07, during M3-5's verification). `BlockMove` dispatches each move as one transaction, and ProseMirror's history then groups changes that are less than 500 ms apart and touch the same range. Three quick Alt+↑/↓ presses and one Cmd/Ctrl+Z undo all three; a pause after the first, and the same undo reverts only the last two. The browser test undid after three moves and so passed or failed by timing (it failed once on a loaded machine); it now undoes after a single move. Nothing in the spike's code changed. M5-5 decides whether each move should be its own undo step (`closeHistory(tr)` in the command) and tests that.
 
 ## Estimate for Phase 5
 

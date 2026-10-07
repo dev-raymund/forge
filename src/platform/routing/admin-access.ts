@@ -11,6 +11,18 @@
 export const LOGIN_PATH = "/login";
 export const SIGNED_IN_HOME = "/";
 
+/**
+ * The `prefetch` of a `<Link>` to `href`: never for `/`, the default otherwise.
+ *
+ * `/` is not a page. A route handler answers it with a redirect (plan §19), so
+ * there is nothing to fetch ahead of a click, and the request is not harmless:
+ * a route handler can write cookies, and Better Auth removes the cookie of a
+ * session it finds dead. A link that merely scrolled into view would do that
+ * behind the user's back, and their next action would no longer be told that
+ * the session ended (ADR 0004, M3-5 addendum).
+ */
+export const linkPrefetch = (href: string): false | null => (href === SIGNED_IN_HOME ? false : null);
+
 /** Account screens that work without a session. */
 export const AUTH_PAGES = ["/login", "/signup", "/verify-email", "/forgot-password", "/reset-password"] as const;
 

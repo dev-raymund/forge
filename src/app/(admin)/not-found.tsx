@@ -15,7 +15,9 @@ export default function AdminNotFound() {
         <p>This page does not exist, or you do not have access to it.</p>
         <p>
           {/* `/` redirects to wherever this visitor belongs: their organization, onboarding, or the login page. */}
-          <Link href="/">Go to your organization</Link>
+          <Link href="/" prefetch={false}>
+            Go to your organization
+          </Link>
         </p>
       </PageNotice>
     </div>

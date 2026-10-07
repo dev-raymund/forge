@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
-  anotherBrowser, asUniqueVisitor, currentSession, LANDING_PATH, logOut, newEmail, PASSWORD, passwordField, sessionCookie, signUp, submitLogin,
+  anotherBrowser, asUniqueVisitor, currentSession, expireSessionsOf, LANDING_PATH, logOut, newEmail, PASSWORD, passwordField, sessionCookie, signUp,
+  submitLogin,
 } from "./helpers/auth";
 import { waitForEmail } from "./helpers/mailbox";
 
@@ -176,6 +177,60 @@ test("sessions: three browsers of one user, and another user who must not be tou
   await expect(sessions(other)).toHaveCount(2);
 
   for (const context of [b.context, c.context, d, d2.context]) await context.close();
+});
+
+/**
+ * `/` is a route handler: it answers with a redirect, and it can write cookies.
+ * A `<Link>` to it that was fetched ahead of a click would run it for a user who
+ * did nothing; against a session that has just ended, Better Auth then removes
+ * the cookie, and the user's next action is no longer told why they are being
+ * asked to sign in (ADR 0004, M3-5 addendum). Hovering a link is the browser's
+ * strongest hint that a click is coming, so that is what is tried here.
+ */
+test("no page asks for `/` behind the user's back, so a dead session keeps its cookie until they act", async ({ page, baseURL }) => {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/" && !request.isNavigationRequest()) asked.push(request.method());
+  });
+  const hoverThenIdle = async (link: Locator) => {
+    await link.hover();
+    await page.waitForLoadState("networkidle");
+  };
+  const wordmark = page.getByRole("link", { name: "Forge", exact: true });
+
+  // Signed out: the wordmark of the account screens, and a link in their text.
+  await page.goto("/login");
+  await hoverThenIdle(wordmark);
+  await page.goto("/invite/not-an-invitation");
+  await hoverThenIdle(page.getByRole("link", { name: "Go to Forge" }));
+  expect(asked).toEqual([]);
+
+  // Signed in: the admin header (no organization yet, so its wordmark leads to `/`) and the 404 page.
+  const email = newEmail();
+  await signUp(page, email);
+  await hoverThenIdle(wordmark);
+  await page.goto("/account");
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  await hoverThenIdle(wordmark);
+  await page.goto("/no-such-organization");
+  await hoverThenIdle(page.getByRole("link", { name: "Go to your organization" }));
+  expect(asked).toEqual([]);
+
+  // The session ends while the account page is open. Nothing happens until the user does something.
+  await page.goto("/account");
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  await expireSessionsOf(email);
+  await hoverThenIdle(wordmark);
+  expect(asked).toEqual([]);
+  expect(await sessionCookie(page)).toBeDefined();
+  await section(page, "Profile").getByLabel("Name").fill("Too Late");
+  await section(page, "Profile").getByRole("button", { name: "Save name" }).click();
+  await expect(page).toHaveURL(`${baseURL}/login?next=%2Faccount&reason=session`);
+  await expect(status(page)).toHaveText("Your session has ended. Log in again to continue.");
+
+  // Clicking the link is still a real request, and still ends where it should.
+  await wordmark.click();
+  await expect(page).toHaveURL(new RegExp(`^${baseURL}/login`));
 });
 
 test("change password: errors in place, then the change logs out the other sessions and emails a notice", async ({ page, browser, baseURL }) => {
