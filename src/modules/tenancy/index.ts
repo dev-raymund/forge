@@ -23,15 +23,19 @@ export {
 // The organization screens (M3-3). Pages in app/(admin) compose these; the
 // forms call this module's Server Actions (./actions.ts), which are the only way in.
 export { chooseHomeOrganization, homePath } from "./home";
-export { requireOrgPage } from "./page-access";
-export type { OrgPageAccess } from "./page-access";
-export { ONBOARDING_PATH, orgPath, orgSettingsPath } from "./paths";
+export { requireOrgPage, requireSitePage } from "./page-access";
+export type { OrgPageAccess, SitePageAccess } from "./page-access";
+export { ONBOARDING_PATH, orgPath, orgSettingsPath, orgSitesPath } from "./paths";
+export { looksLikeOrgSlug } from "./slugs";
 export { ROLE_LABELS } from "./shared";
 export {
   SETTINGS_NOTICES, submitChangeOrganizationSlug, submitCreateOrganization, submitRenameOrganization, submitTransferOwnership,
 } from "./organization-forms";
 export type { SettingsNotice } from "./organization-forms";
 export type { FormOutcome } from "./form-outcome";
+// For the other modules' admin forms (sites, M4-1): one way to answer a form, refuse it, and finish an action.
+export { pagesOf, refusal } from "./form-outcome";
+export { finish } from "./action-support";
 export { OrgSwitcher } from "./ui/org-switcher";
 export type { SwitcherOrganization } from "./ui/org-switcher";
 export { CreateOrganizationForm } from "./ui/create-organization-form";

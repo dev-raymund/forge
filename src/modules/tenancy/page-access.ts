@@ -2,7 +2,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { requireAuthOrLogin, type AuthUser } from "@/modules/auth";
 import { isAppError } from "@/platform/errors";
-import { requireOrgContext, type OrgContext } from "./context";
+import { requireOrgContext, requireSiteContext, type OrgContext, type SiteContext } from "./context";
 import { orgPath } from "./paths";
 import { looksLikeOrgSlug } from "./slugs";
 
@@ -33,6 +33,24 @@ export async function requireOrgPage(orgSlug: string, pathFor: (orgSlug: string)
   } catch (error) {
     if (isAppError(error) && error.kind === "NotFound") notFound();
     if (isAppError(error) && error.kind === "Forbidden") return { status: "suspended", user, message: error.message };
+    throw error;
+  }
+}
+
+/**
+ * The same for every page under `/{orgSlug}/sites/{siteSlug}` (M4-1): the
+ * organization first, as above, then the site. A slug that names no site of
+ * THIS organization, including another organization's site, is the 404 page.
+ */
+export type SitePageAccess = { status: "ok"; user: AuthUser; ctx: SiteContext } | { status: "suspended"; user: AuthUser; message: string };
+
+export async function requireSitePage(orgSlug: string, siteSlug: string, pathFor: (orgSlug: string, siteSlug: string) => string): Promise<SitePageAccess> {
+  const access = await requireOrgPage(orgSlug, (slug) => pathFor(slug, siteSlug));
+  if (access.status !== "ok") return access;
+  try {
+    return { ...access, ctx: await requireSiteContext(orgSlug, siteSlug) };
+  } catch (error) {
+    if (isAppError(error) && error.kind === "NotFound") notFound();
     throw error;
   }
 }

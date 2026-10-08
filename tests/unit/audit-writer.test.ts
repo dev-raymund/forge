@@ -44,11 +44,12 @@ describe("the audit log has one writer", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the services that change who belongs to an organization, or the organization itself, each record what they do", () => {
+  it("the services that change who belongs to an organization, the organization itself, or its sites, each record what they do", () => {
     const expected: Record<string, string[]> = {
       "src/modules/tenancy/organizations.service.ts": ["organization.created", "organization.updated"],
       "src/modules/tenancy/members.service.ts": ["member.role_changed", "member.removed", "member.left", "organization.ownership_transferred"],
       "src/modules/tenancy/invitations.service.ts": ["member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted"],
+      "src/modules/sites/sites.service.ts": ["site.created", "site.address_changed", "site.deleted"],
     };
     for (const [file, actions] of Object.entries(expected)) {
       const source = readFileSync(path.join(ROOT, file), "utf8");

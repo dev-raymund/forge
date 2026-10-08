@@ -4,7 +4,7 @@ import { ShellSkeleton } from "@/components/admin/page-skeleton";
 import { SectionNav } from "@/components/admin/section-nav";
 import { getCurrentActor, VerifyEmailBanner } from "@/modules/auth";
 import {
-  canReadActivity, canViewOrganizationSettings, listOrganizations, orgActivityPath, orgMembersPath, orgPath, orgSettingsPath, requireOrgPage,
+  canReadActivity, canViewOrganizationSettings, listOrganizations, orgActivityPath, orgMembersPath, orgSettingsPath, orgSitesPath, requireOrgPage,
 } from "@/modules/tenancy";
 
 /**
@@ -37,7 +37,8 @@ async function OrganizationShell({ params }: Pick<LayoutProps<"/[orgSlug]">, "pa
   const links =
     access.status === "ok"
       ? [
-          { href: orgPath(access.ctx.org.slug), label: "Overview" },
+          // The organization's home since M4-1 (plan §19): `/{orgSlug}` itself redirects here.
+          { href: orgSitesPath(access.ctx.org.slug), label: "Sites" },
           // Every member may see who else is here; what they may do there is the page's business.
           { href: orgMembersPath(access.ctx.org.slug), label: "Members" },
           ...(canReadActivity(access.ctx) ? [{ href: orgActivityPath(access.ctx.org.slug), label: "Activity" }] : []),

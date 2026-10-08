@@ -953,13 +953,13 @@ forge/
 | `/onboarding` | Org → site → theme wizard | signed in | 3–4 |
 | `/account` | Profile, password, sessions | signed in | 2 |
 | `/` | Redirect to last org's sites, or `/onboarding`. "Last" is the organization joined most recently, from the memberships; nothing is stored (M3-3) | signed in | 3 |
-| `/{orgSlug}` | Redirect to `/{orgSlug}/sites`. Until that page exists (phase 4) it is the organization's home | Viewer | 3 |
-| `/{orgSlug}/sites`, `/{orgSlug}/sites/new` | Site list; create site | Viewer; Admin | 4 |
+| `/{orgSlug}` | Redirect to `/{orgSlug}/sites` (since M4-1: a route handler that looks nothing up; in-app links go straight to the sites, ADR 0011) | Viewer | 3–4 |
+| `/{orgSlug}/sites`, `/{orgSlug}/sites/new` | Site list (the organization's home); create site: name, site address, language, time zone (ADR 0011) | Viewer; Admin | 4 |
 | `/{orgSlug}/members` | Members, invitations, roles. Invitations and the role list offer Admin, Editor, Author, Viewer; ownership is the transfer in settings (M3-4) | Admin (Viewer+ read the members) | 3 |
 | `/{orgSlug}/billing` | Plan, trial, upgrade, portal | Owner | 11 |
 | `/{orgSlug}/settings` | Org name/slug, transfer ownership | Owner to change anything; an Admin may open it read-only (§13, M3-3, ADR 0009) | 3 |
 | `/{orgSlug}/activity` | Audit log: sentences, newest first, 25 a page; filters for event, person and day (M3-5, ADR 0010) | Admin (`org.activity.read`) | 3 |
-| `/{orgSlug}/sites/{siteSlug}` | Site overview + publish site + checklist | Viewer | 4 |
+| `/{orgSlug}/sites/{siteSlug}` | Site overview + publish site + checklist (M4-1: the site's name, status and public address; the rest is M4-2) | Viewer | 4 |
 | `/…/pages`, `/…/pages/new`, `/…/pages/[entryId]` | Page tree, new-page form, editor | Viewer (read) / Editor | 5 |
 | `/…/posts`, `/…/posts/new`, `/…/posts/[entryId]` | Post list, new-post form, editor | Viewer (read) / Author | 5 |
 | `/…/posts/categories`, `/…/posts/tags` | Terms | Editor | 5 |
@@ -968,7 +968,7 @@ forge/
 | `/…/seo`, `/…/seo/redirects` | SEO defaults, redirects | Editor | 8 |
 | `/…/appearance` | Theme + customisation | Admin | 4 (choose), 8 (customise) |
 | `/…/domains` | Site address (V1, in site settings until M9); custom domains *(post-V1)* | Admin | 4 / 9 |
-| `/…/settings`, `/…/settings/api-keys` | General/reading/analytics/social; API keys | Admin | 4, 10 |
+| `/…/settings`, `/…/settings/api-keys` | General/reading/analytics/social; the site address and deleting the site (M4-1, Owner for deleting); API keys | Admin | 4, 10 |
 | `/platform` | Staff console | staff allow-list | 12 |
 
 `/pages/new` and `/posts/new` are small **forms** (title, and parent or template). The action creates the entry and redirects to the editor. Creating on GET is avoided because Next.js prefetches links.

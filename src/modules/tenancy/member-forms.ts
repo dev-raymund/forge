@@ -9,7 +9,7 @@ import { looksLikeInvitationToken } from "./invitation-token";
 import { acceptInvitation, inviteMember, resendInvitation, revokeInvitation } from "./invitations.service";
 import { changeMemberRole, leaveOrganization, removeMember } from "./members.service";
 import { homeOrganization } from "./organizations.service";
-import { invitationPath, orgMembersPath, orgPath } from "./paths";
+import { invitationPath, orgMembersPath, orgSitesPath } from "./paths";
 import { requirePermission } from "./policies";
 import { changeMemberRoleSchema, parseInput } from "./validation";
 
@@ -92,7 +92,7 @@ export async function submitRevokeInvitation(actor: Actor, orgSlug: string, form
 export async function submitAcceptInvitation(actor: Actor, token: string, meta: RequestMeta = {}): Promise<FormOutcome> {
   try {
     const { organization } = await acceptInvitation(actor, token, meta);
-    return { state: { status: "success" }, redirectTo: orgPath(organization.slug), revalidate: pagesOf(organization.slug) };
+    return { state: { status: "success" }, redirectTo: orgSitesPath(organization.slug), revalidate: pagesOf(organization.slug) };
   } catch (error) {
     // The way back after logging in is the invitation itself, and only if it has the shape of one.
     const next = looksLikeInvitationToken(token) ? invitationPath(token) : "/";

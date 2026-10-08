@@ -1,18 +1,19 @@
 import { and, eq, sql } from "drizzle-orm";
-import pg from "pg";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
+import { changeSiteAddress, createSite as createSiteFor, deleteSite } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
   acceptInvitation, changeMemberRole, createOrganization, inTenant, inviteMember, leaveOrganization, listActivity, removeMember, resendInvitation,
-  resolveOrgContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitCreateOrganization, submitInviteMember,
+  resolveOrgContext, resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitCreateOrganization, submitInviteMember,
   submitRenameOrganization, transferOwnership, updateOrganization, type OrgContext,
 } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
 import { withPlatform, withTenant, withUser, type TenantTx } from "@/platform/db/tenant";
 import { jobs } from "@/platform/jobs/schema";
 import { dbError, PG } from "../fixtures/db-error";
+import { asOwner, whileFailing } from "../fixtures/db-failure";
 import { createSite, createUser } from "../fixtures/factories";
 import { actorOf, addMember, addUser, newSlug, newTenant, refusalOf } from "../fixtures/tenants";
 
@@ -66,38 +67,6 @@ async function tokenOf(invitationId: string): Promise<string> {
     tx.select().from(jobs).where(and(eq(jobs.type, "email.send"), sql`${jobs.payload}->>'invitationId' = ${invitationId}`)).orderBy(jobs.createdAt, jobs.id),
   );
   return String(queued.at(-1)!.payload.url).split("/invite/")[1]!;
-}
-
-/** As the schema owner, on a direct connection: to make the database fail on cue. */
-async function asOwner<T>(work: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: process.env.TEST_WORKER_OWNER_URL });
-  await client.connect();
-  try {
-    return await work(client);
-  } finally {
-    await client.end();
-  }
-}
-
-/** While `work` runs, a trigger makes the database refuse `event` on `table`: at once, or (deferred) when the transaction tries to commit. */
-async function whileFailing<T>(table: string, event: "insert" | "delete" | "update", work: () => Promise<T>, options: { atCommit?: boolean } = {}): Promise<T> {
-  const name = `audit_test_fail_${unique()}`;
-  await asOwner(async (owner) => {
-    await owner.query(`create function ${name}() returns trigger language plpgsql as $$ begin raise exception 'forced failure on ${table}'; end $$`);
-    await owner.query(
-      options.atCommit
-        ? `create constraint trigger ${name} after ${event} on ${table} deferrable initially deferred for each row execute function ${name}()`
-        : `create trigger ${name} before ${event} on ${table} for each row execute function ${name}()`,
-    );
-  });
-  try {
-    return await work();
-  } finally {
-    await asOwner(async (owner) => {
-      await owner.query(`drop trigger ${name} on ${table}`);
-      await owner.query(`drop function ${name}()`);
-    });
-  }
 }
 
 const REQUEST = { requestId: "req-audit-1", ip: "203.0.113.9" };
@@ -252,7 +221,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event of M3 is covered by a mutation above: the catalog has no event nothing writes", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, and the sites of M4-1)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -269,6 +238,10 @@ describe("every change writes its line, in the same transaction", () => {
     await acceptInvitation(actorOf(invitee), await tokenOf(sent.id));
     const revoked = await inviteMember(ctx, { email: address(), role: "viewer" });
     await revokeInvitation(ctx, { invitationId: revoked.id });
+    // Sites (M4-1): their own tests are tests/integration/sites.test.ts.
+    const { site } = await createSiteFor(ctx, { name: "Covered", address: newSlug("covered"), language: "en", timezone: "UTC" });
+    await changeSiteAddress(await resolveSiteContext(a.actor, a.org.slug, site.slug), { address: newSlug("moved") });
+    await deleteSite(await resolveSiteContext(a.actor, a.org.slug, site.slug));
     await transferOwnership(ctx, { memberId: one.memberId });
     expect(new Set(await actionsOf(a.org.id))).toEqual(new Set(AUDIT_ACTIONS));
   });
@@ -438,7 +411,7 @@ describe("who did it, and where, come from the transaction and from nowhere else
     const b = await newTenant();
     const claiming = {
       ...entry(a.ctx.membership.id),
-      organizationId: b.org.id, actorId: b.user.id, actorLabel: "someone-else@example.test", actorType: "system", siteId: uuidv7(), createdAt: new Date(0), id: uuidv7(),
+      organizationId: b.org.id, actorId: b.user.id, actorLabel: "someone-else@example.test", actorType: "system", createdAt: new Date(0), id: uuidv7(),
     } as unknown as AuditEntry;
     await inTenant(a.ctx, (tx) => record(tx, claiming, { requestId: "r", ip: "i", organizationId: b.org.id, userId: b.user.id } as { requestId: string }));
 
@@ -446,6 +419,25 @@ describe("who did it, and where, come from the transaction and from nowhere else
     expect(row).toMatchObject({ organizationId: a.org.id, actorType: "user", actorId: a.user.id, actorLabel: a.user.email, siteId: null, action: "member.left" });
     expect(Date.now() - row.createdAt.getTime()).toBeLessThan(60_000);
     expect(await auditOf(b.org.id)).toHaveLength(1); // B's own creation, and nothing from A
+  });
+
+  it("a site-level event can only name a site of the transaction's organization (M4-1)", async () => {
+    const a = await newTenant();
+    const b = await newTenant();
+    const [mine, theirs] = [await createSite(a.org.id, a.user.id), await createSite(b.org.id, b.user.id)];
+    const before = await auditOf(a.org.id);
+    for (const siteId of [theirs.id, uuidv7()]) {
+      const attempt = inTenant(a.ctx, (tx) => record(tx, { ...entry(a.ctx.membership.id), siteId }));
+      await expect(attempt, siteId).rejects.toThrow(/for a site of that organization/);
+    }
+    for (const siteId of ["not-a-uuid", "", 42]) {
+      await expect(inTenant(a.ctx, (tx) => record(tx, { ...entry(a.ctx.membership.id), siteId } as AuditEntry))).rejects.toBeInstanceOf(AuditEventError);
+    }
+    expect(await auditOf(a.org.id)).toEqual(before);
+    expect(await auditOf(b.org.id)).toHaveLength(1);
+
+    await inTenant(a.ctx, (tx) => record(tx, { ...entry(a.ctx.membership.id), siteId: mine.id }));
+    expect(await lastOf(a.org.id)).toMatchObject({ organizationId: a.org.id, siteId: mine.id, action: "member.left" });
   });
 
   it("outside an organization's transaction there is nothing to record: it refuses, and leaves no row behind", async () => {

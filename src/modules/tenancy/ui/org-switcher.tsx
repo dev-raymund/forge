@@ -3,7 +3,7 @@
 import { Building2, Check, ChevronsUpDown } from "lucide-react";
 import Link from "next/link";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { orgPath } from "../paths";
+import { orgSitesPath } from "../paths";
 
 export type SwitcherOrganization = { slug: string; name: string; suspended: boolean };
 
@@ -34,7 +34,7 @@ export function OrgSwitcher({ organizations, currentSlug }: { organizations: Swi
           const isCurrent = organization.slug === currentSlug;
           return (
             <DropdownMenuItem key={organization.slug} asChild>
-              <Link href={orgPath(organization.slug)} aria-current={isCurrent ? "true" : undefined}>
+              <Link href={orgSitesPath(organization.slug)} aria-current={isCurrent ? "true" : undefined}>
                 <span className="min-w-0 flex-1 truncate">{organization.name}</span>
                 {organization.suspended ? <span className="text-xs text-muted-foreground">Suspended</span> : null}
                 {isCurrent ? <Check aria-hidden="true" /> : null}

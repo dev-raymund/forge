@@ -85,7 +85,7 @@ test("a new user: sign up → verify → log in → onboarding → create organi
   await url.press("Enter");
 
   // The organization's home, at its own URL, with the creator as its Owner.
-  await expect(page).toHaveURL(`${baseURL}/${slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${slug}/sites`);
   await expect(orgName(page)).toHaveText("Acme Studio");
   await expect(memberRole(page)).toHaveText("Owner");
   await expect(switcher(page)).toContainText("Acme Studio");
@@ -103,11 +103,11 @@ test("a new user: sign up → verify → log in → onboarding → create organi
   // From now on `/` is that organization, onboarding is behind them, and logging in lands there.
   for (const path of ["/", "/onboarding"]) {
     await page.goto(path);
-    await expect(page, path).toHaveURL(`${baseURL}/${slug}`);
+    await expect(page, path).toHaveURL(`${baseURL}/${slug}/sites`);
   }
   await logOut(page);
   await submitLogin(page, email);
-  await expect(page).toHaveURL(`${baseURL}/${slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${slug}/sites`);
   await expect(orgName(page)).toHaveText("Acme Studio");
 });
 
@@ -123,10 +123,10 @@ test("an existing member lands in their organization, switches between their own
   // and one that is this user's own answer: not for any cache to keep.
   const root = await page.request.get("/", { maxRedirects: 0 });
   expect(root.status()).toBe(307);
-  expect(root.headers()["location"]).toBe(`/${beta.slug}`);
+  expect(root.headers()["location"]).toBe(`/${beta.slug}/sites`);
   expect(root.headers()["cache-control"]).toBe("private, no-store");
   await page.goto("/");
-  await expect(page).toHaveURL(`${baseURL}/${beta.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${beta.slug}/sites`);
   await expect(orgName(page)).toHaveText(beta.name);
   await expect(memberRole(page)).toHaveText("Viewer");
   await expect(switcher(page)).toContainText(beta.name);
@@ -141,7 +141,7 @@ test("an existing member lands in their organization, switches between their own
 
   // Choosing one goes to its URL, and the page is that organization's, with the role held there.
   await page.getByRole("menuitem", { name: alpha.name }).click();
-  await expect(page).toHaveURL(`${baseURL}/${alpha.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${alpha.slug}/sites`);
   await expect(orgName(page)).toHaveText(alpha.name);
   await expect(memberRole(page)).toHaveText("Owner");
   await expect(switcher(page)).toContainText(alpha.name);
@@ -153,7 +153,7 @@ test("an existing member lands in their organization, switches between their own
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: beta.name })).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(`${baseURL}/${beta.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${beta.slug}/sites`);
 
   // Two tabs on two organizations: each is where its URL says, whatever the other one does (D-08).
   const second = await context.newPage();
@@ -172,17 +172,17 @@ test("an existing member lands in their organization, switches between their own
   }
   await page.goto(`/${alpha.slug}`);
   await page.goto("/");
-  await expect(page).toHaveURL(`${baseURL}/${beta.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${beta.slug}/sites`);
 
   // On the account page the switcher is the way back, and the wordmark leads home.
   await page.goto("/account");
   await expect(switcher(page)).toContainText("Organizations");
   await switcher(page).click();
   await page.getByRole("menuitem", { name: alpha.name }).click();
-  await expect(page).toHaveURL(`${baseURL}/${alpha.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${alpha.slug}/sites`);
   await page.goto("/account");
   await page.getByRole("link", { name: "Forge", exact: true }).click();
-  await expect(page).toHaveURL(`${baseURL}/${beta.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${beta.slug}/sites`);
 });
 
 test("organization settings: an Owner changes things, an Admin can look, everyone else is told it is not theirs", async ({ page, baseURL }) => {
@@ -220,7 +220,7 @@ test("organization settings: an Owner changes things, an Admin can look, everyon
     await addMember(organization.id, email, role);
     await page.goto(`/${organization.slug}`);
     await expect(memberRole(page), role).toHaveText(label);
-    await expect(orgNav(page).getByRole("link", { name: "Overview" })).toBeVisible();
+    await expect(orgNav(page).getByRole("link", { name: "Sites" })).toBeVisible();
     await expect(orgNav(page).getByRole("link", { name: "Settings" }), role).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Organization settings" }), role).toHaveCount(0);
 
@@ -283,10 +283,10 @@ test("an Owner renames the organization and changes its URL; the old URL stops w
   await page.goto(`/${organization.slug}/settings`);
   await expect(shown(page, "not-found")).toBeVisible();
   await page.goto("/");
-  await expect(page).toHaveURL(`${baseURL}/${moved}`);
+  await expect(page).toHaveURL(`${baseURL}/${moved}/sites`);
   await switcher(page).click();
   await page.getByRole("menuitem", { name: renamed }).click();
-  await expect(page).toHaveURL(`${baseURL}/${moved}`);
+  await expect(page).toHaveURL(`${baseURL}/${moved}/sites`);
 });
 
 test("the screen is not the gate: a member demoted or removed while the page is open is refused by the server", async ({ page }) => {
@@ -406,8 +406,14 @@ test("another organization's URLs are a 404, exactly like an organization that d
   await addMember(theirs.id, (await seedUser()).email, "owner");
 
   const missing = `no-such-org-${tail()}`;
+  // `/{orgSlug}` itself is a redirect to its sites (M4-1) that looks nothing up: the same answer for both.
+  for (const slug of [theirs.slug, missing]) {
+    const redirect = await page.request.get(`/${slug}`, { maxRedirects: 0 });
+    expect(redirect.status(), slug).toBe(307);
+    expect(redirect.headers()["location"], slug).toBe(`/${slug}/sites`);
+  }
   const seen: { status: number; text: string; title: string }[] = [];
-  for (const path of [`/${theirs.slug}`, `/${theirs.slug}/settings`, `/${missing}`, `/${missing}/settings`]) {
+  for (const path of [`/${theirs.slug}/sites`, `/${theirs.slug}/settings`, `/${missing}/sites`, `/${missing}/settings`]) {
     const response = (await page.goto(path))!;
     await expect(shown(page, "not-found"), path).toBeVisible();
     await expect(page, path).toHaveURL(`${baseURL}${path}`); // not sent to their own organization, or anywhere else
@@ -428,7 +434,7 @@ test("another organization's URLs are a 404, exactly like an organization that d
 
   // The way out of the 404 page is `/`: the visitor's own organization.
   await page.getByRole("link", { name: "Go to your organization" }).click();
-  await expect(page).toHaveURL(`${baseURL}/${mine.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${mine.slug}/sites`);
   expect(await organizationRow(theirs.id)).toMatchObject({ name: theirs.name, slug: theirs.slug });
 
   // Signed out, an organization's URL says nothing at all: the login page, for a real slug and a made-up one alike.
@@ -471,11 +477,11 @@ test("a suspended organization: its members are told so, and nothing of it can b
   await switcher(page).click();
   await expect(page.getByRole("menuitem", { name: frozen.name })).toContainText("Suspended");
   await page.getByRole("menuitem", { name: open.name }).click();
-  await expect(page).toHaveURL(`${baseURL}/${open.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${open.slug}/sites`);
   await expect(orgName(page)).toHaveText(open.name);
   // And `/` prefers an organization that can be used, though the suspended one was joined later.
   await page.goto("/");
-  await expect(page).toHaveURL(`${baseURL}/${open.slug}`);
+  await expect(page).toHaveURL(`${baseURL}/${open.slug}/sites`);
 
   // Somebody who is not a member learns nothing, not even that it is suspended.
   await addMember(open.id, email, "owner");
@@ -498,7 +504,7 @@ test.describe("on a phone", () => {
     const id = tail();
     await page.getByLabel("Organization name").fill(`A Rather Long Organization Name For A Small Screen ${id}`);
     await page.getByRole("button", { name: "Create organization" }).click();
-    await expect(page).toHaveURL(new RegExp(`^${baseURL}/a-rather-long-organization-name-for-a-small-screen-${id}$`));
+    await expect(page).toHaveURL(new RegExp(`^${baseURL}/a-rather-long-organization-name-for-a-small-screen-${id}/sites$`));
     await expect(orgName(page)).toBeVisible();
     expect(await sidewaysScroll(page), "organization home").toBeLessThanOrEqual(0);
 

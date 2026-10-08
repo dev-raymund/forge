@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AccountMenu } from "@/modules/auth";
-import { OrgSwitcher, orgPath } from "@/modules/tenancy";
+import { OrgSwitcher, orgSitesPath } from "@/modules/tenancy";
 import { linkPrefetch, SIGNED_IN_HOME } from "@/platform/routing/admin-access";
 
 /**
@@ -17,7 +17,7 @@ export function AppHeader({
   organizations?: { slug: string; name: string; status: "active" | "suspended" }[];
   currentSlug?: string;
 }) {
-  const home = currentSlug ? orgPath(currentSlug) : SIGNED_IN_HOME;
+  const home = currentSlug ? orgSitesPath(currentSlug) : SIGNED_IN_HOME;
   return (
     <header className="border-b">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4 sm:gap-3 sm:px-6">

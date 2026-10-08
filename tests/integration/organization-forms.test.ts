@@ -28,7 +28,7 @@ const FORBIDDEN = "You don't have permission to do that.";
 const NOT_FOUND = "Not found.";
 
 /** The admin URLs of an organization that show its name, its URL or its people: what a change makes stale. */
-const pages = (slug: string) => [`/${slug}`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`];
+const pages = (slug: string) => [`/${slug}/sites`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`];
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData();
@@ -70,7 +70,7 @@ describe("onboarding: creating the first organization", () => {
     const before = Date.now();
     const outcome = await submitCreateOrganization(actor, form({ name: "  First Org ", slug: ` ${slug.toUpperCase()} ` }));
 
-    expect(outcome).toEqual({ state: { status: "success" }, redirectTo: `/${slug}`, revalidate: pages(slug) });
+    expect(outcome).toEqual({ state: { status: "success" }, redirectTo: `/${slug}/sites`, revalidate: pages(slug) });
     const [organization] = await listOrganizations(actor);
     expect(organization).toEqual({ id: expect.any(String), slug, name: "First Org", status: "active", role: "owner" });
     expect(await rolesOf(organization!.id)).toEqual({ [user.id]: "owner" });
@@ -82,8 +82,8 @@ describe("onboarding: creating the first organization", () => {
     expect(days).toBeGreaterThan(TRIAL_DAYS - 0.01);
     expect(days).toBeLessThan(TRIAL_DAYS + 0.01);
 
-    // From now on `/` is that organization, and its context is an Owner's.
-    expect(homePath(await homeOrganization(actor))).toBe(`/${slug}`);
+    // From now on `/` is that organization's sites (M4-1), and its context is an Owner's.
+    expect(homePath(await homeOrganization(actor))).toBe(`/${slug}/sites`);
     expect((await resolveOrgContext(actor, slug)).membership.role).toBe("owner");
   });
 
@@ -129,7 +129,7 @@ describe("onboarding: creating the first organization", () => {
         role: "viewer", status: "suspended", planKey: "free", permissions: "org.manage",
       }),
     );
-    expect(outcome.redirectTo).toBe(`/${slug}`);
+    expect(outcome.redirectTo).toBe(`/${slug}/sites`);
     const [organization] = await listOrganizations(actorOf(user));
     expect(organization).toMatchObject({ slug, status: "active", role: "owner" });
     expect(organization!.id).not.toBe(victim.org.id);
@@ -147,7 +147,7 @@ describe("onboarding: creating the first organization", () => {
     expect(outcome.redirectTo).toBe("/login?next=%2Fonboarding&reason=session");
     // The slug is still free: nothing was written.
     const user = await createUser();
-    expect((await submitCreateOrganization(actorOf(user), form({ name: "Real", slug }))).redirectTo).toBe(`/${slug}`);
+    expect((await submitCreateOrganization(actorOf(user), form({ name: "Real", slug }))).redirectTo).toBe(`/${slug}/sites`);
   });
 });
 
@@ -497,7 +497,7 @@ describe("the slug in the URL names an organization; it does not grant one", () 
 });
 
 describe("where a form may send the browser", () => {
-  it("only to this app's own pages: the organization, its settings, or the login page with a way back", async () => {
+  it("only to this app's own pages: the organization's sites, its settings, or the login page with a way back", async () => {
     const a = await newTenant();
     const target = await addMember(a.org, "viewer");
     const next = newSlug("safe");
@@ -507,7 +507,7 @@ describe("where a form may send the browser", () => {
       (await submitChangeOrganizationSlug(target.actor, a.org.slug, form({ slug: next }))).redirectTo,
     ];
     for (const destination of destinations) {
-      expect(destination).toMatch(/^\/[a-z0-9-]+(\/settings\?changed=(url|owner))?$/);
+      expect(destination).toMatch(/^\/[a-z0-9-]+(\/sites|\/settings\?changed=(url|owner))$/);
       expect(safeNextPath(destination)).toBe(destination); // a path of this app, by the same rule the login redirect uses
     }
   });

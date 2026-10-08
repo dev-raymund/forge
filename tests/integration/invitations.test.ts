@@ -54,7 +54,7 @@ const form = (fields: Record<string, string>) => {
   return data;
 };
 /** The admin URLs of an organization that a change makes stale, its activity log among them. */
-const pages = (slug: string) => [`/${slug}`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`];
+const pages = (slug: string) => [`/${slug}/sites`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`];
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const runEmails = () => runJobs({ registry: createJobRegistry([emailSend]), budgetMs: 20_000, random: () => 0.5 });
 
@@ -674,7 +674,7 @@ describe("the members page's forms", () => {
     // Naming oneself in the remove form is leaving, too. Someone with another organization goes on to that one.
     const elsewhere = await newTenant("Elsewhere");
     await addUser(elsewhere.org, admin.user, "viewer");
-    expect((await submitRemoveMember(admin.actor, a.org.slug, form({ memberId: admin.memberId }))).redirectTo).toBe(`/${elsewhere.org.slug}`);
+    expect((await submitRemoveMember(admin.actor, a.org.slug, form({ memberId: admin.memberId }))).redirectTo).toBe(`/${elsewhere.org.slug}/sites`);
 
     // The only Owner: cannot leave, cannot be removed, and is told what to do instead.
     const lastOwner = "You are the only Owner of this organization. Transfer ownership to another member first.";
@@ -723,7 +723,7 @@ describe("the members page's forms", () => {
     expectRefused(await submitAcceptInvitation(actor, "a".repeat(43)), "NotFound", "This invitation is no longer valid. Ask the person who invited you to send a new one.");
 
     expect(await submitAcceptInvitation(actor, token)).toEqual({
-      state: { status: "success" }, redirectTo: `/${a.org.slug}`, revalidate: pages(a.org.slug),
+      state: { status: "success" }, redirectTo: `/${a.org.slug}/sites`, revalidate: pages(a.org.slug),
     });
   });
 

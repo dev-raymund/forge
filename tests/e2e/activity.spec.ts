@@ -62,7 +62,7 @@ test("a new organization's log starts with its creation; renaming it and changin
   const id = tail();
   await page.getByLabel("Organization name").fill(`Logged ${id}`);
   await page.getByRole("button", { name: "Create organization" }).click();
-  await expect(page).toHaveURL(`${baseURL}/logged-${id}`);
+  await expect(page).toHaveURL(`${baseURL}/logged-${id}/sites`);
 
   // The Owner has the link, and the log has one line: the organization's creation, by her.
   await orgNav(page).getByRole("link", { name: "Activity" }).click();
@@ -132,7 +132,7 @@ test("the team's changes, each as a line: invited, accepted, role changed, remov
   const link = firstLink(await waitForEmail(bobEmail, { subject: `Olive Owner invited you to ${organization.name} on Forge` }));
   await bob.page.goto(link);
   await bob.page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(bob.page).toHaveURL(`${baseURL}/${organization.slug}`);
+  await expect(bob.page).toHaveURL(`${baseURL}/${organization.slug}/sites`);
 
   // Role change → remove.
   await page.reload();
@@ -198,7 +198,7 @@ test("ownership transfer is recorded; and who may read the log is the catalog's 
 
   // An Editor has no link to the log, and the page itself says no.
   await nia.page.goto(`/${organization.slug}`);
-  await expect(orgNav(nia.page).getByRole("link", { name: "Overview" })).toBeVisible();
+  await expect(orgNav(nia.page).getByRole("link", { name: "Sites" })).toBeVisible();
   await expect(orgNav(nia.page).getByRole("link", { name: "Activity" })).toHaveCount(0);
   await nia.page.goto(`/${organization.slug}/activity`);
   await expect(shown(nia.page, "no-access")).toBeVisible();

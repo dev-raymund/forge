@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { safeNextPath } from "@/platform/routing/admin-access";
 import { chooseHomeOrganization, homePath, type HomeCandidate } from "./home";
-import { ONBOARDING_PATH, orgPath, orgSettingsPath } from "./paths";
+import { ONBOARDING_PATH, orgPath, orgSettingsPath, orgSitesPath } from "./paths";
 import { checkOrgSlug, RESERVED_ORG_SLUGS } from "./slugs";
 
 const day = (n: number) => new Date(Date.UTC(2026, 9, n));
@@ -17,7 +17,7 @@ describe("where `/` takes a signed-in user", () => {
   it("one organization: that one", () => {
     const only = org("acme", 1);
     expect(chooseHomeOrganization([only])).toBe(only);
-    expect(homePath(only)).toBe("/acme");
+    expect(homePath(only)).toBe("/acme/sites");
   });
 
   it("several: the one joined last, whatever order they arrive in", () => {
@@ -25,7 +25,7 @@ describe("where `/` takes a signed-in user", () => {
     for (const list of [[first, second, third], [third, second, first], [second, first, third], [third, first, second]]) {
       expect(chooseHomeOrganization(list)?.slug).toBe("beta");
     }
-    expect(homePath(chooseHomeOrganization([first, second, third]))).toBe("/beta");
+    expect(homePath(chooseHomeOrganization([first, second, third]))).toBe("/beta/sites");
   });
 
   it("joined at the same instant: the newer organization (the higher id), every time", () => {
@@ -68,7 +68,7 @@ describe("organization URLs", () => {
       const checked = checkOrgSlug(input);
       expect(checked.ok, input).toBe(true);
       if (!checked.ok) continue;
-      for (const path of [orgPath(checked.slug), orgSettingsPath(checked.slug)]) expect(safeNextPath(path), path).toBe(path);
+      for (const path of [orgPath(checked.slug), orgSitesPath(checked.slug), orgSettingsPath(checked.slug)]) expect(safeNextPath(path), path).toBe(path);
     }
   });
 

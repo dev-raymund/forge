@@ -109,3 +109,12 @@ Actor types stay as the V1 table has them (`user`, `api_key`, `system`). Every M
 - `src/modules/audit/*.test.ts`, `ui/ui.test.tsx`: the vocabulary, sanitization, sentences, URL parsing, the cursor, the page's markup.
 - `tests/unit/audit-writer.test.ts`: only the audit module names the table; each service records its events with its own transaction; the activity query selects no address, request id or user id.
 - `tests/e2e/activity.spec.ts` (6): creation, rename and URL change; invite → accept → role change → remove, with filters; ownership transfer and who may read; another organization's log; pages; a phone.
+
+---
+
+## Addendum (M4-1, 2026-10-08): site events, and the site an event belongs to
+
+- **Three events** join the vocabulary, about a `site`: `site.created` (`name`, `address`), `site.address_changed` (`name`, `previousAddress`, `newAddress`), `site.deleted` (`name`, `address`). The site's name is stored with each, so the line still reads after the site is renamed or deleted. Written by `modules/sites/sites.service.ts`, in the transaction of the change (ADR 0011).
+- **`record` takes an optional `siteId`**, as M3-5 left for it. It is checked like the organization and the actor: inside the INSERT, it must be a site of the transaction's own organization (RLS hides every other), or nothing is written and `record` throws. A site of another organization cannot be named, even by mistake.
+- **The activity page's site filter** now has its drop-down, listing the organization's sites. A deleted site's events are still in the log, but its name is no longer in the list, the same rule as former members.
+- **Evidence:** `tests/integration/audit.test.ts` ("every event is covered by a mutation", "a site-level event can only name a site of the transaction's organization"); `tests/integration/sites.test.ts` (each site event, its failure leaving no change, the filter).

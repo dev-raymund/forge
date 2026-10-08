@@ -155,6 +155,44 @@ export function Field({ name, label, hint, errors, className, ...input }: FieldP
   );
 }
 
+type SelectFieldProps = Omit<React.ComponentProps<"select">, "id" | "children"> & {
+  name: string;
+  label: string;
+  options: readonly { value: string; label: string }[];
+  hint?: string;
+  errors?: string[];
+};
+
+/** A native select, labelled and wired to its messages like `Field` (M4-1). Native: it works with every keyboard and screen reader. */
+export function SelectField({ name, label, options, hint, errors, className, ...select }: SelectFieldProps) {
+  const id = useId();
+  const error = errors?.[0];
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <select
+        id={id}
+        name={name}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, hint, error)}
+        className={cn(
+          "w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:ring-3 aria-invalid:border-destructive md:text-sm",
+          CONTROL,
+          className,
+        )}
+        {...select}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <FieldMessages id={id} hint={hint} error={error} />
+    </div>
+  );
+}
+
 /** A password input with a show/hide button. The value is never kept in React state. */
 export function PasswordField({ name, label, hint, errors, className, ...input }: FieldProps) {
   const id = useId();

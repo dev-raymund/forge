@@ -1,4 +1,5 @@
 import type { Actor } from "@/modules/auth/shared";
+import { listSites, submitChangeSiteAddress, submitCreateSite, submitDeleteSite } from "@/modules/sites";
 import {
   acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
   resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitChangeOrganizationSlug, submitCreateOrganization,
@@ -98,6 +99,20 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
   },
   // The activity log (M3-5): filters that name B narrow A's own log, and write nothing anywhere.
   { name: "tenancy.listActivity(filters naming B's member and site)", run: ({ ctx }, b) => listActivity(ctx, { member: b.memberId, site: b.siteId }) },
+  // Sites (M4-1): the list is the caller's own organization's, and a new site is created there, whatever the form also says.
+  { name: "sites.listSites()", run: ({ ctx }) => listSites(ctx) },
+  {
+    name: "sites.submitCreateSite(A's slug, extra fields naming B)",
+    run: async ({ actor, orgSlug }, b) => {
+      const outcome = await submitCreateSite(
+        actor,
+        orgSlug,
+        form({ name: "Of A's", address: `iso-${Date.now().toString(36)}-${b.orgId.slice(-8)}`, language: "en", timezone: "UTC", organizationId: b.orgId, orgSlug: b.orgSlug, siteId: b.siteId }),
+      );
+      if (outcome.state.status !== "success") throw new Error(`expected the site to be created in A: ${JSON.stringify(outcome.state)}`);
+      return outcome;
+    },
+  },
   // Members and invitations (M3-4).
   { name: "tenancy.listInvitations()", run: ({ ctx }) => listInvitations(ctx) },
   {
@@ -156,6 +171,14 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "tenancy.submitRemoveMember(A's slug, B's member)", run: ({ actor, orgSlug }, b) => submitRemoveMember(actor, orgSlug, form({ memberId: b.memberId })) },
   { name: "tenancy.submitLeaveOrganization(B's slug)", run: ({ actor }, b) => submitLeaveOrganization(actor, b.orgSlug, new FormData()) },
   { name: "tenancy.submitAcceptInvitation(B's invitation id as the token)", run: ({ actor }, b) => submitAcceptInvitation(actor, b.invitationId) },
+
+  // Sites (M4-1): B's organization in the URL, or B's site named on A's own page.
+  { name: "sites.submitCreateSite(B's slug)", run: ({ actor }, b) => submitCreateSite(actor, b.orgSlug, form({ name: "Planted", address: `planted-${b.orgId.slice(-12)}`, language: "en", timezone: "UTC" })) },
+  { name: "sites.submitChangeSiteAddress(B's slug, B's site)", run: ({ actor }, b) => submitChangeSiteAddress(actor, b.orgSlug, b.siteSlug, form({ address: `moved-${b.orgId.slice(-12)}` })) },
+  { name: "sites.submitChangeSiteAddress(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitChangeSiteAddress(actor, orgSlug, b.siteSlug, form({ address: `moved-${b.orgId.slice(-12)}` })) },
+  { name: "sites.submitChangeSiteAddress(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitChangeSiteAddress(actor, orgSlug, b.siteId, form({ address: `moved-${b.orgId.slice(-12)}` })) },
+  { name: "sites.submitDeleteSite(B's slug, B's site)", run: ({ actor }, b) => submitDeleteSite(actor, b.orgSlug, b.siteSlug, form({ confirm: b.siteSlug })) },
+  { name: "sites.submitDeleteSite(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitDeleteSite(actor, orgSlug, b.siteSlug, form({ confirm: b.siteSlug })) },
 ];
 
 /**

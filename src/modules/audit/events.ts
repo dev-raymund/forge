@@ -19,6 +19,8 @@ const line = (max = 200) => z.string().trim().min(1).max(max);
 const role = z.string().regex(/^[a-z_]{3,30}$/);
 const email = line(254);
 const slug = line(63);
+/** A site's public address: the label in `/s/{address}` (ADR 0006). */
+const address = line(63);
 
 export const AUDIT_EVENTS = {
   "organization.created": {
@@ -77,6 +79,22 @@ export const AUDIT_EVENTS = {
     label: "Member left",
     metadata: z.object({ role }),
   },
+  // Sites (M4-1, ADR 0011). The site's name is stored with each, so the line still reads after a rename or a deletion.
+  "site.created": {
+    resourceType: "site",
+    label: "Site created",
+    metadata: z.object({ name: line(), address }),
+  },
+  "site.address_changed": {
+    resourceType: "site",
+    label: "Site address changed",
+    metadata: z.object({ name: line(), previousAddress: address, newAddress: address }),
+  },
+  "site.deleted": {
+    resourceType: "site",
+    label: "Site deleted",
+    metadata: z.object({ name: line(), address }),
+  },
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_EVENTS;
@@ -89,8 +107,10 @@ export type AuditEntry = {
   [A in AuditAction]: {
     action: A;
     resourceType: (typeof AUDIT_EVENTS)[A]["resourceType"];
-    /** The id of the organization, membership or invitation the event is about. */
+    /** The id of the organization, membership, invitation or site the event is about. */
     resourceId: string;
+    /** The site the event belongs to, for the activity page's site filter. Only site-level events have one. */
+    siteId?: string;
     metadata: AuditMetadata<A>;
   };
 }[AuditAction];
@@ -156,6 +176,9 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "member.role_changed": (actor, m) => `${actor} changed ${m.memberName}’s role from ${word(m.previousRole)} to ${word(m.newRole)}.`,
   "member.removed": (actor, m) => `${actor} removed ${m.memberName} from the organization.`,
   "member.left": (actor) => `${actor} left the organization.`,
+  "site.created": (actor, m) => `${actor} created the site ${m.name} at /s/${m.address}.`,
+  "site.address_changed": (actor, m) => `${actor} moved the site ${m.name} from /s/${m.previousAddress} to /s/${m.newAddress}.`,
+  "site.deleted": (actor, m) => `${actor} deleted the site ${m.name}, which was at /s/${m.address}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -170,6 +193,9 @@ const PLAIN: Record<AuditAction, string> = {
   "member.role_changed": "changed a member’s role",
   "member.removed": "removed a member",
   "member.left": "left the organization",
+  "site.created": "created a site",
+  "site.address_changed": "changed a site’s address",
+  "site.deleted": "deleted a site",
 };
 
 /**

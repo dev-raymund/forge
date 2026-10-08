@@ -3,10 +3,15 @@ import type { TenantTx } from "@/platform/db";
 import { subscriptions } from "./schema";
 
 /**
- * Public server API of the billing module. Stripe, plans and limits arrive
- * with M11; M3-1 needs one thing from here: every organization is born with
- * its trial subscription row (plan §3: "14-day Pro trial starts").
+ * Public server API of the billing module. Stripe arrives with M11. Before
+ * that: every organization is born with its trial subscription row (M3-1,
+ * plan §3: "14-day Pro trial starts"), and the plans' limits are checked when
+ * something is created (M4-1: sites).
  */
+
+export { allowanceOf, assertLimit } from "./limits";
+export { countOf, hasRoomFor, limitMessage, PLANS } from "./plans";
+export type { Allowance, LimitKey, Plan, PlanKey } from "./plans";
 
 export const TRIAL_DAYS = 14;
 

@@ -128,7 +128,7 @@ test("invite an existing user: the Owner invites by email, the person accepts fr
   await expect(bob.page.getByText(`Olive Owner invited you to join ${organization.name} as an Author.`)).toBeVisible();
   await expect(shown(bob.page, "invitation-state")).toContainText(bobEmail);
   await bob.page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(bob.page).toHaveURL(`${baseURL}/${organization.slug}`);
+  await expect(bob.page).toHaveURL(`${baseURL}/${organization.slug}/sites`);
   await expect(memberRole(bob.page)).toHaveText("Author");
   expect(await rolesIn(organization.id)).toEqual({ [owner]: "owner", [bobEmail]: "author" });
   expect((await invitationsOf(organization.id))[0]!.state).toBe("accepted");
@@ -186,7 +186,7 @@ test("invite a new person: from the email to an account to the organization, wit
   await expect(ivy.page.getByRole("button", { name: "Accept invitation" })).toBeVisible();
 
   await ivy.page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(ivy.page).toHaveURL(`${baseURL}/${organization.slug}`);
+  await expect(ivy.page).toHaveURL(`${baseURL}/${organization.slug}/sites`);
   await expect(memberRole(ivy.page)).toHaveText("Editor");
   await expect(accountMenu(ivy.page)).toContainText("Ivy Newcomer");
   // Her address is not verified yet: the app says so, and she can work meanwhile.
@@ -195,7 +195,7 @@ test("invite a new person: from the email to an account to the organization, wit
 
   // She belongs somewhere now: `/` is this organization, not onboarding.
   await ivy.page.goto("/");
-  await expect(ivy.page).toHaveURL(`${baseURL}/${organization.slug}`);
+  await expect(ivy.page).toHaveURL(`${baseURL}/${organization.slug}/sites`);
   await ivy.context.close();
 });
 
@@ -226,7 +226,7 @@ test("an invitation is for the address it was sent to: another account cannot ac
   await other.page.getByRole("button", { name: "Log in" }).click();
   await expect(other.page).toHaveURL(link);
   await other.page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(other.page).toHaveURL(`${baseURL}/${organization.slug}`);
+  await expect(other.page).toHaveURL(`${baseURL}/${organization.slug}/sites`);
   await expect(memberRole(other.page)).toHaveText("Viewer");
   expect(await rolesIn(organization.id)).toMatchObject({ [invitedEmail]: "viewer" });
   expect(Object.keys(await rolesIn(organization.id))).not.toContain(mallory);
@@ -398,7 +398,7 @@ test("invite → accept → transfer: the Owner hands the organization to someon
   const link = await invite(page, niaEmail, "Admin", invitationSubject("Olive Owner", organization));
   await nia.page.goto(link);
   await nia.page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(nia.page).toHaveURL(`${baseURL}/${organization.slug}`);
+  await expect(nia.page).toHaveURL(`${baseURL}/${organization.slug}/sites`);
 
   // In the settings there is now somebody to hand it to: a real member, not a seeded one.
   await page.goto(`/${organization.slug}/settings`);

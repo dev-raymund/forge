@@ -5,7 +5,7 @@ import { AppHeader } from "@/components/admin/app-header";
 import { PageSkeleton, ShellSkeleton } from "@/components/admin/page-skeleton";
 import { requireAuthOrLogin, toActor, VerifyEmailBanner } from "@/modules/auth";
 import { TRIAL_DAYS } from "@/modules/billing";
-import { CreateOrganizationForm, homeOrganization, ONBOARDING_PATH, orgPath } from "@/modules/tenancy";
+import { CreateOrganizationForm, homeOrganization, ONBOARDING_PATH, orgSitesPath } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Create your organization" };
 
@@ -33,7 +33,7 @@ async function Onboarding() {
   const auth = await requireAuthOrLogin(ONBOARDING_PATH);
   // This screen is the first run. Someone who already has an organization goes to it.
   const existing = await homeOrganization(toActor(auth));
-  if (existing) redirect(orgPath(existing.slug));
+  if (existing) redirect(orgSitesPath(existing.slug));
 
   const { user } = auth;
   return (

@@ -48,6 +48,10 @@ describe("links to `/` are not prefetched", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("no link points at `/{orgSlug}`, a route handler since M4-1: links go to the organization's sites", () => {
+    expect(tags.filter(({ tag }) => /\bhref=\{orgPath\(/.test(tag))).toEqual([]);
+  });
+
   it("the two links whose address is decided at run time ask the rule", () => {
     for (const file of ["src/modules/auth/ui/auth-card.tsx", "src/components/admin/app-header.tsx"]) {
       const computed = linkTags(readFileSync(path.join(ROOT, file), "utf8")).filter((tag) => /\bhref=\{(?:href|home)\}/.test(tag));

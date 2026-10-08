@@ -5,8 +5,14 @@
 
 export const ONBOARDING_PATH = "/onboarding";
 
-/** The organization's home. */
+/**
+ * The organization's own URL, as people type and read it. Since M4-1 it is a
+ * redirect to its sites (plan §19): link to `orgSitesPath`, not here.
+ */
 export const orgPath = (orgSlug: string): string => `/${orgSlug}`;
+
+/** The organization's sites: where a member lands, and what its links lead to (M4-1). */
+export const orgSitesPath = (orgSlug: string): string => `/${orgSlug}/sites`;
 
 export const orgSettingsPath = (orgSlug: string): string => `/${orgSlug}/settings`;
 

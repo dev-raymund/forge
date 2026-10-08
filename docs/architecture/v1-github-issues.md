@@ -687,13 +687,27 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M3-2
 
 **Acceptance criteria:**
-- [ ] Tables `sites`, `site_settings`, `domains` (rows of kind `subdomain` whose `hostname` holds the address label; platform class)
-- [ ] `createSite` in one transaction:
-  - validates the site address (`isSiteAddress`: DNS-label shape ≤ 63; reserved words such as `www`, `app`, `api`, `admin`, `media`; uniqueness)
+- [x] Tables `sites`, `site_settings`, `domains` (rows of kind `subdomain` whose `hostname` holds the address label; platform class) *(from M1-1; no migration in M4-1)*
+- [x] `createSite` in one transaction:
+  - validates the site address (`isSiteAddress`: DNS-label shape ≤ 63; reserved words such as `www`, `app`, `api`, `admin`, `media`; uniqueness) *(trimmed and lowercased first; reserved: exactly those five; uniqueness is the table's constraint, at the insert)*
   - creates the site (`coming_soon`) + settings + `domains` row
-  - checks the plan limit (`assertLimit` stub with plan in code)
-  - audits
-- [ ] `/{org}/sites` grid and `/{org}/sites/new`; `changeSiteAddress` (invalidates `host:{old}` and `host:{new}`), soft `deleteSite`
+  - checks the plan limit (`assertLimit` stub with plan in code) *(`modules/billing/plans.ts`: Free 1, Pro and trial 5; locks the organization's row, then counts)*
+  - audits *(`site.created`, ADR 0010 addendum)*
+- [x] `/{org}/sites` grid and `/{org}/sites/new`; `changeSiteAddress` (invalidates `host:{old}` and `host:{new}`), soft `deleteSite` *(both on `/{org}/sites/{site}/settings`; `/{org}/sites/{site}` shows the site)*
+
+**Decisions taken here (ADR 0011):**
+- **The site's slug is not asked for.** It is the address the site is created with (`acme`), or `acme-2` when an older site of the organization holds that slug, or the address is `new`. It never changes: moving a site keeps its admin URLs.
+- **No list of the app's paths among reserved addresses.** An address only appears after `/s/`, so `/s/login` cannot shadow `/login`; `tests/unit/site-addresses.test.ts` proves it from the routes that exist.
+- **Letters outside ASCII are refused**, not converted to punycode; a double hyphen is refused, which also refuses typed punycode.
+- **A deleted site's address is free at once** (its `domains` rows are deleted, plan §11), and so is a moved site's old address. Nothing redirects from an old address.
+- **Plan = `subscriptions.plan_key`; no row = Free.** A trial past its end keeps Pro limits until M11-1's job changes the row.
+- **`/{orgSlug}` is now a redirect to `/{orgSlug}/sites`** (plan §19, the M3-3 note above): a route handler that looks nothing up. `/`, onboarding, the switcher, the header and every form that used to land on `/{orgSlug}` land on `/{orgSlug}/sites`. The organization nav's "Overview" is now "Sites".
+- **Languages:** a list in code (`modules/sites/locale.ts`), without right-to-left ones until a theme lays them out. **Time zones:** the runtime's IANA list, UTC first; the form starts at the browser's own.
+
+**Also delivered:**
+- The activity page's site filter (the M3-5 note above).
+- `SelectField` in the admin form kit, and the section nav marks the longest matching link (so "Sites" stays marked on a site's pages).
+- `requireSitePage` (tenancy) for every page under `/{org}/sites/{site}`.
 
 **Likely files/modules:** `src/modules/sites/*`, `src/modules/domains/schema.ts`, site pages
 
@@ -705,6 +719,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Configure a site.
 
 *From M3-3: `/onboarding` is step 1 only, and sends a user who already has an organization straight to it. Making the wizard resumable (plan §3) changes that one rule in `src/app/(admin)/onboarding/page.tsx`: an organization without a site continues at step 2 instead of leaving. After creating the organization the action redirects to `/{orgSlug}`; point it at step 2 here.*
+
+*From M4-1 (ADR 0011): `/{org}/sites/{site}` exists as a small page (`src/app/(admin)/[orgSlug]/sites/[siteSlug]/page.tsx`: name, status, public address, language, time zone); the overview proper replaces it. `/{org}/sites/{site}/settings` exists with two sections, the site's address and deleting it: add the general, reading and analytics groups to that page, above them. The site layout (`[siteSlug]/layout.tsx`) has the site's own nav (Overview, Settings): add links there. Onboarding step 2 can render `CreateSiteForm` from `@/modules/sites` as it is; its action redirects to the new site's page, which step 3 changes. `SelectField` (`components/admin/form.tsx`) and `SITE_LANGUAGES` / `siteTimeZones()` are the language and time zone fields. The settings' JSONB groups are created empty: their readers must apply the defaults.*
 
 **Depends on:** M4-1, M4-4
 
@@ -723,6 +739,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Serve sites by their site address (V1: `/s/{address}`) or, post-V1, by hostname, with correct caching.
 
 *From M0-4 and ADR 0006: start from `spikes/rendering/queries.ts` (`resolveSite(locator)`) and the current `/render/[site]/[[...path]]` page; build every link from `siteBasePath()`. Keep static params for both segments, resolve the host outside `<Suspense>` (real 404s), skip the database for the build placeholder, and delete the `/dev/cache` and `/api/dev/revalidate` spike routes (ADR 0002).*
+
+*From M4-1 (ADR 0011): every change to an address already returns `domain.changed` events (create: the new address; move: old and new; delete: the old), and the Server Actions flush them with `updateTag`. A deleted site has no `domains` rows, so resolving its old address finds nothing; keep `resolveSite` reading `domains` only, or, if it starts joining `sites`, also exclude `deleted_at is not null`. New sites are `coming_soon` and render through the spike view until this issue's coming-soon page exists. `tests/integration/sites.test.ts` calls `resolveSite` with `next/cache` stubbed: move those checks with the function.*
 
 **Depends on:** M1-7, M4-1
 
@@ -815,6 +833,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** The core write paths.
 
 *From M3-2 (ADR 0009): add `modules/content/policies.ts`. Pages have plain keys (`entries.page.update`); posts have own/any pairs, for which `canActOn(ctx, "entries.post.update", { organizationId: entry.organizationId, ownerId: entry.authorId })` is the whole policy. Reading (`entries.{type}.read`) is held by every role. Build the key from the entry's type through the content-type registry, never from request input. Register each policy in `tenantPolicyChecks` (`tests/isolation/tenant-operations.ts`). A content type added to the registry needs its keys added to the catalog: a unit test fails until the catalog's entry types and `ENTRY_TYPES` agree.*
+
+*From M4-1 (ADR 0011): `createSite` (`modules/sites/sites.service.ts`) creates the site, its settings, its address and its audit row in one transaction, and no Home page yet. Add the Home page draft there, in the same transaction, and set `site_settings.homepage_entry_id`, as this issue's first criterion says.*
 
 **Depends on:** M5-2, M3-5
 
@@ -1274,6 +1294,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-3: every organization a user creates starts its own 14-day Pro trial, and `createOrganization` does not limit how many a user may create. No screen offers a second organization yet (onboarding is the first run only), but the Server Action behind it would accept one. Decide here whether creating further organizations is a product feature (then it needs a screen and a rule about trials) or is refused.*
 
 *From M3-4: `inviteMember` does not check a seat limit. Plan §14 counts members plus pending invitations; add `assertLimit(tx, org, "members")` there, under the organization lock it already takes, after the permission and verified-email checks. Re-sending does not add a seat. Accepting an invitation was already counted when it was sent.*
+
+*From M4-1 (ADR 0011): `modules/billing/plans.ts` holds the plans with only the sites limit (Free 1, Pro 5), and `assertLimit(tx, orgId, key)` (`modules/billing/limits.ts`) locks the organization's row and counts. The plan is read from `subscriptions.plan_key`; no row means Free. Add the other limits as keys of `LimitKey` with their counts, and decide here how `status`, `trial_ends_at` and `grace_until` change the plan (one function, `planOf`). The sites page already shows "n of N sites on the X plan" to those who may create sites.*
 
 **Depends on:** M3-1
 

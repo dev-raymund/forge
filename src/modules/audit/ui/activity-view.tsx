@@ -29,9 +29,11 @@ export type ActivityViewProps = {
   page: ActivityPage;
   /** Who can be filtered by: membership id and name. */
   members: { id: string; name: string }[];
+  /** The organization's sites, to narrow the log to one (M4-1). The filter is not shown while there are none. */
+  sites?: { id: string; name: string }[];
 };
 
-export function ActivityView({ basePath, query, page, members }: ActivityViewProps) {
+export function ActivityView({ basePath, query, page, members, sites = [] }: ActivityViewProps) {
   const filtered = hasFilters(query);
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
@@ -69,6 +71,19 @@ export function ActivityView({ basePath, query, page, members }: ActivityViewPro
             ))}
           </select>
         </div>
+        {sites.length > 0 ? (
+          <div className="grid gap-2 sm:col-span-2">
+            <Label htmlFor="activity-site">Site</Label>
+            <select id="activity-site" name="site" defaultValue={query.site ?? ""} className={CONTROL}>
+              <option value="">Every site, and the organization</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="grid gap-2">
           <Label htmlFor="activity-from">From</Label>
           <input id="activity-from" name="from" type="date" defaultValue={query.from ?? ""} className={CONTROL} />

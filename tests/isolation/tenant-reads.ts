@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { listSites } from "@/modules/sites";
 import { listActivity, listOrganizations, resolveOrgContext } from "@/modules/tenancy";
 import { tablesOfClass, type TableName } from "@/platform/db/table-classes";
 import { withTenant, withUser } from "@/platform/db/tenant";
@@ -52,6 +53,27 @@ export const tenantReads: TenantRead[] = [
       });
       // An event the organization's own context cannot see would not be its own: name it, so the suite fails.
       return page.items.map((item) => owners.get(item.id) ?? `not-visible-to-${ctx.orgId}`);
+    },
+  },
+  // M4-1: the organization's sites page. Each site it lists, with the address joined from the platform table, is looked up again.
+  {
+    name: "sites.listSites (the organization's sites page)",
+    read: async (ctx) => {
+      const actor = { kind: "user", userId: ctx.userId, sessionId: ctx.userId, emailVerified: true } as const;
+      const [org] = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => (await tx.execute<{ slug: string }>(sql`select slug from organizations where id = ${ctx.orgId}`)).rows);
+      const sites = await listSites(await resolveOrgContext(actor, org!.slug));
+      // Both halves of each line: the site, and the address shown with it (read from `domains`, which has no RLS).
+      const owners = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => {
+        const res = await tx.execute<{ id: string; org: string; hostname: string | null; address_org: string | null }>(
+          sql`select s.id, s.organization_id as org, d.hostname, d.organization_id as address_org from sites s left join domains d on d.site_id = s.id and d.kind = 'subdomain'`,
+        );
+        return new Map(res.rows.map((row) => [row.id, row]));
+      });
+      return sites.flatMap((site) => {
+        const owner = owners.get(site.id);
+        if (!owner) return [`not-visible-to-${ctx.orgId}`];
+        return site.address === null ? [owner.org] : [owner.org, owner.hostname === site.address ? (owner.address_org ?? "none") : "address-mismatch"];
+      });
     },
   },
   ...(["organizations", "organization_members"] as const).map((table): TenantRead => ({

@@ -1,4 +1,4 @@
-import { ONBOARDING_PATH, orgPath } from "./paths";
+import { ONBOARDING_PATH, orgSitesPath } from "./paths";
 import type { OrganizationStatus } from "./shared";
 
 /**
@@ -28,4 +28,4 @@ export function chooseHomeOrganization<T extends HomeCandidate>(memberships: rea
 }
 
 /** The path `/` redirects to. */
-export const homePath = (organization: { slug: string } | null): string => (organization ? orgPath(organization.slug) : ONBOARDING_PATH);
+export const homePath = (organization: { slug: string } | null): string => (organization ? orgSitesPath(organization.slug) : ONBOARDING_PATH);

@@ -15,23 +15,27 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "member.role_changed": { memberName: "Jane Doe", previousRole: "author", newRole: "editor" },
   "member.removed": { memberName: "Jane Doe", role: "viewer" },
   "member.left": { role: "admin" },
+  "site.created": { name: "Acme Bakery", address: "acme" },
+  "site.address_changed": { name: "Acme Bakery", previousAddress: "acme", newAddress: "acme-bakery" },
+  "site.deleted": { name: "Acme Bakery", address: "acme-bakery" },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3 and the three of M4-1, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
         "member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted",
         "member.role_changed", "member.removed", "member.left",
+        "site.created", "site.address_changed", "site.deleted",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
   });
 
-  it("every event is about an organization, a membership or an invitation, and has a name for the filter list", () => {
+  it("every event is about an organization, a membership, an invitation or a site, and has a name for the filter list", () => {
     for (const action of AUDIT_ACTIONS) {
-      expect(["organization", "membership", "invitation"], action).toContain(AUDIT_EVENTS[action].resourceType);
+      expect(["organization", "membership", "invitation", "site"], action).toContain(AUDIT_EVENTS[action].resourceType);
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
@@ -126,6 +130,11 @@ describe("an event as a sentence", () => {
     expect(say("member.role_changed", { memberName: "Jane", previousRole: "author", newRole: "editor" })).toBe("Raymund changed Jane’s role from Author to Editor.");
     expect(say("member.removed", { memberName: "Jane", role: "viewer" })).toBe("Raymund removed Jane from the organization.");
     expect(say("member.left", { role: "admin" }, "Jane")).toBe("Jane left the organization.");
+    expect(say("site.created", { name: "Acme Bakery", address: "acme" })).toBe("Raymund created the site Acme Bakery at /s/acme.");
+    expect(say("site.address_changed", { name: "Acme Bakery", previousAddress: "acme", newAddress: "acme-bakery" })).toBe(
+      "Raymund moved the site Acme Bakery from /s/acme to /s/acme-bakery.",
+    );
+    expect(say("site.deleted", { name: "Acme Bakery", address: "acme-bakery" })).toBe("Raymund deleted the site Acme Bakery, which was at /s/acme-bakery.");
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {

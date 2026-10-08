@@ -89,7 +89,8 @@ describe("registered operations given another tenant's identifiers answer NotFou
 
   /** Everything an organization owns in the tenancy tables, as one digest: any change to any row changes it. */
   // The activity log is in it: nothing done from A may add a line to B's record, any more than change B's rows.
-  const TENANCY_TABLES = ["organizations", "organization_members", "organization_invitations", "subscriptions", "sites", "site_settings", "audit_logs"];
+  // So are B's site addresses (M4-1): `domains` is a platform table, without RLS, so this is its only witness.
+  const TENANCY_TABLES = ["organizations", "organization_members", "organization_invitations", "subscriptions", "sites", "site_settings", "domains", "audit_logs"];
   const fingerprintOf = (orgId: string) =>
     withTenant({ orgId }, async (tx) => {
       const hash = createHash("sha256");

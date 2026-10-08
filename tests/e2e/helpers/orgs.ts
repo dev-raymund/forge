@@ -154,3 +154,24 @@ export async function seedActivity(orgId: string, email: string, count: number) 
     }
   });
 }
+
+// ── Sites (M4-1) ─────────────────────────────────────────────────────────────
+
+export type SiteRecord = { id: string; name: string; slug: string; status: string; default_locale: string; timezone: string; deleted: boolean; address: string | null };
+
+/** The organization's sites as the database has them, with the address each one holds (deleted ones included). */
+export async function sitesIn(orgId: string): Promise<SiteRecord[]> {
+  const { rows } = await inTenant(orgId, (c) =>
+    c.query<SiteRecord>(
+      `select s.id, s.name, s.slug, s.status, s.default_locale, s.timezone, s.deleted_at is not null as deleted, d.hostname as address
+       from sites s left join domains d on d.site_id = s.id and d.kind = 'subdomain' where s.organization_id = $1 order by s.created_at`,
+      [orgId],
+    ),
+  );
+  return rows;
+}
+
+/** What billing will do (M11) when a trial ends without a subscription: the Free plan's limits apply. */
+export async function setPlan(orgId: string, plan: "free" | "pro") {
+  await inTenant(orgId, (c) => c.query("update subscriptions set plan_key = $2, status = $3 where organization_id = $1", [orgId, plan, plan === "free" ? "free" : "trialing"]));
+}

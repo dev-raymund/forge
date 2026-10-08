@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { NoAccess, OrganizationSuspended } from "@/components/admin/page-notice";
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { ActivityView, parseActivityQuery } from "@/modules/audit";
+import { listSites } from "@/modules/sites";
 import { canReadActivity, listActivity, listMembers, orgActivityPath, requireOrgPage } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Activity" };
@@ -39,8 +40,14 @@ async function OrganizationActivity({ params, searchParams }: PageProps<"/[orgSl
   }
 
   const query = parseActivityQuery(filters);
-  const [page, members] = await Promise.all([listActivity(ctx, query), listMembers(ctx)]);
+  const [page, members, sites] = await Promise.all([listActivity(ctx, query), listMembers(ctx), listSites(ctx)]);
   return (
-    <ActivityView basePath={orgActivityPath(ctx.org.slug)} query={query} page={page} members={members.map((member) => ({ id: member.id, name: member.name }))} />
+    <ActivityView
+      basePath={orgActivityPath(ctx.org.slug)}
+      query={query}
+      page={page}
+      members={members.map((member) => ({ id: member.id, name: member.name }))}
+      sites={sites.map((site) => ({ id: site.id, name: site.name }))}
+    />
   );
 }
