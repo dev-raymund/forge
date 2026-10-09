@@ -1156,7 +1156,7 @@ The editor (Phase 5) is the critical path and the biggest risk, so the strongest
   - onboarding steps 2–3 (site, theme)
   - site overview with checklist + "Publish site" (coming soon → live; requires a verified email)
   - site settings (general, reading, analytics, social)
-  - renderer: `resolveSiteByHost`, coming-soon page (noindex), unknown host page, suspended page
+  - renderer: `resolveSiteByHost`, coming-soon page (noindex), unknown host page, suspended page *(M4-3, ADR 0013: `resolveSite(locator)` + `loadPublicSite(orgId, siteId)`; unknown and suspended both answer 404, since a Next page cannot answer 503)*
   - theme kit + Studio skeleton (layout, header, footer, coming-soon)
 - **Tables:** `sites`, `site_settings`, `domains`.
 - **Routes:** `/{org}/sites`, `/{org}/sites/new`, `/{org}/sites/{site}`, `/…/settings`, `/…/appearance` (theme choice only), `/onboarding` (steps 2–3); site host `/`.

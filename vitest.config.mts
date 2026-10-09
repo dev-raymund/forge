@@ -13,8 +13,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
-      // The tsconfig path of the spikes (the public renderer still reads through spikes/rendering until M4-3).
-      "@spikes": path.resolve(import.meta.dirname, "spikes"),
       // The real package throws outside React Server Components.
       "server-only": path.resolve(import.meta.dirname, "tests/setup/server-only-stub.ts"),
       // The theme kit's fonts (M4-4): the real loaders exist only after Next's compiler.

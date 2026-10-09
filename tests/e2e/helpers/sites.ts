@@ -29,15 +29,19 @@ export async function inTenant<T>(orgId: string, work: (c: pg.Client) => Promise
 /** `address` is the site's platform address: the public site lives at `/s/{address}` (ADR 0006). */
 export type SeededSite = { orgId: string; siteId: string; address: string; name: string };
 
-export async function seedSite(label: string, tagline: string): Promise<SeededSite> {
+export type SiteSeed = { status?: "coming_soon" | "live" | "suspended"; theme?: string; themeSettings?: unknown; language?: string };
+
+export async function seedSite(label: string, tagline: string, seed: SiteSeed = {}): Promise<SeededSite> {
   const orgId = uuidv7();
   const siteId = uuidv7();
   const slug = `${label}-${randomBytes(3).toString("hex")}`;
   await inTenant(orgId, async (c) => {
     await c.query("insert into organizations (id, name, slug) values ($1, $2, $3)", [orgId, `Org ${slug}`, `org-${slug}`]);
-    await c.query("insert into sites (id, organization_id, name, slug) values ($1, $2, $3, $4)", [siteId, orgId, `Site ${label}`, slug]);
-    await c.query("insert into site_settings (site_id, organization_id, general) values ($1, $2, $3)", [
-      siteId, orgId, JSON.stringify({ tagline }),
+    await c.query("insert into sites (id, organization_id, name, slug, status, theme_key, default_locale) values ($1, $2, $3, $4, $5, $6, $7)", [
+      siteId, orgId, `Site ${label}`, slug, seed.status ?? "coming_soon", seed.theme ?? "studio", seed.language ?? "en",
+    ]);
+    await c.query("insert into site_settings (site_id, organization_id, general, theme) values ($1, $2, $3, $4)", [
+      siteId, orgId, JSON.stringify({ tagline }), JSON.stringify(seed.themeSettings ?? {}),
     ]);
     await c.query(
       "insert into domains (id, organization_id, site_id, hostname, kind, is_primary, status) values ($1, $2, $3, $4, 'subdomain', true, 'active')",
@@ -86,3 +90,23 @@ export async function addMember(orgId: string, email: string, role: "owner" | "a
   );
 }
 
+
+/** A change made behind the app's back (staff, a migration), so no cache tag is invalidated. */
+export async function setSiteWithoutInvalidation(site: SeededSite, change: { status?: string; theme?: string }) {
+  await inTenant(site.orgId, (c) =>
+    c.query("update sites set status = coalesce($1, status), theme_key = coalesce($2, theme_key) where id = $3", [change.status ?? null, change.theme ?? null, site.siteId]),
+  );
+}
+
+/**
+ * What a visitor sees of a public page (M4-3): the content of its `<main>`,
+ * and its heading. Taken from the browser's DOM, so two visitors' views can be
+ * compared exactly.
+ */
+export async function publicView(page: import("@playwright/test").Page) {
+  return {
+    heading: (await page.locator("h1").first().textContent())?.trim() ?? null,
+    main: await page.locator("main").first().evaluate((element) => element.outerHTML),
+    theme: await page.locator("[data-forge-theme]").getAttribute("data-theme").catch(() => null),
+  };
+}

@@ -433,7 +433,7 @@ test("public site pages on the same host neither see nor set the session", async
   expect(response.status()).toBe(200);
   expect(await response.headerValue("set-cookie")).toBeNull(); // not even the renewed admin cookie
   expect(response.headers()["content-security-policy"]).toContain("frame-ancestors 'self'");
-  await expect(page.getByTestId("tagline")).toHaveText("Public tagline");
+  await expect(page.getByRole("main")).toContainText("Public tagline");
   await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0); // nothing of the admin
   expect((await page.request.post(`/s/${site.address}`, { headers: { "next-action": "x" } })).status()).toBe(404);
   expect((await currentSession(page)).status).toBe(200); // visiting a site does not sign the admin out

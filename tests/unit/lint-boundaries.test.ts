@@ -50,6 +50,46 @@ describe("authorization goes through the permission catalog (ADR 0009)", () => {
   });
 });
 
+describe("cached public data is keyed by its tenant (M4-3, ADR 0013)", () => {
+  const syntax = async (code: string, filePath: string) => (await roleChecks(code, filePath)).filter((m) => /use cache/.test(m.message));
+
+  it("rejects a 'use cache' function that takes no tenant, wherever it is", async () => {
+    const keyless = [
+      `export async function f() {\n  "use cache";\n  return 1;\n}\n`,
+      `export async function f(path: string) {\n  "use cache";\n  return path;\n}\n`,
+      `export const f = async (slug: string) => {\n  "use cache";\n  return slug;\n};\n`,
+      `export const f = async function (options: { siteId: string }) {\n  "use cache: remote";\n  return options;\n};\n`,
+      `"use cache";\nexport async function f(siteId: string) {\n  return siteId;\n}\n`,
+    ];
+    for (const code of keyless) {
+      for (const filePath of ["src/modules/rendering/queries.ts", "src/modules/tenancy/example.ts", "src/app/(sites)/render/example.tsx"]) {
+        const errors = await syntax(code, filePath);
+        expect(errors, `${filePath}: ${code}`).toHaveLength(1);
+        expect(errors[0]!.message).toMatch(/must take its tenant as an argument/);
+      }
+    }
+  });
+
+  it("accepts one keyed by a site, an organization, a locator or a host, and leaves other functions alone", async () => {
+    const keyed = [
+      `export async function f(siteId: string) {\n  "use cache";\n  return siteId;\n}\n`,
+      `export async function f(orgId: string, siteId: string) {\n  "use cache";\n  return orgId + siteId;\n}\n`,
+      `export const f = async (locator: { kind: string }) => {\n  "use cache";\n  return locator;\n};\n`,
+      `export const f = async (host: string, path: string) => {\n  "use cache";\n  return host + path;\n};\n`,
+      `export async function f() {\n  return 1;\n}\n`,
+      `export async function f() {\n  const g = async (siteId: string) => {\n    "use cache";\n    return siteId;\n  };\n  return g("x");\n}\n`,
+    ];
+    for (const code of keyed) expect(await syntax(code, "src/modules/rendering/queries.ts"), code).toHaveLength(0);
+  });
+
+  it("the renderer's own cached functions pass", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("src/modules/rendering/queries.ts", "utf8");
+    expect(source).toMatch(/"use cache"/);
+    expect(await syntax(source, "src/modules/rendering/queries.ts")).toHaveLength(0);
+  });
+});
+
 describe("module boundaries", () => {
   it("rejects deep imports into another module from app/", async () => {
     const errors = await restrictedImports(

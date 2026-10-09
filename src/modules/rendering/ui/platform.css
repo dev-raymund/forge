@@ -1,0 +1,45 @@
+/*
+ * The platform's own public pages (M4-3): an address with no site, and a site
+ * that is unavailable. Neutral: no site's theme, name or colours. Scoped.
+ */
+body:has(> [data-forge-platform]) {
+  margin: 0;
+}
+
+[data-forge-platform] {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 1.5rem;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+}
+
+[data-forge-platform] main {
+  width: 100%;
+  max-width: 30rem;
+  padding: 2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  text-align: center;
+}
+
+[data-forge-platform] h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+[data-forge-platform] p {
+  margin: 0;
+  color: #475569;
+}
+
+[data-forge-platform] .forge-platform-mark {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}

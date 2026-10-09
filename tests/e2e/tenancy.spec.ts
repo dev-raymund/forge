@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { asUniqueVisitor, currentSession, newEmail, sessionCookie, signUp } from "./helpers/auth";
-import { addMember, seedSite } from "./helpers/sites";
+import { addMember, publicView, seedSite } from "./helpers/sites";
 
 /**
  * M3-1 on the shared V1 origin (ADR 0006): which tenant a public page shows is
@@ -21,12 +21,13 @@ test.beforeEach(async ({ page }) => {
   await asUniqueVisitor(page);
 });
 
-test("the address decides the site: a signed-in Owner of one organization sees every site exactly as a stranger does", async ({ page, playwright, baseURL }) => {
+test("the address decides the site: a signed-in Owner of one organization sees every site exactly as a stranger does", async ({ page, browser }) => {
   const [alpha, beta] = await Promise.all([seedSite("alpha", "Alpha tagline"), seedSite("beta", "Beta tagline")]);
-  const stranger = await playwright.request.newContext({ baseURL });
+  const strangerContext = await browser.newContext();
+  const stranger = await strangerContext.newPage();
   const asStranger = async (address: string) => {
-    const html = await (await stranger.get(`/s/${address}`)).text();
-    return { tagline: html.match(/data-testid="tagline"[^>]*>([^<]*)</)?.[1], name: html.match(/data-testid="site-name"[^>]*>\s*<a[^>]*>([^<]*)</)?.[1] };
+    await stranger.goto(`/s/${address}`);
+    return publicView(stranger);
   };
 
   // Sign in, and become the Owner of Beta's organization.
@@ -39,9 +40,10 @@ test("the address decides the site: a signed-in Owner of one organization sees e
     const response = (await page.goto(`/s/${site.address}`))!;
     expect(response.status()).toBe(200);
     expect(await response.headerValue("set-cookie")).toBeNull();
-    const shown = { tagline: await page.getByTestId("tagline").textContent(), name: await page.getByTestId("site-name").textContent() };
+    const shown = await publicView(page);
     expect(shown).toEqual(await asStranger(site.address)); // identical to an anonymous visit
-    expect(shown.tagline).toBe(site.address === alpha.address ? "Alpha tagline" : "Beta tagline");
+    expect(shown.heading).toBe(site.name);
+    expect(shown.main).toContain(site.address === alpha.address ? "Alpha tagline" : "Beta tagline");
     await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0); // nothing of the admin on a public page
   }
 
@@ -49,9 +51,9 @@ test("the address decides the site: a signed-in Owner of one organization sees e
   expect((await page.goto(`/s/${alpha.address}-missing`))!.status()).toBe(404);
   // and one organization's address never shows the other's content.
   await page.goto(`/s/${alpha.address}`);
-  await expect(page.getByTestId("tagline")).not.toHaveText("Beta tagline");
+  expect((await publicView(page)).main).not.toContain("Beta tagline");
   expect((await currentSession(page)).status).toBe(200); // still signed in to the admin throughout
-  await stranger.dispose();
+  await strangerContext.close();
 });
 
 test("a public page is not a way into the admin: organization and site URLs still need the app's own checks", async ({ page, request }) => {
@@ -68,15 +70,14 @@ test("a public page is not a way into the admin: organization and site URLs stil
   expect((await page.request.get(`/render/address~${site.address}`)).status()).toBe(404);
 });
 
-test("a role lives on the server: for a member of any role the public site is a stranger's view, and nothing about roles or permissions reaches the browser", async ({ page, playwright, baseURL }) => {
+test("a role lives on the server: for a member of any role the public site is a stranger's view, and nothing about roles or permissions reaches the browser", async ({ page, browser }) => {
   const site = await seedSite("roles", "Same for everyone");
-  const stranger = await playwright.request.newContext({ baseURL });
-  const view = (html: string) => ({
-    tagline: html.match(/data-testid="tagline"[^>]*>([^<]*)</)?.[1],
-    name: html.match(/data-testid="site-name"[^>]*>\s*<a[^>]*>([^<]*)</)?.[1],
-  });
-  const asStranger = view(await (await stranger.get(`/s/${site.address}`)).text());
-  expect(asStranger).toEqual({ tagline: "Same for everyone", name: site.name });
+  const strangerContext = await browser.newContext();
+  const stranger = await strangerContext.newPage();
+  await stranger.goto(`/s/${site.address}`);
+  const asStranger = await publicView(stranger);
+  expect(asStranger.heading).toBe(site.name);
+  expect(asStranger.main).toContain("Same for everyone");
 
   const email = newEmail();
   await signUp(page, email);
@@ -88,7 +89,7 @@ test("a role lives on the server: for a member of any role the public site is a 
     const response = (await page.goto(`/s/${site.address}`))!;
     expect(response.status(), role).toBe(200);
     expect(await response.headerValue("set-cookie"), role).toBeNull();
-    expect({ tagline: await page.getByTestId("tagline").textContent(), name: await page.getByTestId("site-name").textContent() }, role).toEqual(asStranger);
+    expect(await publicView(page), role).toEqual(asStranger);
     await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0);
     expect(await page.content()).not.toMatch(/org\.manage|org\.members\.manage|"permissions"|"role":/);
 
@@ -109,11 +110,13 @@ test("a role lives on the server: for a member of any role the public site is a 
 
   // A visitor who claims to be somebody gets the same page as one who claims nothing.
   const claims = { "x-role": "owner", "x-permissions": "org.manage,sites.delete", "x-organization-id": site.orgId, cookie: "role=owner; permissions=org.manage" };
-  const loud = await stranger.get(`/s/${site.address}`, { headers: claims });
-  expect(loud.status()).toBe(200);
-  expect(loud.headers()["set-cookie"]).toBeUndefined();
-  expect(view(await loud.text())).toEqual(asStranger);
+  const loudContext = await browser.newContext({ extraHTTPHeaders: claims });
+  const loud = await loudContext.newPage();
+  const response = (await loud.goto(`/s/${site.address}`))!;
+  expect(response.status()).toBe(200);
+  expect(response.headers()["set-cookie"]).toBeUndefined();
+  expect(await publicView(loud)).toEqual(asStranger);
   // And the same claims make nobody a user: the session route still wants a session.
-  expect((await stranger.get("/api/app/session", { headers: claims })).status()).toBe(401);
-  await stranger.dispose();
+  expect((await loud.request.get("/api/app/session", { headers: claims })).status()).toBe(401);
+  await Promise.all([loudContext.close(), strangerContext.close()]);
 });

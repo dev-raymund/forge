@@ -92,3 +92,12 @@ CRON_SECRET=<preview secret> VERCEL_AUTOMATION_BYPASS_SECRET=<bypass> npx playwr
 ```
 
 This checks that tag invalidation propagates across Vercel's regions and instances, and that the CDN/ISR layer honours the tags from the inner `'use cache'` calls. Nothing in the design depends on local-only behaviour, but Vercel's caching is the one place where the platform, not our code, has the last word. So this is a real confirmation step, blocked only on account access.
+
+---
+
+## Addendum (M4-3, 2026-10-10): the spike is replaced by the renderer
+
+- The spike's read path is now the rendering module: `resolveSite(locator)` (tag `host:{address}`) and `loadPublicSite(orgId, siteId)` (tags `site:{id}`, `site:{id}:config`), in `src/modules/rendering/queries.ts` (ADR 0013). Decisions 3 and 5 above stand unchanged.
+- **Removed, as the M0-4 hand-off asked:** `spikes/rendering/`, `/dev/cache`, `POST /api/dev/revalidate`, `tests/e2e/rendering-spike.spec.ts`. The admin pattern of decision 4 lives in every admin page now. `tests/e2e/renderer.spec.ts` keeps the spike spec's guarantees on the real renderer: real 404s, `/render/*` internal, no admin, API or Server Action from a site path, framing and request-id headers, cached until invalidated, `updateTag` fresh on the next request with other sites untouched.
+- The background mode (`revalidateTag(…, { expire: 0 })`) has no caller until scheduled publishing (M7-2); it stays unit-tested in `src/platform/cache/cache.test.ts`. The Vercel confirmation of §"Still to confirm" now runs `tests/e2e/renderer.spec.ts`.
+- **A new lint rule:** a `'use cache'` function must take its tenant (`siteId`, `orgId`, `locator`, `host`, …) as an argument.

@@ -75,7 +75,9 @@ test("an Owner creates the first site: sites page → create → its page → in
   await page.goto(`/${org.slug}/sites`);
   await shown(page, "site-address").click();
   await expect(page).toHaveURL(`${baseURL}/s/${address}`);
-  await expect(page.getByTestId("site-name")).toHaveText("Corner Bakery");
+  // Drawn by its theme (M4-3): coming soon, with its name.
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Corner Bakery");
+  await expect(page.locator('[data-forge-theme][data-theme="studio"]')).toHaveCount(1);
 });
 
 test("the public site is the same for everyone, signed in or not, and an unknown address is a 404", async ({ page, browser }) => {
@@ -96,8 +98,8 @@ test("the public site is the same for everyone, signed in or not, and an unknown
   for (const visitor of [page, otherMember, anonymous]) {
     const response = (await visitor.goto(`/s/${address}`))!;
     expect(response.status()).toBe(200);
-    await expect(visitor.getByTestId("site-name")).toHaveText("Open House");
-    await expect(visitor.getByTestId("base-path")).toHaveText(`/s/${address}`);
+    await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Open House");
+    await expect(visitor.getByRole("banner").getByRole("link", { name: "Open House" })).toHaveAttribute("href", `/s/${address}`);
   }
   const unknown = (await anonymous.goto(`/s/nobody-${tail()}`))!;
   expect(unknown.status()).toBe(404);
@@ -139,7 +141,7 @@ test("an address someone else has: a friendly error at the field, what was typed
 
   // The original is still the original, in public.
   await other.goto(`/s/${address}`);
-  await expect(other.getByTestId("site-name")).toHaveText("The Original");
+  await expect(other.getByRole("heading", { level: 1 })).toHaveText("The Original");
   expect((await sitesIn(first.org.id)).map((site) => site.address)).toEqual([address]);
   await second.close();
 });
@@ -209,7 +211,7 @@ test("an Admin moves the site to another address; the Owner deletes it, and its 
   // The old address answers nothing; the new one is the site. Its admin URL did not change.
   expect((await page.goto(`/s/${from}`))!.status()).toBe(404);
   await page.goto(`/s/${to}`);
-  await expect(page.getByTestId("site-name")).toHaveText("Mover");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mover");
 
   // The Owner deletes it, typing its address to confirm.
   await page.goto(`/${owner.org.slug}/sites/${from}/settings`);

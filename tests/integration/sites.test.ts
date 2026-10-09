@@ -15,7 +15,7 @@ import { actorOf, addMember, newSlug, newTenant, refusalOf } from "../fixtures/t
 // The public resolver is a `'use cache'` function. Outside Next its cache calls have nothing to talk to: they are made
 // to do nothing, and the query behind them runs as it does in production.
 vi.mock("next/cache", async (original) => ({ ...(await original<typeof import("next/cache")>()), cacheLife: () => {}, cacheTag: () => {} }));
-const { resolveSite } = await import("@spikes/rendering/queries");
+const { resolveSite } = await import("@/modules/rendering");
 
 /**
  * M4-1 against real Postgres, as forge_app through PgBouncer: creating a site
@@ -517,12 +517,12 @@ describe("the public address resolves to the site, and only while it is the site
     const { site } = await createSite(a.ctx, input(address));
     const at = (value: string) => resolveSite({ kind: "address", address: value });
 
-    expect(await at(address)).toEqual({ siteId: site.id, orgId: a.org.id });
+    expect(await at(address)).toEqual({ siteId: site.id, orgId: a.org.id, isPrimary: true });
     expect(await at(newSlug("nobody"))).toBeNull();
 
     await changeSiteAddress(await siteCtx(a, address), { address: moved });
     expect(await at(address)).toBeNull();
-    expect(await at(moved)).toEqual({ siteId: site.id, orgId: a.org.id });
+    expect(await at(moved)).toEqual({ siteId: site.id, orgId: a.org.id, isPrimary: true });
 
     await deleteSite(await siteCtx(a, address));
     expect(await at(moved)).toBeNull();
@@ -536,7 +536,7 @@ describe("the public address resolves to the site, and only while it is the site
     const { site } = await createSite(a.ctx, input(address));
     const b = await newTenant();
     await createSite(b.ctx, input(newSlug("other")));
-    expect(await resolveSite({ kind: "address", address })).toEqual({ siteId: site.id, orgId: a.org.id });
+    expect(await resolveSite({ kind: "address", address })).toEqual({ siteId: site.id, orgId: a.org.id, isPrimary: true });
   });
 });
 

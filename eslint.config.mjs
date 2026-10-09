@@ -67,6 +67,18 @@ const noRoleChecks = [
   { selector: `SwitchStatement:has(SwitchCase > Literal.test[value=${ROLE_LITERAL}]) > ${ROLE_NAMED}.discriminant`, message: roleCheckMessage },
 ];
 
+// A `'use cache'` function's cache key is its arguments. Public cached data must be keyed by the tenant it
+// belongs to, or one site's data could be served for another (M4-3, ADR 0013): the function takes a site id,
+// an organization id, a site locator or a host. A file-level `'use cache'` has no arguments to check: refused.
+const TENANT_ARGUMENT = "/^(siteId|orgId|organizationId|locator|host|hostname|address)$/";
+const KEYLESS_FUNCTION = `:matches(FunctionDeclaration, FunctionExpression, ArrowFunctionExpression):not(:has(> Identifier.params[name=${TENANT_ARGUMENT}]))`;
+const cacheMessage = "A 'use cache' function must take its tenant as an argument (siteId, orgId, locator, host, …): the arguments are its cache key (ADR 0013).";
+const tenantKeyedCaches = [
+  // The directive itself, in the body of a function none of whose parameters names a tenant.
+  { selector: `${KEYLESS_FUNCTION} > BlockStatement > ExpressionStatement[directive=/^use cache/]`, message: cacheMessage },
+  { selector: "Program > ExpressionStatement[directive=/^use cache/]", message: cacheMessage },
+];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -93,7 +105,11 @@ const eslintConfig = defineConfig([
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/modules/tenancy/**"],
-    rules: { "no-restricted-syntax": ["error", ...noRoleChecks] },
+    rules: { "no-restricted-syntax": ["error", ...noRoleChecks, ...tenantKeyedCaches] },
+  },
+  {
+    files: ["src/modules/tenancy/**/*.{ts,tsx}"],
+    rules: { "no-restricted-syntax": ["error", ...tenantKeyedCaches] },
   },
   {
     files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],

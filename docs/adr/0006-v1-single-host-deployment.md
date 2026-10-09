@@ -134,7 +134,7 @@ No Redis, search engine, workers, extra databases, extra Vercel projects or extr
 ## Evidence
 
 - `src/platform/routing/hosts.test.ts` (56 cases): path mode, host mode, locators, address validation.
-- `tests/e2e/rendering-spike.spec.ts` (9 tests, production build on one host):
+- `tests/e2e/rendering-spike.spec.ts` (9 tests, production build on one host; replaced in M4-3 by `tests/e2e/renderer.spec.ts`, ADR 0013):
   - two sites at `/s/…` with their base paths;
   - real 404s for unknown or malformed addresses;
   - `/render` blocked;

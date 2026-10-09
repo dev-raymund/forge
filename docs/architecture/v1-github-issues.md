@@ -749,10 +749,16 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M1-7, M4-1
 
 **Acceptance criteria:**
-- [ ] `(sites)/render/[site]/layout.tsx` with `resolveSite(locator)` (`'use cache'`, tag `host:{address|hostname}`) → site, org, primary, status
-- [ ] Unknown site → platform "site not found"; `suspended` → "site unavailable"; `coming_soon` → theme's coming-soon page with `noindex` (preview token bypass comes in M7-4)
-- [ ] *(Host mode, post-V1)* Non-primary host → 308 to primary (except `/_forge/preview/*`)
-- [ ] Cached data functions take `siteId`/`host` as arguments; lint rule for `'use cache'` functions without a tenant argument
+- [x] `(sites)/render/[site]/layout.tsx` with `resolveSite(locator)` (`'use cache'`, tag `host:{address|hostname}`) → site, org, primary, status *(`resolveSite` → site, organization, `isPrimary`; the status with the rest of the public data in `loadPublicSite(orgId, siteId)`, tagged `site:{id}`, so a status change needs no address)*
+- [x] Unknown site → platform "site not found"; `suspended` → "site unavailable"; `coming_soon` → theme's coming-soon page with `noindex` (preview token bypass comes in M7-4) *(both platform pages answer 404; coming soon at every path)*
+- [ ] *(Host mode, post-V1)* Non-primary host → 308 to primary (except `/_forge/preview/*`) *(deferred with custom domains, M9: `resolveSite` returns `isPrimary` for it)*
+- [x] Cached data functions take `siteId`/`host` as arguments; lint rule for `'use cache'` functions without a tenant argument
+
+**Decisions taken here (ADR 0013):**
+- **A suspended site answers 404, not 503.** A Next.js page cannot answer 503, and the proxy cannot know a site's status without a database lookup on every request. Its page is neutral: no name, words or theme.
+- **A live site's home page** is the theme's page template with the site's name and tagline, plan Phase 4's "live placeholder"; every other path is a 404 with the theme's not-found page. Content routing is M5-6's.
+- **The theme draws its own not-found page:** the layout records the site it resolved for the request, and `not-found.tsx` (which Next gives no params) reads it.
+- **Removed:** `spikes/rendering/`, `/dev/cache`, `POST /api/dev/revalidate`, `tests/e2e/rendering-spike.spec.ts`, replaced by `tests/e2e/renderer.spec.ts`.
 
 **Likely files/modules:** `src/modules/rendering/*`, `src/app/(sites)/render/[site]/*`
 
@@ -790,6 +796,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:sites` `type:feature`
 
 **Description:** The site-level go-live switch.
+
+*From M4-3 (ADR 0013): the renderer reads the status from `loadPublicSite(orgId, siteId)`, tagged `site:{id}`; `setSiteStatus` returns `{ type: "site.statusChanged", siteId }` and the Server Action flushes it, like `chooseTheme`. Coming soon is `noindex, nofollow` at every path; live is `index, follow` at `/` (the theme's page template with the site's name and tagline until M5-6), and every other path is a themed 404. Add a `site.status_changed` event to the audit vocabulary.*
 
 **Depends on:** M4-3, M2-2
 
@@ -915,6 +923,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Render published content on sites.
 
 *From M4-4 (ADR 0012): add the new templates to `TEMPLATE_KEYS` and `TemplateProps` in `src/themes/types.ts`; the types then require them of every theme. Studio's and Journal's `page` template take the page's `title` and its content as `children`, inside `Prose`. Block renderers go in `src/themes/_kit/blocks/`, drawn with the kit's variables.*
+
+*From M4-3 (ADR 0013): replace the `home` / `page-not-found` decision for live sites in `modules/rendering/render-state.ts` with `resolveRoute(siteId, path)`, keeping coming soon and unavailable as they are. The page (`app/(sites)/render/[site]/[[...path]]/page.tsx`) calls `notFound()` for a missing route; `not-found.tsx` already draws the theme's not-found template from `requestSite()`. Cached reads must take `siteId` (lint).*
 
 **Depends on:** M5-3, M4-3, M4-4
 
