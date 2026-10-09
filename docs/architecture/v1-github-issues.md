@@ -722,6 +722,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 *From M4-1 (ADR 0011): `/{org}/sites/{site}` exists as a small page (`src/app/(admin)/[orgSlug]/sites/[siteSlug]/page.tsx`: name, status, public address, language, time zone); the overview proper replaces it. `/{org}/sites/{site}/settings` exists with two sections, the site's address and deleting it: add the general, reading and analytics groups to that page, above them. The site layout (`[siteSlug]/layout.tsx`) has the site's own nav (Overview, Settings): add links there. Onboarding step 2 can render `CreateSiteForm` from `@/modules/sites` as it is; its action redirects to the new site's page, which step 3 changes. `SelectField` (`components/admin/form.tsx`) and `SITE_LANGUAGES` / `siteTimeZones()` are the language and time zone fields. The settings' JSONB groups are created empty: their readers must apply the defaults.*
 
+*From M4-4 (ADR 0012): step 3 renders `ThemePicker` from `@/modules/sites` with `getAppearance(ctx)`'s `themes` and `theme`; its action (`chooseThemeAction`) is the same one `/…/appearance` uses. The site's nav (`siteNavItems`) already has Appearance between Overview and Settings.*
+
 **Depends on:** M4-1, M4-4
 
 **Acceptance criteria:**
@@ -741,6 +743,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M0-4 and ADR 0006: start from `spikes/rendering/queries.ts` (`resolveSite(locator)`) and the current `/render/[site]/[[...path]]` page; build every link from `siteBasePath()`. Keep static params for both segments, resolve the host outside `<Suspense>` (real 404s), skip the database for the build placeholder, and delete the `/dev/cache` and `/api/dev/revalidate` spike routes (ADR 0002).*
 
 *From M4-1 (ADR 0011): every change to an address already returns `domain.changed` events (create: the new address; move: old and new; delete: the old), and the Server Actions flush them with `updateTag`. A deleted site has no `domains` rows, so resolving its old address finds nothing; keep `resolveSite` reading `domains` only, or, if it starts joining `sites`, also exclude `deleted_at is not null`. New sites are `coming_soon` and render through the spike view until this issue's coming-soon page exists. `tests/integration/sites.test.ts` calls `resolveSite` with `next/cache` stubbed: move those checks with the function.*
+
+*From M4-4 (ADR 0012), **high priority, before public sign-ups**: `/s/{address}` still renders the M0-4 spike view (the site's name, its tagline and debug details: path, base path, cache time), for every status, and without `noindex`. Replace it here. The theme side is ready: `themeFor(site)` from `@/themes/render` takes the site's name, tagline, language, base path, `theme_key` and stored `site_settings.theme`, and returns the manifest and the context; render `<theme.Layout context>` around `theme.templates["coming-soon" | "not-found" | "page"]`. Set `robots: noindex` for coming-soon, `<html lang>` from the site's language, and import `@/themes/render` only from the site tree. Tag the render with `site:{id}` (already flushed on a theme switch) and `site:{id}:config` (settings, M8-1). `/dev/themes/{theme}/{template}` shows every template with made-up data.*
 
 **Depends on:** M1-7, M4-1
 
@@ -762,13 +766,21 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M1-1
 
 **Acceptance criteria:**
-- [ ] `src/themes/_kit`:
-  - settings schema (colours, fonts, header, footer, layout)
-  - CSS-variable builder from validated values
-  - curated fonts via `next/font`
-  - base components (Container, Nav, Prose)
-- [ ] `ThemeManifest` type + registry; Studio skeleton: layout, header/footer (one variant each), coming-soon, not-found, default page template
-- [ ] Theme picker (onboarding + `/…/appearance`) storing `sites.theme_key`; invalidates `site:{id}`
+- [x] `src/themes/_kit`:
+  - settings schema (colours, fonts, header, footer, layout) *(`tokens.ts`: strict `parseThemeSettings` for saving, lenient `readThemeSettings` for drawing)*
+  - CSS-variable builder from validated values *(`themeVariables`: eleven `--forge-*` properties, applied as `style`)*
+  - curated fonts via `next/font` *(ten, `next/font/google`, none preloaded; a page uses its two)*
+  - base components (Container, Nav, Prose) *(plus `ThemeFrame`, which sets the theme, fonts and variables, with a skip link)*
+- [x] `ThemeManifest` type + registry; Studio skeleton: layout, header/footer (one variant each), coming-soon, not-found, default page template *(header `classic`, footer `simple`)*
+- [x] Theme picker (onboarding + `/…/appearance`) storing `sites.theme_key`; invalidates `site:{id}` *(`/…/appearance`; onboarding's step 3 is M4-2's and reuses `ThemePicker`)*
+
+**Decisions taken here (ADR 0012):**
+- **Journal is registered in M4-4**, following the M4-4 instructions, although this file puts the Journal theme in M8-2. It has the same skeleton as Studio (layout, a `centered` header, a `simple` footer, page, coming-soon and not-found templates, styles). Its blog templates, archives and Lighthouse work stay in M8-2.
+- **A theme is a definition and a manifest.** `definition.ts` is pure data (what the admin and validation read, through `registry.ts`); `theme.ts` adds the components (what the renderer draws with, through `render.ts`). No theme component or CSS reaches the admin.
+- **The registry is an allow-list.** An unknown key is refused when chosen, and drawn with Studio when stored.
+- **Choosing a theme changes only `sites.theme_key`**, recorded as `site.theme_changed`, `site.settings.manage` (Owner, Admin). Settings, content and address stay byte for byte.
+- **No settings write path yet.** The appearance editor (M8-1) saves through `parseThemeSettings`; M4-4 has nothing that writes `site_settings.theme`.
+- **A development gallery,** `/dev/themes/{theme}/{template}`, draws every template with made-up data through the renderer's contract (`themeFor`). 404 in production, like `/dev/editor`.
 
 **Likely files/modules:** `src/themes/*`, `src/modules/sites/appearance.*`
 
@@ -901,6 +913,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:rendering` `type:feature` `risk:high`
 
 **Description:** Render published content on sites.
+
+*From M4-4 (ADR 0012): add the new templates to `TEMPLATE_KEYS` and `TemplateProps` in `src/themes/types.ts`; the types then require them of every theme. Studio's and Journal's `page` template take the page's `title` and its content as `children`, inside `Prose`. Block renderers go in `src/themes/_kit/blocks/`, drawn with the kit's variables.*
 
 **Depends on:** M5-3, M4-3, M4-4
 
@@ -1115,6 +1129,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Branding controls.
 
+*From M4-4 (ADR 0012): the schema is `src/themes/_kit/tokens.ts`. Save through `parseThemeSettings(input, theme, stored)`, which refuses unknown keys, unsafe values and other themes' options and keeps the stored options of other themes; then invalidate `site:{id}:config`. `readThemeSettings` already reads everything the editor will save. `readableOn` and `luminance` are there for the contrast warning. Studio draws only `classic` and `simple` today: the other variants are this issue's. The appearance page and its `ThemePicker` exist: add the editor below it.*
+
 **Depends on:** M4-4, M6-4
 
 **Acceptance criteria:**
@@ -1131,6 +1147,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:themes` `type:feature`
 
 **Description:** The second, blog-first theme on the kit.
+
+*From M4-4 (ADR 0012): Journal is already registered, with a skeleton (layout, `centered` header, `simple` footer, page, coming-soon and not-found templates, `styles.css`, defaults: Fraunces and Source Serif 4, narrow, relaxed). What remains: the blog templates (post, blog index, archives), the full styles, and the Lighthouse work.*
 
 **Depends on:** M8-1
 

@@ -45,6 +45,7 @@ const summary = {
   address: domains.hostname,
   language: sites.defaultLocale,
   timezone: sites.timezone,
+  theme: sites.themeKey,
   createdAt: sites.createdAt,
 };
 
@@ -86,13 +87,35 @@ export async function insertSite(tx: TenantTx, site: NewSite, address: string): 
   const [row] = await tx
     .insert(sites)
     .values({ organizationId: site.organizationId, name: site.name, slug: site.slug, defaultLocale: site.language, timezone: site.timezone, createdBy: site.createdBy })
-    .returning({ id: sites.id, slug: sites.slug, name: sites.name, status: sites.status, language: sites.defaultLocale, timezone: sites.timezone, createdAt: sites.createdAt });
+    .returning({
+      id: sites.id, slug: sites.slug, name: sites.name, status: sites.status, language: sites.defaultLocale, timezone: sites.timezone, theme: sites.themeKey,
+      createdAt: sites.createdAt,
+    });
   if (!row) throw new Error("The site was not inserted");
   await tx.insert(siteSettings).values({ siteId: row.id, organizationId: site.organizationId, updatedBy: site.createdBy });
   // The platform address: a `subdomain` row whose hostname is the label (ADR 0006). Nothing to verify, so it is active at once,
   // and it is the site's primary (and, in V1, only) address. A taken address fails here, on the table's unique constraint.
   await tx.insert(domains).values({ organizationId: site.organizationId, siteId: row.id, hostname: address, kind: "subdomain", isPrimary: true, status: "active" });
   return { ...row, address };
+}
+
+/** The site's theme (M4-4). Only the key changes: the site's settings, content and address stay exactly as they are. */
+export async function updateThemeKey(tx: TenantTx, organizationId: string, siteId: string, themeKey: string): Promise<boolean> {
+  const updated = await tx
+    .update(sites)
+    .set({ themeKey })
+    .where(and(eq(sites.organizationId, organizationId), eq(sites.id, siteId), isNull(sites.deletedAt)))
+    .returning({ id: sites.id });
+  return updated.length === 1;
+}
+
+/** `site_settings.theme` as stored, for the theme's settings to be read through its schema. */
+export async function storedThemeSettings(tx: TenantTx, organizationId: string, siteId: string): Promise<unknown> {
+  const [row] = await tx
+    .select({ theme: siteSettings.theme })
+    .from(siteSettings)
+    .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId)));
+  return row?.theme ?? {};
 }
 
 /** Points the site's platform address at a new label. The old one is free again the moment this commits. */

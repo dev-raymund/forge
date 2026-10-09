@@ -3,7 +3,7 @@
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
-import { submitChangeSiteAddress, submitCreateSite, submitDeleteSite } from "./site-forms";
+import { submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite } from "./site-forms";
 
 /**
  * The site forms' Server Actions (M4-1): session → ./site-forms.ts → invalidate → redirect or state.
@@ -25,4 +25,8 @@ export async function changeSiteAddressAction(orgSlug: string, siteSlug: string,
 
 export async function deleteSiteAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitDeleteSite(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
+}
+
+export async function chooseThemeAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitChooseTheme(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
 }

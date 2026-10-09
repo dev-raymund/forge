@@ -395,7 +395,10 @@ describe("the site forms", () => {
     expect(outcome).toEqual({
       state: { status: "success" },
       redirectTo: `/${slug}/sites/${address}`,
-      revalidate: [`/${slug}/sites`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`, `/${slug}/sites/${address}`, `/${slug}/sites/${address}/settings`],
+      revalidate: [
+        `/${slug}/sites`, `/${slug}/settings`, `/${slug}/members`, `/${slug}/activity`,
+        `/${slug}/sites/${address}`, `/${slug}/sites/${address}/settings`, `/${slug}/sites/${address}/appearance`,
+      ],
       invalidate: [{ type: "domain.changed", siteId: site!.id, hostnames: [address] }],
     });
     expect((await siteEventsOf(a.org.id))[0]).toMatchObject({ requestId: "req-site-1", ip: "203.0.113.4" });

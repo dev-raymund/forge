@@ -18,16 +18,17 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "site.created": { name: "Acme Bakery", address: "acme" },
   "site.address_changed": { name: "Acme Bakery", previousAddress: "acme", newAddress: "acme-bakery" },
   "site.deleted": { name: "Acme Bakery", address: "acme-bakery" },
+  "site.theme_changed": { name: "Acme Bakery", previousTheme: "studio", newTheme: "journal" },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3 and the three of M4-1, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1 and the one of M4-4, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
         "member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted",
         "member.role_changed", "member.removed", "member.left",
-        "site.created", "site.address_changed", "site.deleted",
+        "site.created", "site.address_changed", "site.deleted", "site.theme_changed",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
@@ -135,6 +136,9 @@ describe("an event as a sentence", () => {
       "Raymund moved the site Acme Bakery from /s/acme to /s/acme-bakery.",
     );
     expect(say("site.deleted", { name: "Acme Bakery", address: "acme-bakery" })).toBe("Raymund deleted the site Acme Bakery, which was at /s/acme-bakery.");
+    expect(say("site.theme_changed", { name: "Acme Bakery", previousTheme: "studio", newTheme: "journal" })).toBe(
+      "Raymund changed the theme of Acme Bakery from Studio to Journal.",
+    );
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {

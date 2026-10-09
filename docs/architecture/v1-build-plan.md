@@ -583,6 +583,7 @@ src/themes/
   3. It appears in the picker.
   No database change. A theme's settings schema carries `migrateSettings` for its own major versions.
 - **Not in V1:** marketplace, uploaded themes, custom CSS, editable template parts.
+- **As built (M4-4, ADR 0012):** each theme's manifest is two files: `definition.ts` (pure data, what the admin and validation read through `registry.ts`) and `theme.ts` (the components, what the renderer reads through `render.ts`). Radius is `none | small | medium | large` and density `compact | normal | relaxed`. Settings reach the page as `--forge-*` custom properties set as the theme root's `style`. Fonts: Inter, DM Sans, Manrope, Source Sans 3, Work Sans, Fraunces, Literata, Lora, Playfair Display, Source Serif 4.
 
 ---
 
@@ -966,7 +967,7 @@ forge/
 | `/…/media` | Media library | Author | 6 |
 | `/…/menus` | Header/footer menus | Editor | 8 |
 | `/…/seo`, `/…/seo/redirects` | SEO defaults, redirects | Editor | 8 |
-| `/…/appearance` | Theme + customisation | Admin | 4 (choose), 8 (customise) |
+| `/…/appearance` | Theme + customisation (M4-4: the theme picker, ADR 0012) | Admin | 4 (choose), 8 (customise) |
 | `/…/domains` | Site address (V1, in site settings until M9); custom domains *(post-V1)* | Admin | 4 / 9 |
 | `/…/settings`, `/…/settings/api-keys` | General/reading/analytics/social; the site address and deleting the site (M4-1, Owner for deleting); API keys | Admin | 4, 10 |
 | `/platform` | Staff console | staff allow-list | 12 |

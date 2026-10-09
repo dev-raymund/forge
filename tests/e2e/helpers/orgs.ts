@@ -175,3 +175,9 @@ export async function sitesIn(orgId: string): Promise<SiteRecord[]> {
 export async function setPlan(orgId: string, plan: "free" | "pro") {
   await inTenant(orgId, (c) => c.query("update subscriptions set plan_key = $2, status = $3 where organization_id = $1", [orgId, plan, plan === "free" ? "free" : "trialing"]));
 }
+
+/** The theme a site is drawn with (M4-4), as stored. */
+export async function themeOf(orgId: string, siteId: string): Promise<string | undefined> {
+  const { rows } = await inTenant(orgId, (c) => c.query<{ theme_key: string }>("select theme_key from sites where id = $1 and organization_id = $2", [siteId, orgId]));
+  return rows[0]?.theme_key;
+}

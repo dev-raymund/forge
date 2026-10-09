@@ -118,3 +118,10 @@ Actor types stay as the V1 table has them (`user`, `api_key`, `system`). Every M
 - **`record` takes an optional `siteId`**, as M3-5 left for it. It is checked like the organization and the actor: inside the INSERT, it must be a site of the transaction's own organization (RLS hides every other), or nothing is written and `record` throws. A site of another organization cannot be named, even by mistake.
 - **The activity page's site filter** now has its drop-down, listing the organization's sites. A deleted site's events are still in the log, but its name is no longer in the list, the same rule as former members.
 - **Evidence:** `tests/integration/audit.test.ts` ("every event is covered by a mutation", "a site-level event can only name a site of the transaction's organization"); `tests/integration/sites.test.ts` (each site event, its failure leaving no change, the filter).
+
+---
+
+## Addendum (M4-4, 2026-10-09): the theme switch
+
+- **`site.theme_changed`** (about a `site`; `name`, `previousTheme`, `newTheme`, as theme keys) is written by `modules/sites/appearance.service.ts` in the transaction that changes `sites.theme_key` (ADR 0012). Choosing the theme a site already has records nothing.
+- A stored key that is not a theme any more is recorded as its letters, digits and hyphens, so that the record can be written and the site can still be moved to a real theme.

@@ -5,6 +5,7 @@ import { OrganizationSuspended } from "@/components/admin/page-notice";
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { getSite, languageLabel, publicSitePath, sitePath, SiteStatusBadge } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
+import { activeThemeDefinition } from "@/themes/registry";
 
 export const metadata: Metadata = { title: "Site" };
 
@@ -46,6 +47,8 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
             "None"
           )}
         </dd>
+        <dt className="text-muted-foreground">Theme</dt>
+        <dd data-testid="site-theme">{activeThemeDefinition(site.theme).name}</dd>
         <dt className="text-muted-foreground">Language</dt>
         <dd data-testid="site-language">{languageLabel(site.language)}</dd>
         <dt className="text-muted-foreground">Time zone</dt>

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { SectionNav } from "@/components/admin/section-nav";
-import { canOpenSiteSettings, sitePath, siteSettingsPath } from "@/modules/sites";
+import { siteAppearancePath, siteNavItems, sitePath, siteSettingsPath } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
 /**
@@ -25,9 +25,7 @@ async function SiteLinks({ params }: Pick<LayoutProps<"/[orgSlug]/sites/[siteSlu
   const access = await requireSitePage(orgSlug, siteSlug, sitePath);
   if (access.status !== "ok") return null;
   const { ctx } = access;
-  const items = [
-    { href: sitePath(ctx.org.slug, ctx.site.slug), label: "Overview" },
-    ...(canOpenSiteSettings(ctx) ? [{ href: siteSettingsPath(ctx.org.slug, ctx.site.slug), label: "Settings" }] : []),
-  ];
+  const [org, site] = [ctx.org.slug, ctx.site.slug];
+  const items = siteNavItems({ overview: sitePath(org, site), appearance: siteAppearancePath(org, site), settings: siteSettingsPath(org, site) }, ctx);
   return <SectionNav label={`Site: ${ctx.site.name}`} items={items} />;
 }

@@ -17,6 +17,8 @@ export default defineConfig({
       "@spikes": path.resolve(import.meta.dirname, "spikes"),
       // The real package throws outside React Server Components.
       "server-only": path.resolve(import.meta.dirname, "tests/setup/server-only-stub.ts"),
+      // The theme kit's fonts (M4-4): the real loaders exist only after Next's compiler.
+      "next/font/google": path.resolve(import.meta.dirname, "tests/setup/next-font-google-stub.ts"),
     },
   },
   test: {

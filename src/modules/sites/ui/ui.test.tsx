@@ -2,20 +2,23 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 // The forms import their Server Actions; rendering needs only their identity.
-vi.mock("../actions", () => ({ createSiteAction: vi.fn(), changeSiteAddressAction: vi.fn(), deleteSiteAction: vi.fn() }));
+vi.mock("../actions", () => ({ createSiteAction: vi.fn(), changeSiteAddressAction: vi.fn(), deleteSiteAction: vi.fn(), chooseThemeAction: vi.fn() }));
 
 import type { Allowance } from "@/modules/billing/shared";
 import type { SiteSummary } from "../shared";
 import { CreateSiteForm } from "./create-site-form";
 import { DeleteSite, SiteAddressForm } from "./site-settings";
 import { SitesView, type SitesViewProps } from "./sites-view";
+import { ThemePicker } from "./theme-picker";
+import { THEMES } from "@/themes/registry";
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node);
 const count = (markup: string, pattern: RegExp) => markup.match(pattern)?.length ?? 0;
 
 const organization = { name: "Acme Studio", slug: "acme-studio" };
 const site = (name: string, slug: string, address: string | null, status: SiteSummary["status"] = "coming_soon"): SiteSummary => ({
-  id: `0199a000-0000-7000-8000-${slug.padStart(12, "0").slice(-12)}`, slug, name, status, address, language: "en", timezone: "UTC", createdAt: new Date("2026-10-01T00:00:00Z"),
+  id: `0199a000-0000-7000-8000-${slug.padStart(12, "0").slice(-12)}`, slug, name, status, address, language: "en", timezone: "UTC", theme: "studio",
+  createdAt: new Date("2026-10-01T00:00:00Z"),
 });
 const pro = (used: number): Allowance => ({ plan: "pro", key: "sites", used, limit: 5 });
 const view = (props: Partial<SitesViewProps>) => html(<SitesView organization={organization} role="Owner" sites={[]} allowance={pro(0)} {...props} />);
@@ -82,5 +85,45 @@ describe("the site forms", () => {
     const remove = html(<DeleteSite orgSlug="acme-studio" siteSlug="bakery" siteName="Bakery" confirmWith="acme-bakery" />);
     expect(remove).toContain("Delete site…");
     expect(remove).not.toContain('name="confirm"'); // the field exists only once the dialog is open
+  });
+});
+
+describe("the theme picker (M4-4)", () => {
+  const themes = THEMES.map(({ key, name, description, preview, defaults }) => ({ key, name, description, preview, colors: defaults.tokens.colors }));
+  const picker = (active: string) => html(<ThemePicker orgSlug="acme-studio" siteSlug="bakery" themes={themes} active={active} />);
+
+  it("offers every theme of the registry as a radio, with its name, description and sketch", () => {
+    const markup = picker("studio");
+    const radios = markup.match(/<input type="radio"[^>]*>/g) ?? [];
+    expect(radios).toHaveLength(2);
+    for (const radio of radios) expect(radio).toContain('name="theme"');
+    expect(markup).toMatch(/value="studio"/);
+    expect(markup).toMatch(/value="journal"/);
+    for (const theme of themes) {
+      expect(markup).toContain(`>${theme.name}<`);
+      expect(markup).toContain(theme.description);
+      expect(markup).toContain(`id="theme-${theme.key}-description"`);
+    }
+    expect(count(markup, /data-testid="theme-thumbnail"/g)).toBe(2);
+    expect(markup).toContain("<legend");
+    expect(markup).toContain("Use this theme");
+  });
+
+  it("the site's theme is the one checked, and the only one marked current", () => {
+    for (const active of ["studio", "journal"]) {
+      const markup = picker(active);
+      expect(count(markup, /data-testid="current-theme"/g)).toBe(1);
+      expect(markup).toMatch(new RegExp(`data-theme-key="${active}"[^]*?Current theme`));
+      const checked = (markup.match(/<input type="radio"[^>]*>/g) ?? []).filter((radio) => radio.includes('checked=""'));
+      expect(checked).toHaveLength(1);
+      expect(checked[0]).toContain(`value="${active}"`);
+    }
+  });
+
+  it("the sketches are decorative, drawn from each theme's own default colours", () => {
+    const markup = picker("studio");
+    expect(count(markup, /data-testid="theme-thumbnail"[^>]*aria-hidden="true"|aria-hidden="true"[^>]*data-testid="theme-thumbnail"/g)).toBe(2);
+    expect(markup).toContain("background:#ffffff");
+    expect(markup).toContain("background:#fffdf8");
   });
 });

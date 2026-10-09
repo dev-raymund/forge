@@ -21,6 +21,8 @@ const email = line(254);
 const slug = line(63);
 /** A site's public address: the label in `/s/{address}` (ADR 0006). */
 const address = line(63);
+/** A theme's key (`studio`). The activity page turns it into a word. */
+const themeKey = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 
 export const AUDIT_EVENTS = {
   "organization.created": {
@@ -94,6 +96,12 @@ export const AUDIT_EVENTS = {
     resourceType: "site",
     label: "Site deleted",
     metadata: z.object({ name: line(), address }),
+  },
+  // M4-4 (ADR 0012).
+  "site.theme_changed": {
+    resourceType: "site",
+    label: "Theme changed",
+    metadata: z.object({ name: line(), previousTheme: themeKey, newTheme: themeKey }),
   },
 } as const;
 
@@ -179,6 +187,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.created": (actor, m) => `${actor} created the site ${m.name} at /s/${m.address}.`,
   "site.address_changed": (actor, m) => `${actor} moved the site ${m.name} from /s/${m.previousAddress} to /s/${m.newAddress}.`,
   "site.deleted": (actor, m) => `${actor} deleted the site ${m.name}, which was at /s/${m.address}.`,
+  "site.theme_changed": (actor, m) => `${actor} changed the theme of ${m.name} from ${word(m.previousTheme)} to ${word(m.newTheme)}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -196,6 +205,7 @@ const PLAIN: Record<AuditAction, string> = {
   "site.created": "created a site",
   "site.address_changed": "changed a site’s address",
   "site.deleted": "deleted a site",
+  "site.theme_changed": "changed a site’s theme",
 };
 
 /**

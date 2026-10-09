@@ -12,9 +12,9 @@ export {
   DEFAULT_SITE_LANGUAGE, DEFAULT_SITE_TIME_ZONE, isSiteTimeZone, languageLabel, SITE_LANGUAGE_CODES, SITE_LANGUAGES, siteTimeZones,
 } from "./locale";
 export type { SiteLanguage } from "./locale";
-export { newSitePath, publicSitePath, sitePath, siteSettingsPath } from "./paths";
-export { changeSiteAddressSchema, createSiteSchema } from "./validation";
-export type { ChangeSiteAddressInput, CreateSiteInput } from "./validation";
+export { newSitePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+export { changeSiteAddressSchema, chooseThemeSchema, createSiteSchema } from "./validation";
+export type { ChangeSiteAddressInput, ChooseThemeInput, CreateSiteInput } from "./validation";
 
 export type SiteStatus = (typeof SITE_STATUSES)[number];
 
@@ -31,5 +31,7 @@ export type SiteSummary = {
   address: string | null;
   language: string;
   timezone: string;
+  /** `sites.theme_key` as stored (M4-4). Drawn with the default theme if it is not one the registry knows. */
+  theme: string;
   createdAt: Date;
 };

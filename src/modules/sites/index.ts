@@ -21,10 +21,15 @@ export type { SiteRef, SiteStatus } from "./repository";
 // Sites (M4-1).
 export { changeSiteAddress, createSite, deleteSite, getSite, listSites, siteAllowance } from "./sites.service";
 export type { SiteChange } from "./sites.service";
-export { canCreateSite, canDeleteSite, canManageSiteSettings, canOpenSiteSettings } from "./policies";
-export { SITES_NOTICES, submitChangeSiteAddress, submitCreateSite, submitDeleteSite } from "./site-forms";
+export { canCreateSite, canDeleteSite, canManageAppearance, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
+export { SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite } from "./site-forms";
 export type { SitesNotice } from "./site-forms";
-export { newSitePath, publicSitePath, sitePath, siteSettingsPath } from "./paths";
+export { newSitePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+
+// Appearance (M4-4, ADR 0012): the theme a site is drawn with.
+export { chooseTheme, getAppearance } from "./appearance.service";
+export type { Appearance, ThemeChoice } from "./appearance.service";
+export { ThemePicker } from "./ui/theme-picker";
 export { languageLabel, siteTimeZones } from "./locale";
 export { SITE_STATUS_LABELS } from "./shared";
 export type { SiteSummary } from "./shared";

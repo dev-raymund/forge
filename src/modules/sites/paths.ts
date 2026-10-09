@@ -12,5 +12,7 @@ export const sitePath = (orgSlug: string, siteSlug: string): string => `/${orgSl
 
 export const siteSettingsPath = (orgSlug: string, siteSlug: string): string => `${sitePath(orgSlug, siteSlug)}/settings`;
 
+export const siteAppearancePath = (orgSlug: string, siteSlug: string): string => `${sitePath(orgSlug, siteSlug)}/appearance`;
+
 /** Where the public can see the site: `/s/{address}` on the V1 host (ADR 0006). */
 export const publicSitePath = (address: string): string => siteBasePath({ kind: "address", address });

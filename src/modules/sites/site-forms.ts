@@ -5,8 +5,10 @@ import {
 } from "@/modules/tenancy";
 import { validationError } from "@/platform/errors";
 import { text } from "@/platform/forms";
-import { newSitePath, publicSitePath, sitePath, siteSettingsPath } from "./paths";
+import { chooseTheme } from "./appearance.service";
+import { newSitePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
 import { changeSiteAddress, createSite, deleteSite, getSite } from "./sites.service";
+import { themeDefinition } from "@/themes/registry";
 
 /**
  * What the site forms do when they are submitted (M4-1): everything about a
@@ -24,7 +26,12 @@ import { changeSiteAddress, createSite, deleteSite, getSite } from "./sites.serv
 const MODULE = "sites";
 
 /** Admin pages that show a site: the organization's (its list, its activity) and the site's own. */
-const pagesOfSite = (orgSlug: string, siteSlug: string) => [...pagesOf(orgSlug), sitePath(orgSlug, siteSlug), siteSettingsPath(orgSlug, siteSlug)];
+const pagesOfSite = (orgSlug: string, siteSlug: string) => [
+  ...pagesOf(orgSlug),
+  sitePath(orgSlug, siteSlug),
+  siteSettingsPath(orgSlug, siteSlug),
+  siteAppearancePath(orgSlug, siteSlug),
+];
 
 /** Query values the sites page turns into a confirmation after a redirect (`?done=deleted`). */
 export const SITES_NOTICES = ["deleted"] as const;
@@ -88,5 +95,26 @@ export async function submitDeleteSite(actor: Actor, orgSlug: string, siteSlug: 
     };
   } catch (error) {
     return refusal(error, meta, {}, siteSettingsPath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/**
+ * Chooses the site's theme (M4-4). The form sends a theme's key and nothing
+ * else is read from it: which site, and whether this person may, come from the
+ * URL and the session.
+ */
+export async function submitChooseTheme(actor: Actor, orgSlug: string, siteSlug: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { theme: text(formData.get("theme")) };
+  try {
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { site, changed, events } = await chooseTheme(ctx, values);
+    const name = themeDefinition(site.theme)?.name ?? site.theme;
+    return {
+      state: { status: "success", message: changed ? `The site now uses ${name}.` : `The site already uses ${name}.`, values: { theme: site.theme } },
+      revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, siteAppearancePath(orgSlug, siteSlug), {}, MODULE);
   }
 }

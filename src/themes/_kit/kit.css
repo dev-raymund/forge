@@ -1,0 +1,176 @@
+/*
+ * The theme kit's base (M4-4, plan §7). Everything is scoped to a site's page
+ * ([data-forge-theme], set by ThemeFrame) and driven by the custom properties
+ * themeVariables() builds from the site's validated settings. No site writes
+ * CSS of its own.
+ */
+
+body:has(> [data-forge-theme]) {
+  margin: 0;
+}
+
+[data-forge-theme] {
+  --forge-gap: calc(var(--forge-space, 1) * 1rem);
+  --forge-gutter: clamp(1rem, 4vw, 2rem);
+  --forge-muted: color-mix(in srgb, var(--forge-color-text) 70%, var(--forge-color-background));
+  --forge-line: color-mix(in srgb, var(--forge-color-text) 14%, var(--forge-color-background));
+  --forge-wash: color-mix(in srgb, var(--forge-color-primary) 6%, var(--forge-color-background));
+
+  position: relative;
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  background: var(--forge-color-background);
+  color: var(--forge-color-text);
+  font-family: var(--forge-font-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: anywhere;
+}
+
+[data-forge-theme] *,
+[data-forge-theme] *::before,
+[data-forge-theme] *::after {
+  box-sizing: border-box;
+}
+
+[data-forge-theme] :where(h1, h2, h3, h4) {
+  margin: 0;
+  font-family: var(--forge-font-heading);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+[data-forge-theme] :where(p, ul, ol, figure, blockquote, dl) {
+  margin: 0;
+}
+
+[data-forge-theme] :where(a) {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+
+[data-forge-theme] :where(img, svg, video) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+[data-forge-theme] :focus-visible {
+  outline: 3px solid var(--forge-color-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.forge-skip-link {
+  position: absolute;
+  top: -10rem;
+  left: 1rem;
+  z-index: 20;
+  padding: 0.6rem 1rem;
+  border-radius: var(--forge-radius);
+  background: var(--forge-color-text);
+  color: var(--forge-color-background);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.forge-skip-link:focus {
+  top: 1rem;
+}
+
+.forge-main {
+  flex: 1 0 auto;
+}
+
+.forge-container {
+  width: 100%;
+  max-width: calc(var(--forge-content-width) + 2 * var(--forge-gutter));
+  margin-inline: auto;
+  padding-inline: var(--forge-gutter);
+}
+
+.forge-container--wide {
+  max-width: calc(72rem + 2 * var(--forge-gutter));
+}
+
+.forge-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forge-nav a {
+  text-decoration: none;
+}
+
+.forge-nav a:hover {
+  text-decoration: underline;
+}
+
+.forge-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.25rem;
+  border-radius: var(--forge-radius);
+  background: var(--forge-color-primary);
+  color: var(--forge-color-on-primary);
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.forge-button:hover {
+  background: color-mix(in srgb, var(--forge-color-primary) 88%, var(--forge-color-text));
+}
+
+.forge-prose {
+  max-width: 68ch;
+}
+
+.forge-prose > * + * {
+  margin-top: calc(var(--forge-gap) * 1.15);
+}
+
+.forge-prose :where(h2) {
+  margin-top: calc(var(--forge-gap) * 2.4);
+  font-size: clamp(1.45rem, 1.2rem + 1vw, 1.9rem);
+}
+
+.forge-prose :where(h3) {
+  margin-top: calc(var(--forge-gap) * 1.8);
+  font-size: 1.3rem;
+}
+
+.forge-prose :where(a) {
+  color: var(--forge-color-primary);
+}
+
+.forge-prose :where(ul, ol) {
+  padding-left: 1.4em;
+}
+
+.forge-prose :where(li + li) {
+  margin-top: 0.35em;
+}
+
+.forge-prose :where(blockquote) {
+  padding-left: 1.1rem;
+  border-left: 3px solid var(--forge-color-accent);
+  color: var(--forge-muted);
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-forge-theme] * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { asUniqueVisitor, newEmail, signUp } from "./helpers/auth";
-import { auditOf, seedOrganization, setPlan, sitesIn, type SeededOrganization } from "./helpers/orgs";
+import { asUniqueVisitor } from "./helpers/auth";
+import { auditOf, seedOrganization, setPlan, sitesIn } from "./helpers/orgs";
+import { createForm, createSite, expectSiteCreated, memberOf } from "./helpers/site-ui";
 import { addMember, seedUser } from "./helpers/sites";
 
 /**
@@ -15,29 +16,9 @@ const tail = () => randomBytes(3).toString("hex");
 // Next keeps the page it left in the document, hidden: these look at what is on screen only.
 const shown = (page: Page, testId: string) => page.getByTestId(testId).filter({ visible: true });
 const orgNav = (page: Page) => page.getByRole("navigation", { name: "Organization" });
-const createForm = (page: Page) => page.getByRole("form", { name: "Create a site" });
 const formStatus = (page: Page) => page.locator('[data-form-alert][role="status"]').filter({ visible: true });
 const createSiteLink = (page: Page) => page.getByRole("main").getByRole("link", { name: "Create site" });
 const sidewaysScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-
-/** A signed-up user who is a member of a fresh organization, with this role. */
-async function memberOf(page: Page, role: "owner" | "admin" | "editor" | "author" | "viewer" = "owner", organization?: SeededOrganization) {
-  const org = organization ?? (await seedOrganization("sites"));
-  const email = newEmail();
-  await signUp(page, email);
-  await addMember(org.id, email, role);
-  return { org, email };
-}
-
-/** Fills and submits the create-site form on the current page. */
-async function createSite(page: Page, site: { name: string; address: string; language?: string; timezone?: string }) {
-  const form = createForm(page);
-  await form.getByLabel("Site name").fill(site.name);
-  await form.getByLabel("Site address").fill(site.address);
-  if (site.language) await form.getByLabel("Language").selectOption({ label: site.language });
-  if (site.timezone) await form.getByLabel("Time zone").selectOption(site.timezone);
-  await form.getByRole("button", { name: "Create site" }).click();
-}
 
 test.beforeEach(async ({ page }) => {
   await asUniqueVisitor(page);
@@ -68,6 +49,7 @@ test("an Owner creates the first site: sites page → create → its page → in
   await createSite(page, { name: "Corner Bakery", address: ` ${address.toUpperCase()} `, language: "Filipino", timezone: "Asia/Manila" });
 
   // The new site's page: its name, Coming soon, and where the public sees it.
+  await expectSiteCreated(page, org.slug, address);
   await expect(page).toHaveURL(`${baseURL}/${org.slug}/sites/${address}`);
   await expect(shown(page, "site-name")).toHaveText("Corner Bakery");
   await expect(shown(page, "site-status")).toHaveText("Coming soon");
@@ -101,6 +83,7 @@ test("the public site is the same for everyone, signed in or not, and an unknown
   const address = `public-${tail()}`;
   await page.goto(`/${org.slug}/sites/new`);
   await createSite(page, { name: "Open House", address });
+  await expectSiteCreated(page, org.slug, address);
   await expect(shown(page, "site-name")).toHaveText("Open House");
 
   // The member who made it, a signed-in member of another organization, and someone signed out.
@@ -126,6 +109,7 @@ test("an address someone else has: a friendly error at the field, what was typed
   const address = `taken-${tail()}`;
   await page.goto(`/${first.org.slug}/sites/new`);
   await createSite(page, { name: "The Original", address });
+  await expectSiteCreated(page, first.org.slug, address);
   await expect(shown(page, "site-name")).toHaveText("The Original");
 
   const second = await browser.newContext();
@@ -183,6 +167,7 @@ test("another organization's site: its admin pages are a 404, from that organiza
   const address = `private-${tail()}`;
   await page.goto(`/${owner.org.slug}/sites/new`);
   await createSite(page, { name: "Not Yours", address });
+  await expectSiteCreated(page, owner.org.slug, address);
   await expect(shown(page, "site-name")).toHaveText("Not Yours");
 
   const context = await browser.newContext();
@@ -202,6 +187,7 @@ test("an Admin moves the site to another address; the Owner deletes it, and its 
   const [from, to] = [`before-${tail()}`, `after-${tail()}`];
   await page.goto(`/${owner.org.slug}/sites/new`);
   await createSite(page, { name: "Mover", address: from });
+  await expectSiteCreated(page, owner.org.slug, from);
   await expect(shown(page, "site-name")).toHaveText("Mover");
 
   // An Admin: the site's settings have the address, and no way to delete it.
@@ -249,7 +235,9 @@ test("the plan's limit: on the Free plan, one site, and then no way to create an
   await page.goto(`/${org.slug}/sites`);
   await expect(shown(page, "site-allowance")).toHaveText("0 of 1 site on the Free plan.");
   await createSiteLink(page).click();
-  await createSite(page, { name: "Only One", address: `only-${tail()}` });
+  const only = `only-${tail()}`;
+  await createSite(page, { name: "Only One", address: only });
+  await expectSiteCreated(page, org.slug, only);
   await expect(shown(page, "site-name")).toHaveText("Only One");
 
   await page.goto(`/${org.slug}/sites`);
@@ -270,6 +258,7 @@ test("on a phone (360 px): the sites page and the create-site form fit, and work
   expect(await sidewaysScroll(page)).toBe(0);
   const address = `phone-${tail()}`;
   await createSite(page, { name: "A rather long name for a small bakery on a small screen", address, timezone: "Asia/Manila" });
+  await expectSiteCreated(page, org.slug, address);
   await expect(page).toHaveURL(`${baseURL}/${org.slug}/sites/${address}`);
   expect(await sidewaysScroll(page)).toBe(0);
   await page.goto(`/${org.slug}/sites`);

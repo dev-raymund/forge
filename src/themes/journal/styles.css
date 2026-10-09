@@ -1,0 +1,102 @@
+/* Journal (M4-4 skeleton; its blog templates and full styles are M8-2): blog first. Scoped to its sites. */
+
+[data-theme="journal"] {
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+
+[data-theme="journal"] .journal-header {
+  border-bottom: 3px double var(--forge-line);
+  background: var(--forge-color-background);
+}
+
+[data-theme="journal"] .journal-header[data-sticky] {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+[data-theme="journal"] .journal-header__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding-block: calc(var(--forge-gap) * 2.25) calc(var(--forge-gap) * 1.5);
+  text-align: center;
+}
+
+[data-theme="journal"] .journal-brand {
+  font-family: var(--forge-font-heading);
+  font-size: clamp(1.9rem, 1.4rem + 2.2vw, 2.8rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-decoration: none;
+}
+
+[data-theme="journal"] .journal-tagline {
+  color: var(--forge-muted);
+  font-style: italic;
+}
+
+[data-theme="journal"] .journal-header__end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+}
+
+[data-theme="journal"] .journal-notice,
+[data-theme="journal"] .journal-page {
+  padding-block: calc(var(--forge-gap) * 4) calc(var(--forge-gap) * 5);
+}
+
+[data-theme="journal"] .journal-notice h1,
+[data-theme="journal"] .journal-page__title {
+  margin-bottom: calc(var(--forge-gap) * 1.5);
+  font-size: clamp(2rem, 1.5rem + 2.2vw, 3rem);
+  font-weight: 600;
+  text-align: center;
+}
+
+[data-theme="journal"] .journal-notice p {
+  max-width: 34rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+[data-theme="journal"] .journal-notice p + p {
+  margin-top: calc(var(--forge-gap) * 1.25);
+}
+
+[data-theme="journal"] .journal-notice a,
+[data-theme="journal"] .forge-prose a {
+  color: var(--forge-color-primary);
+}
+
+[data-theme="journal"] .forge-prose {
+  margin-inline: auto;
+}
+
+[data-theme="journal"] .journal-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--forge-line);
+  color: var(--forge-muted);
+  font-size: 0.9rem;
+}
+
+[data-theme="journal"] .journal-footer__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: calc(var(--forge-gap) * 2.5);
+  text-align: center;
+}
+
+[data-theme="journal"] .journal-footer .forge-nav ul {
+  justify-content: center;
+}
