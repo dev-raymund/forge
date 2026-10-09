@@ -19,16 +19,17 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "site.address_changed": { name: "Acme Bakery", previousAddress: "acme", newAddress: "acme-bakery" },
   "site.deleted": { name: "Acme Bakery", address: "acme-bakery" },
   "site.theme_changed": { name: "Acme Bakery", previousTheme: "studio", newTheme: "journal" },
+  "site.settings_changed": { name: "Acme Bakery", group: "general", fields: ["tagline", "timezone"] },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1 and the one of M4-4, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4 and the one of M4-2, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
         "member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted",
         "member.role_changed", "member.removed", "member.left",
-        "site.created", "site.address_changed", "site.deleted", "site.theme_changed",
+        "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
@@ -138,6 +139,15 @@ describe("an event as a sentence", () => {
     expect(say("site.deleted", { name: "Acme Bakery", address: "acme-bakery" })).toBe("Raymund deleted the site Acme Bakery, which was at /s/acme-bakery.");
     expect(say("site.theme_changed", { name: "Acme Bakery", previousTheme: "studio", newTheme: "journal" })).toBe(
       "Raymund changed the theme of Acme Bakery from Studio to Journal.",
+    );
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "general", fields: ["name", "tagline", "instagram"] })).toBe(
+      "Raymund changed the general settings of Acme Bakery: name, tagline, Instagram.",
+    );
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "reading", fields: ["blogPath", "postsPerPage"] })).toBe(
+      "Raymund changed the reading settings of Acme Bakery: blog path, posts per page.",
+    );
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "analytics", fields: ["ga4MeasurementId"] })).toBe(
+      "Raymund changed the analytics settings of Acme Bakery: GA4 measurement ID.",
     );
   });
 

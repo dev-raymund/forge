@@ -145,3 +145,9 @@ A theme marketplace, uploaded themes, custom CSS, tenant code, editable template
 - `tests/integration/appearance.test.ts` (real Postgres): the default; choosing as Owner and Admin; only the key changes; switching back keeps the saved branding; the same theme records nothing; invalid keys; extra form fields ignored; Editors, Authors and Viewers refused; another organization's site not found; a deleted site; an audit failure and a refused commit leaving the old key; damaged stored settings; an unknown stored key.
 - `tests/integration/isolation.test.ts`: the theme form with another organization's site, from either URL.
 - `tests/e2e/appearance.spec.ts`: switch, reload, keyboard; an Editor; a phone; every gallery template (landmarks, one `h1`, the variables applied, the skip link, no script run, 360 px).
+
+---
+
+## Addendum (M4-2, 2026-10-10): social links in the theme context
+
+`ThemeContext.site.social` holds the site's social links (already validated as `https` addresses, ADR 0014), in the networks' order. Studio's and Journal's footers draw them as a "Social" navigation (`rel="me noopener noreferrer"`) when `settings.footer.showSocial` (default true; the switch is M8-1's). The theme context still has no analytics: the site layout emits those (ADR 0014 §3).

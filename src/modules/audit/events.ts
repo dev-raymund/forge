@@ -97,6 +97,12 @@ export const AUDIT_EVENTS = {
     label: "Site deleted",
     metadata: z.object({ name: line(), address }),
   },
+  // M4-2 (ADR 0014): which settings changed, by name. Never their values: the settings page shows those.
+  "site.settings_changed": {
+    resourceType: "site",
+    label: "Site settings changed",
+    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
+  },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
     resourceType: "site",
@@ -166,6 +172,12 @@ export function sanitizeMetadata(action: unknown, metadata: unknown): Record<str
 /** `editor` → `Editor`. Roles are stored as keys; this is all the activity page needs to show one. */
 const word = (key: unknown) => (typeof key === "string" && key ? `${key[0]!.toUpperCase()}${key.slice(1).replaceAll("_", " ")}` : "another role");
 const article = (label: string) => (/^[AEIOU]/.test(label) ? "an" : "a");
+/** A settings field's key as words: `postsPerPage` → `posts per page`, `ga4MeasurementId` → `GA4 measurement ID`. */
+const FIELD_WORDS: Record<string, string> = {
+  ga4MeasurementId: "GA4 measurement ID", plausibleDomain: "Plausible domain",
+  facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
+};
+const fieldWord = (key: string) => FIELD_WORDS[key] ?? key.replace(/([A-Z])/g, " $1").toLowerCase();
 
 type Details<A extends AuditAction> = z.output<(typeof AUDIT_EVENTS)[A]["metadata"]>;
 const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string } = {
@@ -188,6 +200,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.address_changed": (actor, m) => `${actor} moved the site ${m.name} from /s/${m.previousAddress} to /s/${m.newAddress}.`,
   "site.deleted": (actor, m) => `${actor} deleted the site ${m.name}, which was at /s/${m.address}.`,
   "site.theme_changed": (actor, m) => `${actor} changed the theme of ${m.name} from ${word(m.previousTheme)} to ${word(m.newTheme)}.`,
+  "site.settings_changed": (actor, m) => `${actor} changed the ${m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -206,6 +219,7 @@ const PLAIN: Record<AuditAction, string> = {
   "site.address_changed": "changed a site’s address",
   "site.deleted": "deleted a site",
   "site.theme_changed": "changed a site’s theme",
+  "site.settings_changed": "changed a site’s settings",
 };
 
 /**

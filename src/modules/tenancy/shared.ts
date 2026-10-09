@@ -10,7 +10,7 @@ export { checkOrgSlug, isReservedOrgSlug, ORG_SLUG_MAX, ORG_SLUG_MIN, RESERVED_O
 export { createOrganizationSchema, updateOrganizationSchema } from "./validation";
 export type { CreateOrganizationInput, UpdateOrganizationInput } from "./validation";
 
-export { ONBOARDING_PATH, orgPath, orgSettingsPath, orgSitesPath } from "./paths";
+export { ONBOARDING_PATH, onboardingSitePath, orgPath, orgSettingsPath, orgSitesPath } from "./paths";
 
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 

@@ -2,7 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 // The forms import their Server Actions; rendering needs only their identity.
-vi.mock("../actions", () => ({ createSiteAction: vi.fn(), changeSiteAddressAction: vi.fn(), deleteSiteAction: vi.fn(), chooseThemeAction: vi.fn() }));
+vi.mock("../actions", () => ({
+  createSiteAction: vi.fn(), changeSiteAddressAction: vi.fn(), deleteSiteAction: vi.fn(), chooseThemeAction: vi.fn(), updateSiteSettingsAction: vi.fn(),
+}));
 
 import type { Allowance } from "@/modules/billing/shared";
 import type { SiteSummary } from "../shared";
@@ -10,6 +12,10 @@ import { CreateSiteForm } from "./create-site-form";
 import { DeleteSite, SiteAddressForm } from "./site-settings";
 import { SitesView, type SitesViewProps } from "./sites-view";
 import { ThemePicker } from "./theme-picker";
+import { launchChecklist } from "../overview";
+import type { SiteOverview } from "../overview.service";
+import { SiteOverviewView } from "./site-overview";
+import { AnalyticsSettingsForm, GeneralSettingsForm, ReadingSettingsForm } from "./site-settings-forms";
 import { THEMES } from "@/themes/registry";
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node);
@@ -125,5 +131,74 @@ describe("the theme picker (M4-4)", () => {
     expect(count(markup, /data-testid="theme-thumbnail"[^>]*aria-hidden="true"|aria-hidden="true"[^>]*data-testid="theme-thumbnail"/g)).toBe(2);
     expect(markup).toContain("background:#ffffff");
     expect(markup).toContain("background:#fffdf8");
+  });
+});
+
+describe("the site overview (M4-2)", () => {
+  const overview = (over: Partial<SiteOverview> = {}): SiteOverview => ({
+    site: site("Bakery", "bakery", "acme-bakery"),
+    theme: { key: "journal", name: "Journal" },
+    tagline: "Fresh daily",
+    reading: { blogPath: "news", postsPerPage: 12 },
+    analytics: { ga4: true, plausible: false },
+    socialLinks: 1,
+    checklist: launchChecklist({ publishedPages: 0, menusWithItems: 0, seoConfigured: false, hasAddress: true, status: "coming_soon" }, { settings: "/acme-studio/sites/bakery/settings", publicSite: "/s/acme-bakery" }),
+    ...over,
+  });
+  const render = (props: { canManage?: boolean; activity?: { id: string; sentence: string; occurredAt: string }[] | null } = {}) =>
+    html(<SiteOverviewView orgSlug="acme-studio" overview={overview()} canManage={props.canManage ?? true} activity={props.activity ?? null} activityHref="/acme-studio/activity?site=x" />);
+
+  it("says the site's status, what it means, its public address and its theme", () => {
+    const markup = render();
+    expect(markup).toMatch(/data-testid="site-status"[^>]*>Coming soon</);
+    expect(markup).toContain("Visitors see a Coming soon page");
+    expect(markup).toMatch(/href="\/s\/acme-bakery"[^>]*data-testid="site-address"/);
+    expect(markup).toMatch(/data-testid="site-theme"[^>]*>Journal</);
+    expect(markup).toContain("Blog at <span class=\"font-medium\">/news</span>, 12 posts a page");
+    expect(markup).toMatch(/data-testid="site-analytics"[^>]*>Google Analytics 4</);
+  });
+
+  it("the checklist: five items, the address done and linked, the rest not available yet", () => {
+    const markup = render();
+    expect(count(markup, /data-testid="checklist-item"/g)).toBe(5);
+    expect(count(markup, /data-done=""/g)).toBe(1);
+    expect(markup).toContain("1 of 5 done.");
+    expect(count(markup, /Not available yet\./g)).toBe(4);
+  });
+
+  it("links to change things only for those who may; recent activity only for those who may read the log", () => {
+    expect(count(render({ canManage: true }), />Change</g)).toBe(5);
+    expect(render({ canManage: false })).not.toContain(">Change<");
+    expect(render()).not.toContain("Recent activity");
+    const withActivity = render({ activity: [{ id: "1", sentence: "Ada created the site Bakery at /s/acme-bakery.", occurredAt: "2026-10-01T00:00:00.000Z" }] });
+    expect(withActivity).toContain("Recent activity");
+    expect(withActivity).toContain("Ada created the site Bakery at /s/acme-bakery.");
+    expect(withActivity).toContain('href="/acme-studio/activity?site=x"');
+  });
+});
+
+describe("the settings forms (M4-2)", () => {
+  const bound = { orgSlug: "acme-studio", siteSlug: "bakery", version: 7 };
+
+  it("each carries the version it was rendered with", () => {
+    const forms = [
+      html(<GeneralSettingsForm {...bound} timeZones={["UTC"]} values={{ name: "Bakery", tagline: "", language: "en", timezone: "UTC" }} />),
+      html(<ReadingSettingsForm {...bound} address="acme-bakery" values={{ blogPath: "blog", postsPerPage: 10 }} />),
+      html(<AnalyticsSettingsForm {...bound} values={{ ga4MeasurementId: "", plausibleDomain: "" }} />),
+    ];
+    for (const markup of forms) expect(markup).toMatch(/<input type="hidden" name="version" value="7"\/>/);
+  });
+
+  it("general: name, tagline, language, time zone, and a field for each social network", () => {
+    const markup = html(<GeneralSettingsForm {...bound} timeZones={["UTC", "Asia/Manila"]} values={{ name: "Bakery", tagline: "Fresh", language: "fil", timezone: "Asia/Manila", instagram: "https://instagram.com/b" }} />);
+    for (const field of ["name", "tagline", "language", "timezone", "facebook", "instagram", "x", "linkedin", "youtube", "tiktok"]) expect(markup, field).toMatch(new RegExp(`name="${field}"`));
+    expect(markup).toContain('value="https://instagram.com/b"');
+    expect(markup).toContain("<legend");
+  });
+
+  it("reading says it takes effect once the site has posts; analytics that only two services' code is added", () => {
+    expect(html(<ReadingSettingsForm {...bound} address="acme-bakery" values={{ blogPath: "news", postsPerPage: 10 }} />)).toContain("Your posts will be at /s/acme-bakery/news.");
+    expect(html(<ReadingSettingsForm {...bound} address="a" values={{ blogPath: "blog", postsPerPage: 10 }} />)).toContain("nothing on the site uses them");
+    expect(html(<AnalyticsSettingsForm {...bound} values={{ ga4MeasurementId: "G-ABC1234567", plausibleDomain: "" }} />)).toContain("No other code can be added.");
   });
 });

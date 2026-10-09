@@ -143,3 +143,9 @@ No Redis, search engine, workers, extra databases, extra Vercel projects or extr
   - caching and both invalidation modes.
 - `tests/unit/lint-boundaries.test.ts`: the session can't be imported under `(sites)/`.
 - `tests/e2e/cron.spec.ts`: the daily cron enqueues and runs jobs.
+
+---
+
+## Addendum (M4-2, 2026-10-10): §5 is built
+
+The GA4 and Plausible settings are emitted as §5 allows, on live sites only, through `next/script`, from IDs validated when saved and again when written (ADR 0014 §3). No other third-party or tenant script reaches a site page. M12-1's `script-src` must allow `https://www.googletagmanager.com` and `https://plausible.io` on site pages.

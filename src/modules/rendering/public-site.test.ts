@@ -13,6 +13,8 @@ const site: PublicSite = {
   timezone: "Asia/Manila",
   themeKey: "journal",
   themeSettings: { tokens: { colors: { primary: "#123456" } } },
+  social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
+  analytics: { ga4MeasurementId: "G-ABC1234567" },
 };
 
 describe("the public context", () => {
@@ -21,7 +23,9 @@ describe("the public context", () => {
     expect(renderable).toEqual({
       name: "Acme <Bakery>", tagline: "Bread & more", language: "fil", basePath: "/s/acme", themeKey: "journal",
       themeSettings: { tokens: { colors: { primary: "#123456" } } },
+      social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
     });
+    expect(renderable).not.toHaveProperty("analytics"); // the theme never sees the analytics IDs: the layout emits them
     expect(JSON.stringify(renderable)).not.toContain(site.id);
   });
 

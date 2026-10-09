@@ -1,7 +1,7 @@
 import "server-only";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { TenantTx } from "@/platform/db";
-import { domains } from "@/platform/db/schema";
+import { domains, entries, menus } from "@/platform/db/schema";
 import { siteSettings, sites, SITE_STATUSES } from "./schema";
 import type { SiteSummary } from "./shared";
 
@@ -116,6 +116,56 @@ export async function storedThemeSettings(tx: TenantTx, organizationId: string, 
     .from(siteSettings)
     .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId)));
   return row?.theme ?? {};
+}
+
+/** The site's settings groups as stored, and their version (M4-2). Null if the site has no settings row. */
+export async function readSettingsRow(tx: TenantTx, organizationId: string, siteId: string) {
+  const [row] = await tx
+    .select({ general: siteSettings.general, reading: siteSettings.reading, analytics: siteSettings.analytics, seo: siteSettings.seo, version: siteSettings.version })
+    .from(siteSettings)
+    .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId)));
+  return row ?? null;
+}
+
+export type SettingsPatch = { general?: Record<string, unknown>; reading?: Record<string, unknown>; analytics?: Record<string, unknown> };
+
+/**
+ * Writes settings groups, if the row is still at the version the person
+ * loaded (optimistic concurrency, plan §4). Returns the new version, or null
+ * when someone else saved in between.
+ */
+export async function saveSettings(tx: TenantTx, organizationId: string, siteId: string, expectedVersion: number, patch: SettingsPatch, updatedBy: string): Promise<number | null> {
+  const [row] = await tx
+    .update(siteSettings)
+    .set({ ...patch, version: sql`${siteSettings.version} + 1`, updatedBy })
+    .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId), eq(siteSettings.version, expectedVersion)))
+    .returning({ version: siteSettings.version });
+  return row?.version ?? null;
+}
+
+/**
+ * What the launch checklist is made of (M4-2), counted from the tables that
+ * hold it: published pages (the content module's), menus with items (the
+ * navigation module's). Read in the organization's context, for this site.
+ */
+export async function launchCounts(tx: TenantTx, organizationId: string, siteId: string): Promise<{ publishedPages: number; menusWithItems: number }> {
+  const [pages] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(entries)
+    .where(and(eq(entries.organizationId, organizationId), eq(entries.siteId, siteId), eq(entries.type, "page"), eq(entries.status, "published"), isNull(entries.deletedAt)));
+  const [withItems] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(menus)
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.siteId, siteId), sql`jsonb_array_length(${menus.items}) > 0`));
+  return { publishedPages: pages?.n ?? 0, menusWithItems: withItems?.n ?? 0 };
+}
+
+/** The general settings that are columns of the site itself. */
+export async function updateSiteColumns(tx: TenantTx, organizationId: string, siteId: string, values: { name: string; language: string; timezone: string }): Promise<void> {
+  await tx
+    .update(sites)
+    .set({ name: values.name, defaultLocale: values.language, timezone: values.timezone })
+    .where(and(eq(sites.organizationId, organizationId), eq(sites.id, siteId), isNull(sites.deletedAt)));
 }
 
 /** Points the site's platform address at a new label. The old one is free again the moment this commits. */

@@ -14,5 +14,8 @@ export const siteSettingsPath = (orgSlug: string, siteSlug: string): string => `
 
 export const siteAppearancePath = (orgSlug: string, siteSlug: string): string => `${sitePath(orgSlug, siteSlug)}/appearance`;
 
+/** Onboarding, step 3 (M4-2): the new site's theme. Step 2 is the tenancy module's `onboardingSitePath`. */
+export const onboardingThemePath = (orgSlug: string, siteSlug: string): string => `/onboarding/${orgSlug}/${siteSlug}`;
+
 /** Where the public can see the site: `/s/{address}` on the V1 host (ADR 0006). */
 export const publicSitePath = (address: string): string => siteBasePath({ kind: "address", address });

@@ -70,7 +70,7 @@ describe("onboarding: creating the first organization", () => {
     const before = Date.now();
     const outcome = await submitCreateOrganization(actor, form({ name: "  First Org ", slug: ` ${slug.toUpperCase()} ` }));
 
-    expect(outcome).toEqual({ state: { status: "success" }, redirectTo: `/${slug}/sites`, revalidate: pages(slug) });
+    expect(outcome).toEqual({ state: { status: "success" }, redirectTo: `/onboarding/${slug}`, revalidate: pages(slug) }); // on to step 2 (M4-2)
     const [organization] = await listOrganizations(actor);
     expect(organization).toEqual({ id: expect.any(String), slug, name: "First Org", status: "active", role: "owner" });
     expect(await rolesOf(organization!.id)).toEqual({ [user.id]: "owner" });
@@ -129,7 +129,7 @@ describe("onboarding: creating the first organization", () => {
         role: "viewer", status: "suspended", planKey: "free", permissions: "org.manage",
       }),
     );
-    expect(outcome.redirectTo).toBe(`/${slug}/sites`);
+    expect(outcome.redirectTo).toBe(`/onboarding/${slug}`);
     const [organization] = await listOrganizations(actorOf(user));
     expect(organization).toMatchObject({ slug, status: "active", role: "owner" });
     expect(organization!.id).not.toBe(victim.org.id);
@@ -147,7 +147,7 @@ describe("onboarding: creating the first organization", () => {
     expect(outcome.redirectTo).toBe("/login?next=%2Fonboarding&reason=session");
     // The slug is still free: nothing was written.
     const user = await createUser();
-    expect((await submitCreateOrganization(actorOf(user), form({ name: "Real", slug }))).redirectTo).toBe(`/${slug}/sites`);
+    expect((await submitCreateOrganization(actorOf(user), form({ name: "Real", slug }))).redirectTo).toBe(`/onboarding/${slug}`);
   });
 });
 
@@ -497,7 +497,7 @@ describe("the slug in the URL names an organization; it does not grant one", () 
 });
 
 describe("where a form may send the browser", () => {
-  it("only to this app's own pages: the organization's sites, its settings, or the login page with a way back", async () => {
+  it("only to this app's own pages: onboarding's next step, the organization's sites, its settings, or the login page with a way back", async () => {
     const a = await newTenant();
     const target = await addMember(a.org, "viewer");
     const next = newSlug("safe");
@@ -507,7 +507,7 @@ describe("where a form may send the browser", () => {
       (await submitChangeOrganizationSlug(target.actor, a.org.slug, form({ slug: next }))).redirectTo,
     ];
     for (const destination of destinations) {
-      expect(destination).toMatch(/^\/[a-z0-9-]+(\/sites|\/settings\?changed=(url|owner))$/);
+      expect(destination).toMatch(/^\/(onboarding\/[a-z0-9-]+|[a-z0-9-]+(\/sites|\/settings\?changed=(url|owner)))$/);
       expect(safeNextPath(destination)).toBe(destination); // a path of this app, by the same rule the login redirect uses
     }
   });

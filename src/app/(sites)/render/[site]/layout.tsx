@@ -1,4 +1,4 @@
-import { htmlLang, isShowable, publicSiteFor, rememberRequestSite, renderableSite } from "@/modules/rendering";
+import { htmlLang, isShowable, publicSiteFor, rememberRequestSite, renderableSite, SiteAnalytics } from "@/modules/rendering";
 import { BUILD_PLACEHOLDER_SITE, decodeSiteLocator } from "@/platform/routing/hosts";
 import { themeFor } from "@/themes/render";
 
@@ -40,6 +40,8 @@ export default async function SiteRootLayout({ children, params }: LayoutProps<"
   return (
     <Bare lang={htmlLang(site)}>
       <Layout context={context}>{children}</Layout>
+      {/* Analytics only once the site is live (M4-2): a coming-soon page is mostly seen by its own team. */}
+      {site.status === "live" ? <SiteAnalytics analytics={site.analytics} /> : null}
     </Bare>
   );
 }

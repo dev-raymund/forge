@@ -51,6 +51,7 @@ describe("the audit log has one writer", () => {
       "src/modules/tenancy/invitations.service.ts": ["member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted"],
       "src/modules/sites/sites.service.ts": ["site.created", "site.address_changed", "site.deleted"],
       "src/modules/sites/appearance.service.ts": ["site.theme_changed"],
+      "src/modules/sites/settings.service.ts": ["site.settings_changed"],
     };
     for (const [file, actions] of Object.entries(expected)) {
       const source = readFileSync(path.join(ROOT, file), "utf8");

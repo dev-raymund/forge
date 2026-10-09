@@ -951,7 +951,7 @@ forge/
 |---|---|---|---|
 | `/login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password` | Authentication | — | 2 |
 | `/invite/[token]` | Accept invitation: an account with the invited address; single use; 7 days (M3-4, ADR 0001) | — | 3 |
-| `/onboarding` | Org → site → theme wizard | signed in | 3–4 |
+| `/onboarding` | Org → site → theme wizard (M4-2: steps 2 and 3 at `/onboarding/{orgSlug}` and `/onboarding/{orgSlug}/{siteSlug}`; progress derived from what exists, ADR 0014) | signed in | 3–4 |
 | `/account` | Profile, password, sessions | signed in | 2 |
 | `/` | Redirect to last org's sites, or `/onboarding`. "Last" is the organization joined most recently, from the memberships; nothing is stored (M3-3) | signed in | 3 |
 | `/{orgSlug}` | Redirect to `/{orgSlug}/sites` (since M4-1: a route handler that looks nothing up; in-app links go straight to the sites, ADR 0011) | Viewer | 3–4 |
@@ -960,7 +960,7 @@ forge/
 | `/{orgSlug}/billing` | Plan, trial, upgrade, portal | Owner | 11 |
 | `/{orgSlug}/settings` | Org name/slug, transfer ownership | Owner to change anything; an Admin may open it read-only (§13, M3-3, ADR 0009) | 3 |
 | `/{orgSlug}/activity` | Audit log: sentences, newest first, 25 a page; filters for event, person and day (M3-5, ADR 0010) | Admin (`org.activity.read`) | 3 |
-| `/{orgSlug}/sites/{siteSlug}` | Site overview + publish site + checklist (M4-1: the site's name, status and public address; the rest is M4-2) | Viewer | 4 |
+| `/{orgSlug}/sites/{siteSlug}` | Site overview + publish site + checklist (M4-2: status, public address, theme, setup, checklist, recent activity; publishing is M4-5) | Viewer | 4 |
 | `/…/pages`, `/…/pages/new`, `/…/pages/[entryId]` | Page tree, new-page form, editor | Viewer (read) / Editor | 5 |
 | `/…/posts`, `/…/posts/new`, `/…/posts/[entryId]` | Post list, new-post form, editor | Viewer (read) / Author | 5 |
 | `/…/posts/categories`, `/…/posts/tags` | Terms | Editor | 5 |

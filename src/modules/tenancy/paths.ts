@@ -5,6 +5,9 @@
 
 export const ONBOARDING_PATH = "/onboarding";
 
+/** Onboarding, step 2 (M4-2): the organization's first site. Step 3 is the sites module's `onboardingThemePath`. */
+export const onboardingSitePath = (orgSlug: string): string => `${ONBOARDING_PATH}/${orgSlug}`;
+
 /**
  * The organization's own URL, as people type and read it. Since M4-1 it is a
  * redirect to its sites (plan §19): link to `orgSitesPath`, not here.

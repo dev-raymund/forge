@@ -44,7 +44,14 @@ export type NavItem = { readonly label: string; readonly href: string };
  * on a site's own host later, ADR 0006).
  */
 export type ThemeContext = {
-  readonly site: { readonly name: string; readonly tagline: string; readonly language: string; readonly basePath: string };
+  readonly site: {
+    readonly name: string;
+    readonly tagline: string;
+    readonly language: string;
+    readonly basePath: string;
+    /** The site's social links (M4-2), already validated as `https` addresses. Drawn when `settings.footer.showSocial`. */
+    readonly social: readonly NavItem[];
+  };
   /** The site's settings for this theme, already read through the schema (./_kit/tokens.ts `readThemeSettings`). */
   readonly settings: KitSettings;
   readonly options: Readonly<Record<string, unknown>>;

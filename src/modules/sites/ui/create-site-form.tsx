@@ -24,8 +24,8 @@ const noSubscription = () => () => {};
 const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const serverZone = () => null;
 
-export function CreateSiteForm({ orgSlug, timeZones }: { orgSlug: string; timeZones: readonly string[] }) {
-  const { state, pending, fieldErrors, message, formProps } = useActionForm(createSiteAction.bind(null, orgSlug), createSiteSchema);
+export function CreateSiteForm({ orgSlug, timeZones, flow = "admin" }: { orgSlug: string; timeZones: readonly string[]; flow?: "admin" | "onboarding" }) {
+  const { state, pending, fieldErrors, message, formProps } = useActionForm(createSiteAction.bind(null, orgSlug, flow), createSiteSchema);
   const [name, setName] = useState(state.values?.name ?? "");
   const [address, setAddress] = useState(state.values?.address ?? "");
   const [addressEdited, setAddressEdited] = useState(false);
@@ -86,7 +86,7 @@ export function CreateSiteForm({ orgSlug, timeZones }: { orgSlug: string; timeZo
       </div>
       <p className="text-sm text-muted-foreground">New sites start as Coming soon. You publish a site when it is ready.</p>
       <SubmitButton pending={pending} pendingLabel="Creating…">
-        Create site
+        {flow === "onboarding" ? "Create site and continue" : "Create site"}
       </SubmitButton>
     </form>
   );

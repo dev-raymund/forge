@@ -35,6 +35,7 @@ describe("an address → its site", () => {
     expect(await at(address)).toEqual({ siteId: site.id, orgId: tenant.org.id, isPrimary: true });
     expect(await loadPublicSite(tenant.org.id, site.id)).toEqual({
       id: site.id, name: "Public Site", tagline: "", status: "coming_soon", language: "fil", timezone: "Asia/Manila", themeKey: "studio", themeSettings: {},
+      social: [], analytics: {},
     });
   });
 
@@ -88,7 +89,7 @@ describe("what is rendered", () => {
     expect(theme.key).toBe("studio");
     expect(context.settings.tokens.colors).toMatchObject({ primary: "#1d4ed8", accent: "#00ff00" });
     expect(context.settings.header.variant).toBe("classic");
-    expect(context.site).toEqual({ name: "Public Site", tagline: "", language: "fil", basePath: `/s/${address}` });
+    expect(context.site).toEqual({ name: "Public Site", tagline: "", language: "fil", basePath: `/s/${address}`, social: [] });
   });
 });
 

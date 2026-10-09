@@ -25,7 +25,7 @@ export {
 export { chooseHomeOrganization, homePath } from "./home";
 export { requireOrgPage, requireSitePage } from "./page-access";
 export type { OrgPageAccess, SitePageAccess } from "./page-access";
-export { ONBOARDING_PATH, orgPath, orgSettingsPath, orgSitesPath } from "./paths";
+export { ONBOARDING_PATH, onboardingSitePath, orgPath, orgSettingsPath, orgSitesPath } from "./paths";
 export { looksLikeOrgSlug } from "./slugs";
 export { ROLE_LABELS } from "./shared";
 export {

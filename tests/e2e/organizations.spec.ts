@@ -84,7 +84,10 @@ test("a new user: sign up → verify → log in → onboarding → create organi
   await expect(url).toHaveValue(slug);
   await url.press("Enter");
 
-  // The organization's home, at its own URL, with the creator as its Owner.
+  // On to onboarding's step 2, the first site (M4-2); the organization's home is at its own URL, with the creator as its Owner.
+  await expect(page).toHaveURL(`${baseURL}/onboarding/${slug}`);
+  await expect(shown(page, "onboarding-step")).toHaveText("Step 2 of 3");
+  await page.goto(`/${slug}/sites`);
   await expect(page).toHaveURL(`${baseURL}/${slug}/sites`);
   await expect(orgName(page)).toHaveText("Acme Studio");
   await expect(memberRole(page)).toHaveText("Owner");
@@ -101,10 +104,11 @@ test("a new user: sign up → verify → log in → onboarding → create organi
   expect(Number(subscription.trial_days)).toBeLessThanOrEqual(14);
 
   // From now on `/` is that organization, onboarding is behind them, and logging in lands there.
-  for (const path of ["/", "/onboarding"]) {
-    await page.goto(path);
-    await expect(page, path).toHaveURL(`${baseURL}/${slug}/sites`);
-  }
+  await page.goto("/");
+  await expect(page).toHaveURL(`${baseURL}/${slug}/sites`);
+  // Onboarding resumes where it was left (M4-2): the organization has no site yet.
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(`${baseURL}/onboarding/${slug}`);
   await logOut(page);
   await submitLogin(page, email);
   await expect(page).toHaveURL(`${baseURL}/${slug}/sites`);
@@ -504,7 +508,9 @@ test.describe("on a phone", () => {
     const id = tail();
     await page.getByLabel("Organization name").fill(`A Rather Long Organization Name For A Small Screen ${id}`);
     await page.getByRole("button", { name: "Create organization" }).click();
-    await expect(page).toHaveURL(new RegExp(`^${baseURL}/a-rather-long-organization-name-for-a-small-screen-${id}/sites$`));
+    await expect(page).toHaveURL(new RegExp(`^${baseURL}/onboarding/a-rather-long-organization-name-for-a-small-screen-${id}$`));
+    expect(await sidewaysScroll(page), "onboarding, step 2").toBeLessThanOrEqual(0);
+    await page.goto(`/a-rather-long-organization-name-for-a-small-screen-${id}/sites`);
     await expect(orgName(page)).toBeVisible();
     expect(await sidewaysScroll(page), "organization home").toBeLessThanOrEqual(0);
 

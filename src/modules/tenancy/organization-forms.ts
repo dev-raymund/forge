@@ -6,7 +6,7 @@ import { resolveOrgContext, type RequestMeta } from "./context";
 import { pagesOf, refusal, type FormOutcome } from "./form-outcome";
 import { transferOwnership } from "./members.service";
 import { createOrganization, updateOrganization } from "./organizations.service";
-import { ONBOARDING_PATH, orgSettingsPath, orgSitesPath } from "./paths";
+import { ONBOARDING_PATH, onboardingSitePath, orgSettingsPath } from "./paths";
 import { requirePermission } from "./policies";
 
 /**
@@ -29,12 +29,12 @@ export const SETTINGS_NOTICES = ["url", "owner"] as const;
 export type SettingsNotice = (typeof SETTINGS_NOTICES)[number];
 const settingsWithNotice = (orgSlug: string, notice: SettingsNotice) => `${orgSettingsPath(orgSlug)}?changed=${notice}`;
 
-/** Onboarding, step 1: the organization, its Owner (the caller) and its trial, together (`createOrganization`). */
+/** Onboarding, step 1: the organization, its Owner (the caller) and its trial, together (`createOrganization`). On to step 2 (M4-2). */
 export async function submitCreateOrganization(actor: Actor, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
   const values = { name: text(formData.get("name")), slug: text(formData.get("slug")) };
   try {
     const organization = await createOrganization(actor, values, meta);
-    return { state: { status: "success" }, redirectTo: orgSitesPath(organization.slug), revalidate: pagesOf(organization.slug) };
+    return { state: { status: "success" }, redirectTo: onboardingSitePath(organization.slug), revalidate: pagesOf(organization.slug) };
   } catch (error) {
     return refusal(error, meta, values, ONBOARDING_PATH);
   }

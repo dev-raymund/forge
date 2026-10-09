@@ -6,7 +6,10 @@ import {
 import { validationError } from "@/platform/errors";
 import { text } from "@/platform/forms";
 import { chooseTheme } from "./appearance.service";
-import { newSitePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+import { SOCIAL_KEYS } from "./settings";
+import { isSettingsGroup, SETTINGS_CONFLICT, updateSiteSettings, type SettingsGroup } from "./settings.service";
+import { notFound } from "@/platform/errors";
+import { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
 import { changeSiteAddress, createSite, deleteSite, getSite } from "./sites.service";
 import { themeDefinition } from "@/themes/registry";
 
@@ -37,7 +40,13 @@ const pagesOfSite = (orgSlug: string, siteSlug: string) => [
 export const SITES_NOTICES = ["deleted"] as const;
 export type SitesNotice = (typeof SITES_NOTICES)[number];
 
-export async function submitCreateSite(actor: Actor, orgSlug: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+/**
+ * Creates a site from the create-site form (M4-1), on `/{org}/sites/new` or
+ * as onboarding's step 2 (M4-2). Only where the browser goes next differs:
+ * the site's page, or onboarding's step 3. `flow` is bound by the page; any
+ * other value is the admin's.
+ */
+export async function submitCreateSite(actor: Actor, orgSlug: string, formData: FormData, meta: RequestMeta = {}, flow: string = "admin"): Promise<FormOutcome> {
   const values = {
     name: text(formData.get("name")),
     address: text(formData.get("address")),
@@ -47,7 +56,8 @@ export async function submitCreateSite(actor: Actor, orgSlug: string, formData: 
   try {
     const ctx = await resolveOrgContext(actor, orgSlug, meta);
     const { site, events } = await createSite(ctx, values);
-    return { state: { status: "success" }, redirectTo: sitePath(ctx.org.slug, site.slug), revalidate: pagesOfSite(ctx.org.slug, site.slug), invalidate: events };
+    const next = flow === "onboarding" ? onboardingThemePath(ctx.org.slug, site.slug) : sitePath(ctx.org.slug, site.slug);
+    return { state: { status: "success" }, redirectTo: next, revalidate: pagesOfSite(ctx.org.slug, site.slug), invalidate: events };
   } catch (error) {
     return refusal(error, meta, values, newSitePath(orgSlug), {}, MODULE);
   }
@@ -116,5 +126,45 @@ export async function submitChooseTheme(actor: Actor, orgSlug: string, siteSlug:
     };
   } catch (error) {
     return refusal(error, meta, values, siteAppearancePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** The fields each settings form sends, and nothing else is read from it. */
+const SETTINGS_FIELDS: Record<SettingsGroup, readonly string[]> = {
+  general: ["name", "tagline", "language", "timezone", ...SOCIAL_KEYS],
+  reading: ["blogPath", "postsPerPage"],
+  analytics: ["ga4MeasurementId", "plausibleDomain"],
+};
+const SAVED: Record<SettingsGroup, string> = { general: "General settings saved.", reading: "Reading settings saved.", analytics: "Analytics settings saved." };
+
+/**
+ * Saves one group of the site's settings (M4-2). The group is bound by the
+ * page; the site and the permission come from the URL and the session. The
+ * form's `version` is the one its page was rendered with: a save over
+ * someone else's newer one is refused and changes nothing.
+ */
+export async function submitUpdateSiteSettings(
+  actor: Actor,
+  orgSlug: string,
+  siteSlug: string,
+  group: string,
+  formData: FormData,
+  meta: RequestMeta = {},
+): Promise<FormOutcome> {
+  const fields = isSettingsGroup(group) ? SETTINGS_FIELDS[group] : [];
+  const values = Object.fromEntries(fields.map((field) => [field, text(formData.get(field))]));
+  try {
+    if (!isSettingsGroup(group)) throw notFound();
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    // The version is a whole number as the page wrote it, or no version at all: a save without one cannot win.
+    const raw = text(formData.get("version"));
+    const version = /^\d{1,9}$/.test(raw) ? Number(raw) : -1;
+    const { changed, events } = await updateSiteSettings(ctx, group, values, version);
+    return {
+      state: { status: "success", message: changed.length > 0 ? SAVED[group] : "Nothing to save: these are already the site’s settings.", values },
+      ...(changed.length > 0 ? { revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug), invalidate: events } : {}),
+    };
+  } catch (error) {
+    return refusal(error, meta, values, siteSettingsPath(orgSlug, siteSlug), { Conflict: SETTINGS_CONFLICT }, MODULE);
   }
 }

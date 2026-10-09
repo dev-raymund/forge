@@ -4,20 +4,21 @@ import { NoAccess, OrganizationSuspended } from "@/components/admin/page-notice"
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { SettingsSection } from "@/components/admin/settings-section";
 import {
-  canDeleteSite, canManageSiteSettings, canOpenSiteSettings, DeleteSite, getSite, publicSitePath, SiteAddressForm, siteSettingsPath,
+  AnalyticsSettingsForm, canDeleteSite, canManageSiteSettings, canOpenSiteSettings, DeleteSite, GeneralSettingsForm, getSite, getSiteSettings, publicSitePath,
+  ReadingSettingsForm, SiteAddressForm, siteSettingsPath, siteTimeZones,
 } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Site settings" };
 
 /**
- * A site's settings (plan §19: `/…/settings`, Admin). In M4-1: its public
- * address (plan §19: "in site settings until M9") and deleting it. The
- * general, reading and analytics settings join this page in M4-2.
+ * A site's settings (plan §19: `/…/settings`, Admin): general, reading and
+ * analytics (M4-2), its public address (M4-1; plan §19: "in site settings
+ * until M9"), and deleting it.
  *
- *   open the page        Owner, Admin    canOpenSiteSettings
- *   change the address   Owner, Admin    canManageSiteSettings   (`site.settings.manage`)
- *   delete the site      Owner           canDeleteSite           (`sites.delete`)
+ *   open the page                         Owner, Admin    canOpenSiteSettings
+ *   general, reading, analytics, address  Owner, Admin    canManageSiteSettings   (`site.settings.manage`)
+ *   delete the site                       Owner           canDeleteSite           (`sites.delete`)
  */
 export default function SiteSettingsPage({ params }: PageProps<"/[orgSlug]/sites/[siteSlug]/settings">) {
   return (
@@ -40,13 +41,41 @@ async function SiteSettings({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSl
       </NoAccess>
     );
   }
-  const site = await getSite(ctx);
+  const manage = canManageSiteSettings(ctx);
+  const [site, settings] = await Promise.all([getSite(ctx), manage ? getSiteSettings(ctx) : null]);
   const address = site.address ?? site.slug;
+  const bound = settings ? { orgSlug: ctx.org.slug, siteSlug: ctx.site.slug, version: settings.version } : null;
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
       <h1 className="mb-8 text-2xl font-semibold tracking-tight">Site settings</h1>
-      {canManageSiteSettings(ctx) && site.address ? (
+      {settings && bound ? (
+        <>
+          <SettingsSection title="General" description="The site’s name, tagline, language, time zone and social links.">
+            <GeneralSettingsForm
+              {...bound}
+              timeZones={siteTimeZones()}
+              values={{
+                name: settings.general.name,
+                tagline: settings.general.tagline,
+                language: settings.general.language,
+                timezone: settings.general.timezone,
+                ...settings.general.social,
+              }}
+            />
+          </SettingsSection>
+          <SettingsSection title="Reading" description="Where the blog lives, and how many posts each page lists.">
+            <ReadingSettingsForm {...bound} address={address} values={settings.reading} />
+          </SettingsSection>
+          <SettingsSection title="Analytics" description="Google Analytics 4 and Plausible. Both optional.">
+            <AnalyticsSettingsForm
+              {...bound}
+              values={{ ga4MeasurementId: settings.analytics.ga4MeasurementId ?? "", plausibleDomain: settings.analytics.plausibleDomain ?? "" }}
+            />
+          </SettingsSection>
+        </>
+      ) : null}
+      {manage && site.address ? (
         <SettingsSection title="Site address" description={`Where the public sees ${site.name}: ${publicSitePath(site.address)}.`}>
           <SiteAddressForm orgSlug={ctx.org.slug} siteSlug={ctx.site.slug} address={site.address} />
         </SettingsSection>

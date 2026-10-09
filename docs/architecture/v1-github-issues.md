@@ -727,9 +727,17 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M4-1, M4-4
 
 **Acceptance criteria:**
-- [ ] `/{org}/sites/{site}` overview: status, primary URL, launch checklist (pages, menu, SEO, domain, publish), recent activity
-- [ ] `/…/settings`: general (name, tagline, language, timezone, social links), reading (blog path, posts per page), analytics (GA4 ID, Plausible domain), with Zod-validated JSONB groups and optimistic `version`
-- [ ] `/onboarding` steps 2 (site) and 3 (theme) reuse the same actions
+- [x] `/{org}/sites/{site}` overview: status, primary URL, launch checklist (pages, menu, SEO, domain, publish), recent activity *(each checklist item from real rows; items whose screen does not exist yet say "Not available yet"; recent activity for those who may read the log)*
+- [x] `/…/settings`: general (name, tagline, language, timezone, social links), reading (blog path, posts per page), analytics (GA4 ID, Plausible domain), with Zod-validated JSONB groups and optimistic `version` *(social links: Facebook, Instagram, X, LinkedIn, YouTube, TikTok, `https` only)*
+- [x] `/onboarding` steps 2 (site) and 3 (theme) reuse the same actions *(`/onboarding/{org}` and `/onboarding/{org}/{site}`; progress derived from what exists)*
+
+**Decisions taken here (ADR 0014):**
+- **Analytics are emitted, on live sites only:** the GA4 and Plausible official snippets, through `next/script`, from IDs validated when saved and again when written (ADR 0006 §5). A coming-soon page carries none.
+- **Reading settings are saved and validated, and do nothing yet:** posts arrive with M5; the settings page says so, and nothing claims otherwise.
+- **The audit names the fields that changed, never their values** (`site.settings_changed`).
+- **One `version` for the three groups;** a save over someone else's newer one is a Conflict.
+- **Onboarding progress is derived, not stored:** no organization → step 1; an organization without a site whose member may create one → step 2; otherwise done. Step 3 is optional (the site already has Studio).
+- **Organization creation now goes to step 2** (`/onboarding/{orgSlug}`), as the M3-3 note above asked.
 
 **Likely files/modules:** site pages, `src/modules/sites/{settings,validation}.ts`
 
@@ -798,6 +806,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** The site-level go-live switch.
 
 *From M4-3 (ADR 0013): the renderer reads the status from `loadPublicSite(orgId, siteId)`, tagged `site:{id}`; `setSiteStatus` returns `{ type: "site.statusChanged", siteId }` and the Server Action flushes it, like `chooseTheme`. Coming soon is `noindex, nofollow` at every path; live is `index, follow` at `/` (the theme's page template with the site's name and tagline until M5-6), and every other path is a themed 404. Add a `site.status_changed` event to the audit vocabulary.*
+
+*From M4-2 (ADR 0014): put "Publish site" on the overview (`modules/sites/ui/site-overview.tsx`), next to the status and its explanation (`STATUS_EXPLANATIONS`). The checklist's "Publish your site" item (`modules/sites/overview.ts`) is done when the status is `live`: give it the button's link. Publishing also turns on the site's analytics snippets (live sites only) and `index, follow` at `/`.*
 
 **Depends on:** M4-3, M2-2
 
@@ -925,6 +935,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M4-4 (ADR 0012): add the new templates to `TEMPLATE_KEYS` and `TemplateProps` in `src/themes/types.ts`; the types then require them of every theme. Studio's and Journal's `page` template take the page's `title` and its content as `children`, inside `Prose`. Block renderers go in `src/themes/_kit/blocks/`, drawn with the kit's variables.*
 
 *From M4-3 (ADR 0013): replace the `home` / `page-not-found` decision for live sites in `modules/rendering/render-state.ts` with `resolveRoute(siteId, path)`, keeping coming soon and unavailable as they are. The page (`app/(sites)/render/[site]/[[...path]]/page.tsx`) calls `notFound()` for a missing route; `not-found.tsx` already draws the theme's not-found template from `requestSite()`. Cached reads must take `siteId` (lint).*
+
+*From M4-2 (ADR 0014): the reading settings exist: `readReading(site_settings.reading)` → `{ blogPath, postsPerPage }` (defaults `blog`, 10). `resolveRoute` takes the blog's path from there. The overview's checklist counts published pages already (`launchCounts`): give its "Add your pages" item the pages screen's link.*
 
 **Depends on:** M5-3, M4-3, M4-4
 
@@ -1140,6 +1152,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Branding controls.
 
 *From M4-4 (ADR 0012): the schema is `src/themes/_kit/tokens.ts`. Save through `parseThemeSettings(input, theme, stored)`, which refuses unknown keys, unsafe values and other themes' options and keeps the stored options of other themes; then invalidate `site:{id}:config`. `readThemeSettings` already reads everything the editor will save. `readableOn` and `luminance` are there for the contrast warning. Studio draws only `classic` and `simple` today: the other variants are this issue's. The appearance page and its `ThemePicker` exist: add the editor below it.*
+
+*From M4-2 (ADR 0014): the social links are saved in the general settings and drawn by both footers when `footer.showSocial` (default true): the appearance editor's "social toggle" is that setting.*
 
 **Depends on:** M4-4, M6-4
 

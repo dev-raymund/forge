@@ -1,5 +1,5 @@
 import type { Actor } from "@/modules/auth/shared";
-import { listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite } from "@/modules/sites";
+import { listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitUpdateSiteSettings } from "@/modules/sites";
 import {
   acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
   resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitChangeOrganizationSlug, submitCreateOrganization,
@@ -184,6 +184,16 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "sites.submitChooseTheme(B's slug, B's site)", run: ({ actor }, b) => submitChooseTheme(actor, b.orgSlug, b.siteSlug, form({ theme: "journal" })) },
   { name: "sites.submitChooseTheme(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitChooseTheme(actor, orgSlug, b.siteSlug, form({ theme: "journal" })) },
   { name: "sites.submitChooseTheme(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitChooseTheme(actor, orgSlug, b.siteId, form({ theme: "journal" })) },
+
+  // Settings (M4-2): every group, for B's site, from B's URL or A's.
+  ...(["general", "reading", "analytics"] as const).flatMap((group) => {
+    const fields = form({ name: "Hijacked", tagline: "x", language: "en", timezone: "UTC", blogPath: "hijack", postsPerPage: "5", ga4MeasurementId: "G-HIJACK123", version: "1" });
+    return [
+      { name: `sites.submitUpdateSiteSettings(B's slug, B's site, ${group})`, run: ({ actor }: Caller, b: Foreign) => submitUpdateSiteSettings(actor, b.orgSlug, b.siteSlug, group, fields) },
+      { name: `sites.submitUpdateSiteSettings(A's slug, B's site, ${group})`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitUpdateSiteSettings(actor, orgSlug, b.siteSlug, group, fields) },
+      { name: `sites.submitUpdateSiteSettings(A's slug, B's site id, ${group})`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitUpdateSiteSettings(actor, orgSlug, b.siteId, group, fields) },
+    ];
+  }),
 ];
 
 /**

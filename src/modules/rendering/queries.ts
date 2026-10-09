@@ -5,6 +5,7 @@ import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
 import { withPlatform, withTenant } from "@/platform/db";
 import { domains, siteSettings, sites } from "@/platform/db/schema";
 import type { SiteLocator } from "@/platform/routing/hosts";
+import { readAnalytics, readGeneral, socialLinks, type AnalyticsSettings } from "@/modules/sites/shared";
 
 /**
  * The public read path (M4-3, ADR 0013; from the M0-4 spike, ADR 0002).
@@ -52,6 +53,10 @@ export type PublicSite = {
   themeKey: string;
   /** `site_settings.theme` as stored: the theme reads it through its schema (ADR 0012). */
   themeSettings: unknown;
+  /** Social links that passed their rules (M4-2). */
+  social: { label: string; href: string }[];
+  /** Analytics IDs that passed their rules (M4-2). Emitted only on a live site's pages. */
+  analytics: AnalyticsSettings;
 };
 
 /**
@@ -73,6 +78,7 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
         timezone: sites.timezone,
         themeKey: sites.themeKey,
         general: siteSettings.general,
+        analytics: siteSettings.analytics,
         theme: siteSettings.theme,
       })
       .from(sites)
@@ -80,15 +86,17 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
       .where(and(eq(sites.organizationId, orgId), eq(sites.id, siteId), isNull(sites.deletedAt))),
   );
   if (!row) return null;
-  const tagline = (row.general as { tagline?: unknown } | null)?.tagline;
+  const general = readGeneral(row.general);
   return {
     id: row.id,
     name: row.name,
-    tagline: typeof tagline === "string" ? tagline.trim().slice(0, 200) : "",
+    tagline: general.tagline,
     status: row.status,
     language: row.language,
     timezone: row.timezone,
     themeKey: row.themeKey,
     themeSettings: row.theme ?? {},
+    social: socialLinks(general.social).map(({ label, href }) => ({ label, href })),
+    analytics: readAnalytics(row.analytics),
   };
 }

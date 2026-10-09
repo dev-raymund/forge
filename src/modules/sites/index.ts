@@ -22,9 +22,23 @@ export type { SiteRef, SiteStatus } from "./repository";
 export { changeSiteAddress, createSite, deleteSite, getSite, listSites, siteAllowance } from "./sites.service";
 export type { SiteChange } from "./sites.service";
 export { canCreateSite, canDeleteSite, canManageAppearance, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
-export { SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite } from "./site-forms";
+export { SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitUpdateSiteSettings } from "./site-forms";
 export type { SitesNotice } from "./site-forms";
-export { newSitePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+export { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+export { ONBOARDING_STEPS, onboardingNext } from "./onboarding";
+export type { OnboardingNext, OnboardingState } from "./onboarding";
+
+// The overview (M4-2, ADR 0014).
+export { getSiteOverview } from "./overview.service";
+export type { SiteOverview } from "./overview.service";
+export { STATUS_EXPLANATIONS } from "./overview";
+export type { ChecklistItem } from "./overview";
+export { SiteOverviewView } from "./ui/site-overview";
+
+// Settings (M4-2, ADR 0014): general, reading, analytics.
+export { getSiteSettings, isSettingsGroup, SETTINGS_GROUPS, updateSiteSettings } from "./settings.service";
+export type { SettingsChange, SettingsGroup, SiteSettingsView } from "./settings.service";
+export { AnalyticsSettingsForm, GeneralSettingsForm, ReadingSettingsForm } from "./ui/site-settings-forms";
 
 // Appearance (M4-4, ADR 0012): the theme a site is drawn with.
 export { chooseTheme, getAppearance } from "./appearance.service";

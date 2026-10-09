@@ -35,6 +35,10 @@ const fixture = (themeKey: string): RenderableSite => ({
     ],
     footer: [{ label: "Privacy", href: "/s/harbor-and-pine/privacy" }],
   },
+  social: [
+    { label: "Instagram", href: "https://instagram.com/harborandpine" },
+    { label: "LinkedIn", href: "https://linkedin.com/company/harborandpine" },
+  ],
 });
 
 export default async function ThemeGalleryPage({ params }: PageProps<"/dev/themes/[theme]/[template]">) {

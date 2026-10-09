@@ -33,6 +33,7 @@ export function renderableSite(site: PublicSite, locator: SiteLocator): Renderab
     basePath: siteBasePath(locator),
     themeKey: site.themeKey,
     themeSettings: site.themeSettings,
+    social: site.social,
   };
 }
 

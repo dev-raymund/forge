@@ -62,7 +62,8 @@ test("a new organization's log starts with its creation; renaming it and changin
   const id = tail();
   await page.getByLabel("Organization name").fill(`Logged ${id}`);
   await page.getByRole("button", { name: "Create organization" }).click();
-  await expect(page).toHaveURL(`${baseURL}/logged-${id}/sites`);
+  await expect(page).toHaveURL(`${baseURL}/onboarding/logged-${id}`); // onboarding's step 2 (M4-2)
+  await page.goto(`/logged-${id}/sites`);
 
   // The Owner has the link, and the log has one line: the organization's creation, by her.
   await orgNav(page).getByRole("link", { name: "Activity" }).click();

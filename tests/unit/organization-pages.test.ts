@@ -30,7 +30,9 @@ const relative = (file: string) => path.relative(ROOT, file);
 const isSource = (file: string) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file);
 
 describe("pages of an organization", () => {
-  const routeFiles = filesUnder(ORG_ROUTES).filter((file) => /\/(page|layout)\.tsx$/.test(file));
+  // The organization's own pages, and onboarding's steps 2 and 3 (M4-2), which name an organization and a site in their URLs too.
+  const ONBOARDING_ORG = path.join(ROOT, "src/app/(admin)/onboarding/[orgSlug]");
+  const routeFiles = [...filesUnder(ORG_ROUTES), ...filesUnder(ONBOARDING_ORG)].filter((file) => /\/(page|layout)\.tsx$/.test(file));
 
   it("finds the routes it is supposed to guard", () => {
     expect(routeFiles.map(relative).sort()).toEqual(
@@ -42,6 +44,8 @@ describe("pages of an organization", () => {
         "src/app/(admin)/[orgSlug]/sites/[siteSlug]/layout.tsx",
         "src/app/(admin)/[orgSlug]/sites/[siteSlug]/page.tsx",
         "src/app/(admin)/[orgSlug]/sites/[siteSlug]/settings/page.tsx",
+        "src/app/(admin)/onboarding/[orgSlug]/page.tsx",
+        "src/app/(admin)/onboarding/[orgSlug]/[siteSlug]/page.tsx",
       ]),
     );
   });
