@@ -25,7 +25,7 @@ export type ChecklistItem = {
 
 const LATER = "Not available yet.";
 
-export function launchChecklist(facts: ChecklistFacts, paths: { settings: string; publicSite: string | null }): ChecklistItem[] {
+export function launchChecklist(facts: ChecklistFacts, paths: { settings: string; publicSite: string | null; publish?: string | null }): ChecklistItem[] {
   return [
     {
       key: "pages",
@@ -46,7 +46,14 @@ export function launchChecklist(facts: ChecklistFacts, paths: { settings: string
       key: "publish",
       label: "Publish your site",
       done: facts.status === "live",
-      note: facts.status === "live" ? "Your site is live." : facts.status === "suspended" ? "The site is unavailable." : LATER,
+      // M4-5: the overview's Publish button, for those who have it.
+      ...(facts.status === "coming_soon" && paths.publish ? { href: paths.publish } : {}),
+      note:
+        facts.status === "live"
+          ? "Your site is live."
+          : facts.status === "suspended"
+            ? "The site is unavailable."
+            : "When you publish, visitors see your site instead of the Coming soon page.",
     },
   ];
 }
@@ -54,6 +61,6 @@ export function launchChecklist(facts: ChecklistFacts, paths: { settings: string
 /** What a status means to the people who run the site. Nothing about why a site is suspended. */
 export const STATUS_EXPLANATIONS: Readonly<Record<string, string>> = {
   coming_soon: "Visitors see a Coming soon page, and search engines are asked not to list the site.",
-  live: "The site is published: visitors see your site.",
+  live: "The site is published: visitors see its home page, and search engines may list it.",
   suspended: "The site is unavailable to visitors.",
 };

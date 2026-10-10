@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 import { languageLabel } from "../locale";
 import type { SiteOverview } from "../overview.service";
 import { STATUS_EXPLANATIONS } from "../overview";
-import { publicSitePath, siteAppearancePath, siteSettingsPath } from "../paths";
+import { siteAppearancePath, siteSettingsPath } from "../paths";
+import { SiteStatusControl } from "./site-publishing";
 import { SiteStatusBadge } from "./sites-view";
 
 /**
@@ -19,8 +20,10 @@ const LINK = "rounded-sm font-medium underline underline-offset-4 outline-none h
 export type SiteOverviewProps = {
   orgSlug: string;
   overview: SiteOverview;
-  /** Links to the appearance and settings pages, for those who may use them. */
+  /** Links to the appearance and settings pages, and the Publish button (M4-5), for those who may use them. */
   canManage: boolean;
+  /** Whether the member's email address is verified: publishing needs it (plan §2). */
+  emailVerified: boolean;
   /** The site's latest events, for those who may read the activity log; null for everyone else. */
   activity: { id: string; sentence: string; occurredAt: string }[] | null;
   activityHref: string;
@@ -38,8 +41,8 @@ function Card({ title, children, action }: { title: string; children: React.Reac
   );
 }
 
-export function SiteOverviewView({ orgSlug, overview, canManage, activity, activityHref }: SiteOverviewProps) {
-  const { site, theme, reading, analytics, checklist } = overview;
+export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, activity, activityHref }: SiteOverviewProps) {
+  const { site, publicUrl, theme, reading, analytics, checklist } = overview;
   const settings = siteSettingsPath(orgSlug, site.slug);
   const edit = (href: string, label: string) => (canManage ? <Link href={href} className={cn(LINK, "text-sm")} aria-label={label}>Change</Link> : null);
   const done = checklist.filter((item) => item.done).length;
@@ -56,12 +59,23 @@ export function SiteOverviewView({ orgSlug, overview, canManage, activity, activ
       <p className="mt-3 max-w-prose text-sm text-muted-foreground" data-testid="status-explanation">
         {STATUS_EXPLANATIONS[site.status] ?? ""}
       </p>
+      {/* A suspended site has no control here: only staff lift a suspension (M12-1). */}
+      {canManage && publicUrl && (site.status === "coming_soon" || site.status === "live") ? (
+        <SiteStatusControl
+          orgSlug={orgSlug}
+          siteSlug={site.slug}
+          siteName={site.name}
+          status={site.status}
+          publicUrl={publicUrl}
+          mustVerifyEmail={!emailVerified}
+        />
+      ) : null}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card title="Public address" action={edit(settings, "Change the site's address")}>
-          {site.address ? (
-            <a href={publicSitePath(site.address)} className={cn(LINK, "inline-flex items-center gap-1.5 wrap-anywhere")} data-testid="site-address">
-              {publicSitePath(site.address)}
+          {site.address && publicUrl ? (
+            <a href={publicUrl} className={cn(LINK, "inline-flex items-center gap-1.5 break-all")} data-testid="site-address">
+              {publicUrl}
               <ExternalLink aria-hidden="true" className="size-3.5 shrink-0" />
             </a>
           ) : (
@@ -89,6 +103,7 @@ export function SiteOverviewView({ orgSlug, overview, canManage, activity, activ
               ? [analytics.ga4 ? "Google Analytics 4" : null, analytics.plausible ? "Plausible" : null].filter(Boolean).join(" and ")
               : "None"}
           </p>
+          {analytics.ga4 || analytics.plausible ? <p className="text-muted-foreground">Saved; tracking is not active yet.</p> : null}
         </Card>
         <Card title="Created">
           <p>

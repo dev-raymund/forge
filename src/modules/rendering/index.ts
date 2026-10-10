@@ -11,4 +11,4 @@ export { htmlLang, publicSiteFor, rememberRequestSite, renderableSite, requestSi
 export { HTTP_STATUS, isShowable, renderStateFor, robotsFor } from "./render-state";
 export type { RenderState, RenderStateKind } from "./render-state";
 export { SiteNotFound, SiteUnavailable } from "./ui/platform-pages";
-export { safeAnalytics, SiteAnalytics } from "./ui/analytics";
+export { ANALYTICS_SCRIPTS_ACTIVE, emitsAnalytics, safeAnalytics, SiteAnalytics } from "./ui/analytics";

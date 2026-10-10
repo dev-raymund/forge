@@ -103,6 +103,13 @@ export const AUDIT_EVENTS = {
     label: "Site settings changed",
     metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
   },
+  // M4-5 (ADR 0015): publishing, and back to Coming soon.
+  "site.status_changed": {
+    resourceType: "site",
+    label: "Site status changed",
+    // Only the two statuses a member may move between: a suspended site is refused before anything is recorded.
+    metadata: z.object({ name: line(), previousStatus: z.enum(["coming_soon", "live"]), newStatus: z.enum(["coming_soon", "live"]) }),
+  },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
     resourceType: "site",
@@ -201,6 +208,8 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.deleted": (actor, m) => `${actor} deleted the site ${m.name}, which was at /s/${m.address}.`,
   "site.theme_changed": (actor, m) => `${actor} changed the theme of ${m.name} from ${word(m.previousTheme)} to ${word(m.newTheme)}.`,
   "site.settings_changed": (actor, m) => `${actor} changed the ${m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
+  "site.status_changed": (actor, m) =>
+    m.newStatus === "live" ? `${actor} published the site ${m.name}.` : `${actor} switched the site ${m.name} back to Coming soon.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -220,6 +229,7 @@ const PLAIN: Record<AuditAction, string> = {
   "site.deleted": "deleted a site",
   "site.theme_changed": "changed a site’s theme",
   "site.settings_changed": "changed a site’s settings",
+  "site.status_changed": "changed a site’s status",
 };
 
 /**

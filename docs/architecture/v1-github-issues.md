@@ -732,7 +732,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 - [x] `/onboarding` steps 2 (site) and 3 (theme) reuse the same actions *(`/onboarding/{org}` and `/onboarding/{org}/{site}`; progress derived from what exists)*
 
 **Decisions taken here (ADR 0014):**
-- **Analytics are emitted, on live sites only:** the GA4 and Plausible official snippets, through `next/script`, from IDs validated when saved and again when written (ADR 0006 §5). A coming-soon page carries none.
+- **Analytics are emitted, on live sites only:** the GA4 and Plausible official snippets, through `next/script`, from IDs validated when saved and again when written (ADR 0006 §5). A coming-soon page carries none. *(Superseded by M4-5: no site emits them until consent behaviour exists; ADR 0015 §6.)*
 - **Reading settings are saved and validated, and do nothing yet:** posts arrive with M5; the settings page says so, and nothing claims otherwise.
 - **The audit names the fields that changed, never their values** (`site.settings_changed`).
 - **One `version` for the three groups;** a save over someone else's newer one is a Conflict.
@@ -812,12 +812,20 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M4-3, M2-2
 
 **Acceptance criteria:**
-- [ ] `setSiteStatus` (Admin+): `coming_soon` ↔ `live`; requires a verified email; audited; invalidates `site:{id}`
-- [ ] Overview shows the state and the live URL
+- [x] `setSiteStatus` (Admin+): `coming_soon` ↔ `live`; requires a verified email; audited; invalidates `site:{id}` *(`site.settings.manage`; a verified address to go live, not to go back; `site.status_changed`; the site's row locked; suspended refused)*
+- [x] Overview shows the state and the live URL *(the full `APP_ORIGIN/s/{address}`; Publish and Switch to Coming soon, each with a confirmation)*
+
+**Decisions taken here (ADR 0015):**
+- **Both directions are built.** The M4-5 instructions say not to build unpublishing unless M4-5 requires it; this issue's criterion is `↔`, so "Switch to Coming soon" exists, with its own confirmation and record.
+- **The event is `site.status_changed`** (M4-3's hand-off), not `site.published`: one event, `{ name, previousStatus, newStatus }`, for both directions.
+- **The form names the status it wants** (not a toggle), and the site's row is locked: repeats, stale pages and concurrent requests make one change and one record.
+- **Suspended sites are refused** (Conflict) in both directions; only staff lift a suspension (M12-1).
+- **No analytics script runs on any site**, live or not, until a consent decision is made and built (M4-5 instructions; this reverses the M4-2 note above). IDs are still saved and validated.
+- **Honest copy:** the confirmation says the live home page shows the site's name and tagline, and that pages and posts cannot be added yet.
 
 **Likely files/modules:** `src/modules/sites/*`, overview page
 
-**Testing:** E2E: publish site → `/s/{address}` serves real pages (after M5), and the pages are no longer `noindex`.
+**Testing:** E2E: publish site → `/s/{address}` serves real pages (after M5), and the pages are no longer `noindex`. *(Done for the live home page of M4-3; real pages are M5-6's.)*
 
 ---
 
@@ -933,6 +941,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Render published content on sites.
 
 *From M4-4 (ADR 0012): add the new templates to `TEMPLATE_KEYS` and `TemplateProps` in `src/themes/types.ts`; the types then require them of every theme. Studio's and Journal's `page` template take the page's `title` and its content as `children`, inside `Prose`. Block renderers go in `src/themes/_kit/blocks/`, drawn with the kit's variables.*
+
+*From M4-5 (ADR 0015): the Publish dialog (`modules/sites/ui/site-publishing.tsx`) tells the customer that the live home page "shows its name and tagline in its theme. Adding pages and posts is not available yet", and `STATUS_EXPLANATIONS.live` says visitors see "its home page". Once a live site serves real pages, update both, and `tests/e2e/publishing.spec.ts`'s expectations.*
 
 *From M4-3 (ADR 0013): replace the `home` / `page-not-found` decision for live sites in `modules/rendering/render-state.ts` with `resolveRoute(siteId, path)`, keeping coming soon and unavailable as they are. The page (`app/(sites)/render/[site]/[[...path]]/page.tsx`) calls `notFound()` for a missing route; `not-found.tsx` already draws the theme's not-found template from `requestSite()`. Cached reads must take `siteId` (lint).*
 
@@ -1377,6 +1387,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** Make it safe to operate.
 
 *From M3-3: under `/{orgSlug}` the 404 and "no access" pages reach a signed-in visitor with HTTP 200, because the admin shell streams before the membership is known (Cache Components). If real 404/403 status codes are wanted for the admin, the check has to happen in `proxy.ts` before rendering; that means a membership query per admin request there, so weigh it. Also: `/favicon.ico` and other stray first segments now reach the `[orgSlug]` route (answered as 404 without touching the session or the database); a real favicon would stop the request altogether.*
+
+*From M4-5 (ADR 0015): suspending and unsuspending must take the site's row lock as `setSiteStatus` does (`lockSiteStatus` / `updateSiteStatus` in `modules/sites/repository.ts`) and emit `site.statusChanged`, so staff and tenants cannot interleave; tenants can never set or leave `suspended`. No site page emits third-party script: the GA4 and Plausible snippets are off (`ANALYTICS_SCRIPTS_ACTIVE`) until a consent and privacy decision is made and built, which no issue owns yet. `script-src` for site pages needs no third-party origin until then. Audit `created_at` is the transaction's start, so overlapping changes can be listed out of order; decide whether the writer should use `clock_timestamp()`.*
 
 *From M3-5 (ADR 0010): the audit log is never purged in V1 (no `audit_purge_before()`), and platform events (logins, password changes: rows with no organization) still have no reader. Both are this issue's: a definer function or platform policy for staff to read them, and the retention decision. The activity page shows tenants neither the client address nor the request id that every row stores; the staff view is where those are for.*
 

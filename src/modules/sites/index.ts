@@ -22,7 +22,9 @@ export type { SiteRef, SiteStatus } from "./repository";
 export { changeSiteAddress, createSite, deleteSite, getSite, listSites, siteAllowance } from "./sites.service";
 export type { SiteChange } from "./sites.service";
 export { canCreateSite, canDeleteSite, canManageAppearance, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
-export { SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitUpdateSiteSettings } from "./site-forms";
+export {
+  SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
+} from "./site-forms";
 export type { SitesNotice } from "./site-forms";
 export { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
 export { ONBOARDING_STEPS, onboardingNext } from "./onboarding";
@@ -39,6 +41,11 @@ export { SiteOverviewView } from "./ui/site-overview";
 export { getSiteSettings, isSettingsGroup, SETTINGS_GROUPS, updateSiteSettings } from "./settings.service";
 export type { SettingsChange, SettingsGroup, SiteSettingsView } from "./settings.service";
 export { AnalyticsSettingsForm, GeneralSettingsForm, ReadingSettingsForm } from "./ui/site-settings-forms";
+
+// Publishing (M4-5, ADR 0015): Coming soon ↔ live.
+export { setSiteStatus } from "./publishing.service";
+export { SETTABLE_STATUSES, statusTransition } from "./publishing";
+export type { SettableStatus } from "./publishing";
 
 // Appearance (M4-4, ADR 0012): the theme a site is drawn with.
 export { chooseTheme, getAppearance } from "./appearance.service";

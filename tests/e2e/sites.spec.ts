@@ -53,7 +53,7 @@ test("an Owner creates the first site: sites page → create → its page → in
   await expect(page).toHaveURL(`${baseURL}/${org.slug}/sites/${address}`);
   await expect(shown(page, "site-name")).toHaveText("Corner Bakery");
   await expect(shown(page, "site-status")).toHaveText("Coming soon");
-  await expect(shown(page, "site-address")).toHaveText(`/s/${address}`);
+  await expect(shown(page, "site-address")).toHaveText(`${baseURL}/s/${address}`);
   await expect(shown(page, "site-language")).toHaveText("Filipino");
   await expect(shown(page, "site-timezone")).toHaveText("Asia/Manila");
   expect(await sitesIn(org.id)).toEqual([

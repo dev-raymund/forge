@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Site" };
  * A site's overview (plan §19: `/{orgSlug}/sites/{siteSlug}`, every member;
  * M4-2): status and public address, how it is set up, the launch checklist,
  * and, for those who may read the activity log, what was done to it lately.
- * Publishing it is M4-5's.
+ * Publishing it, and switching it back to Coming soon, is M4-5's (ADR 0015).
  */
 export default function SitePage({ params }: PageProps<"/[orgSlug]/sites/[siteSlug]">) {
   return (
@@ -39,6 +39,7 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
       orgSlug={ctx.org.slug}
       overview={overview}
       canManage={canManageSiteSettings(ctx)}
+      emailVerified={ctx.actor.emailVerified}
       activity={activity}
       activityHref={activityHref(orgActivityPath(ctx.org.slug), { site: ctx.site.id })}
     />

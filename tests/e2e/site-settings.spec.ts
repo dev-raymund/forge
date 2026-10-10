@@ -32,12 +32,12 @@ test.beforeEach(async ({ page }) => {
   await asUniqueVisitor(page);
 });
 
-test("the overview says what the site is: status, public address, theme, setup, the launch checklist and its latest activity", async ({ page }) => {
+test("the overview says what the site is: status, public address, theme, setup, the launch checklist and its latest activity", async ({ page, baseURL }) => {
   const { address } = await withSite(page);
   await expect(shown(page, "site-name")).toHaveText("Settings Bakery");
   await expect(shown(page, "site-status")).toHaveText("Coming soon");
   await expect(shown(page, "status-explanation")).toContainText("Visitors see a Coming soon page");
-  await expect(shown(page, "site-address")).toHaveAttribute("href", `/s/${address}`);
+  await expect(shown(page, "site-address")).toHaveAttribute("href", `${baseURL}/s/${address}`);
   await expect(shown(page, "site-theme")).toHaveText("Studio");
   await expect(shown(page, "site-analytics")).toHaveText("None");
 
@@ -104,9 +104,13 @@ test("reading settings: checked, saved, and said to take effect once there are p
   await expect(reading).toContainText(`Your posts will be at /s/${address}/news.`);
 });
 
-test("analytics: an invalid GA4 ID is refused; valid IDs are saved, and only a live site's pages carry the two services' official code", async ({ page }) => {
-  // No request leaves for Google or Plausible during the test: the page is checked, not their servers.
-  await page.context().route(/googletagmanager\.com|plausible\.io/, (route) => route.abort());
+test("analytics: an invalid GA4 ID is refused; valid IDs are saved, and no page runs tracking, live or not, until consent is supported (M4-5)", async ({ page }) => {
+  // Any request for Google's or Plausible's code is recorded and refused: there must be none.
+  const tracking: string[] = [];
+  await page.context().route(/googletagmanager\.com|google-analytics\.com|plausible\.io/, (route) => {
+    tracking.push(route.request().url());
+    return route.abort();
+  });
   const { org, settings, address, siteId } = await withSite(page);
   await page.goto(settings);
   const analytics = section(page, "Analytics settings");
@@ -114,7 +118,7 @@ test("analytics: an invalid GA4 ID is refused; valid IDs are saved, and only a l
   await analytics.getByRole("button", { name: "Save analytics settings" }).click();
   await expect(analytics.getByText("Use a GA4 measurement ID like G-ABC123XYZ9.")).toBeVisible();
 
-  // The site goes live (as M4-5 will make it), then the IDs are saved: the save refreshes the public site's settings.
+  // The site is live, then the IDs are saved: the save refreshes the public site's settings.
   await setSiteWithoutInvalidation({ orgId: org.id, siteId, address, name: "" }, { status: "live" });
   await analytics.getByLabel("Google Analytics 4 measurement ID").fill("g-abc1234567");
   await analytics.getByLabel("Plausible domain").fill("Example.com");
@@ -123,11 +127,24 @@ test("analytics: an invalid GA4 ID is refused; valid IDs are saved, and only a l
   await page.reload();
   await expect(analytics.getByLabel("Google Analytics 4 measurement ID")).toHaveValue("G-ABC1234567");
   await expect(analytics.getByLabel("Plausible domain")).toHaveValue("example.com");
+  await expect(analytics.getByTestId("analytics-not-active")).toContainText("Tracking is not active yet");
 
+  // A live site with both IDs saved: neither service's code, nor any of the IDs, is in the page; nothing is requested.
   await page.goto(`/s/${address}`);
-  await expect(page.locator('script[src="https://www.googletagmanager.com/gtag/js?id=G-ABC1234567"]')).toHaveCount(1);
-  await expect(page.locator('script[src="https://plausible.io/js/script.js"][data-domain="example.com"]')).toHaveCount(1);
-  expect(await page.locator("script").evaluateAll((scripts) => scripts.filter((s) => /UA-12345/.test(s.textContent ?? "")).length)).toBe(0);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.locator('script[src*="googletagmanager"], script[src*="plausible"], script#forge-ga4, script#forge-plausible')).toHaveCount(0);
+  const html = await page.content();
+  for (const id of ["G-ABC1234567", "UA-12345", "data-domain"]) expect(html, id).not.toContain(id);
+  // The same while it is Coming soon.
+  await setSiteWithoutInvalidation({ orgId: org.id, siteId, address, name: "" }, { status: "coming_soon" });
+  await page.goto(settings);
+  await analytics.getByLabel("Plausible domain").fill("example.org");
+  await analytics.getByRole("button", { name: "Save analytics settings" }).click();
+  await expect(formStatus(page)).toContainText("Analytics settings saved.");
+  await page.goto(`/s/${address}`);
+  await expect(page.getByRole("main")).toContainText("Coming soon");
+  expect(await page.content()).not.toContain("G-ABC1234567");
+  expect(tracking).toEqual([]);
 });
 
 test("a member who may not change settings: no links to them, and the page says so; another organization's site is a 404", async ({ page, browser }) => {

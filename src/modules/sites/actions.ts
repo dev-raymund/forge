@@ -3,7 +3,7 @@
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
-import { submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitUpdateSiteSettings } from "./site-forms";
+import { submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings } from "./site-forms";
 
 /**
  * The site forms' Server Actions (M4-1): session → ./site-forms.ts → invalidate → redirect or state.
@@ -30,6 +30,11 @@ export async function deleteSiteAction(orgSlug: string, siteSlug: string, _previ
 
 export async function chooseThemeAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitChooseTheme(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
+}
+
+/** Publishing, and back to Coming soon (M4-5): the form sends the status it asks for. */
+export async function setSiteStatusAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitSetSiteStatus(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
 }
 
 /** `group` is bound by the settings page: which of the site's settings groups the form saves. */

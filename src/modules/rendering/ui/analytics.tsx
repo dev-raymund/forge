@@ -5,8 +5,17 @@ import type { AnalyticsSettings } from "@/modules/sites/shared";
  * The two analytics services a site may use (M4-2; ADR 0006 §5): their
  * official snippets, built here from IDs that passed the settings' rules, and
  * checked again right before they are written into the page. Nothing a tenant
- * typed is emitted as code. Only on a live site's pages.
+ * typed is emitted as code.
+ *
+ * Not active (M4-5, ADR 0015 §6): no public site runs these scripts, live or
+ * not, until a consent and privacy decision has been made and built. The IDs
+ * are still saved, validated and shown in the admin; only emitting is off.
  */
+
+/** Whether a page may run its site's analytics scripts. Turning this on needs the consent decision first. */
+export const ANALYTICS_SCRIPTS_ACTIVE: boolean = false;
+
+export const emitsAnalytics = (status: string): boolean => ANALYTICS_SCRIPTS_ACTIVE && status === "live";
 const GA4 = /^G-[A-Z0-9]{4,16}$/;
 const PLAUSIBLE = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 

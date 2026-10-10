@@ -149,3 +149,7 @@ No Redis, search engine, workers, extra databases, extra Vercel projects or extr
 ## Addendum (M4-2, 2026-10-10): §5 is built
 
 The GA4 and Plausible settings are emitted as §5 allows, on live sites only, through `next/script`, from IDs validated when saved and again when written (ADR 0014 §3). No other third-party or tenant script reaches a site page. M12-1's `script-src` must allow `https://www.googletagmanager.com` and `https://plausible.io` on site pages.
+
+## Addendum (M4-5, 2026-10-10): §5's snippets are not emitted for now
+
+Following the M4-5 instructions, no site page carries the GA4 or Plausible code, live or not, until consent behaviour is decided and built (ADR 0015 §6). No third-party or tenant script reaches a site page at all. M12-1's `script-src` needs the two origins only once that is turned on.

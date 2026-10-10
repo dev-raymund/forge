@@ -25,6 +25,9 @@ export const changeSiteAddressSchema = z.object({ address });
 /** A theme in the registry (M4-4): its key, exactly. Nothing else names a theme. */
 export const chooseThemeSchema = z.object({ theme: z.enum(THEME_KEYS, "Choose one of the themes.") });
 
+/** A status a member may ask for (M4-5): never `suspended`. */
+export const setSiteStatusSchema = z.object({ status: z.enum(["coming_soon", "live"], "Choose Coming soon or Live.") });
+
 /** What the services accept: the form's strings, unchecked. The schemas decide. */
 export type CreateSiteInput = { name: string; address: string; language: string; timezone: string };
 export type ChangeSiteAddressInput = { address: string };

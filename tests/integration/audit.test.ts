@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
-import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, updateSiteSettings } from "@/modules/sites";
+import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
   acceptInvitation, changeMemberRole, createOrganization, inTenant, inviteMember, leaveOrganization, listActivity, removeMember, resendInvitation,
@@ -221,7 +221,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, and the sites of M4-1, M4-4 and M4-2)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, and the sites of M4-1, M4-4, M4-2 and M4-5)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -244,6 +244,7 @@ describe("every change writes its line, in the same transaction", () => {
     await chooseTheme(await resolveSiteContext(a.actor, a.org.slug, site.slug), { theme: "journal" });
     const siteCtx = await resolveSiteContext(a.actor, a.org.slug, site.slug);
     await updateSiteSettings(siteCtx, "reading", { blogPath: "news", postsPerPage: "12" }, (await getSiteSettings(siteCtx)).version);
+    await setSiteStatus(siteCtx, { status: "live" });
     await deleteSite(await resolveSiteContext(a.actor, a.org.slug, site.slug));
     await transferOwnership(ctx, { memberId: one.memberId });
     expect(new Set(await actionsOf(a.org.id))).toEqual(new Set(AUDIT_ACTIONS));

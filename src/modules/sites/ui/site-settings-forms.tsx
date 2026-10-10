@@ -135,8 +135,9 @@ export function AnalyticsSettingsForm({ orgSlug, siteSlug, version, values }: Bo
     <form {...formProps} className="grid max-w-xl gap-5" aria-label="Analytics settings">
       <Outcome state={state} message={message} />
       <input type="hidden" name="version" value={version} />
-      <p className="text-sm text-muted-foreground">
-        Forge adds the official tracking code of these two services to your site’s pages once the site is live. No other code can be added. Leave a field empty to turn that service off.
+      <p className="text-sm text-muted-foreground" data-testid="analytics-not-active">
+        Tracking is not active yet: Forge saves these IDs but does not add any tracking code to your site, live or not, until visitor consent is supported.
+        Only these two services will be offered, and no other code can be added. Leave a field empty to turn that service off.
       </p>
       <Field
         name="ga4MeasurementId"

@@ -10,6 +10,7 @@ import { SOCIAL_KEYS } from "./settings";
 import { isSettingsGroup, SETTINGS_CONFLICT, updateSiteSettings, type SettingsGroup } from "./settings.service";
 import { notFound } from "@/platform/errors";
 import { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+import { setSiteStatus } from "./publishing.service";
 import { changeSiteAddress, createSite, deleteSite, getSite } from "./sites.service";
 import { themeDefinition } from "@/themes/registry";
 
@@ -126,6 +127,31 @@ export async function submitChooseTheme(actor: Actor, orgSlug: string, siteSlug:
     };
   } catch (error) {
     return refusal(error, meta, values, siteAppearancePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/**
+ * Publishes the site, or switches it back to Coming soon (M4-5). The form
+ * sends the status it asks for, so a repeated or late submission asks for
+ * the same thing again and changes nothing; the site comes from the URL.
+ * The message is written only after the change has been committed.
+ */
+export async function submitSetSiteStatus(actor: Actor, orgSlug: string, siteSlug: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { status: text(formData.get("status")) };
+  try {
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { site, changed, events } = await setSiteStatus(ctx, values);
+    const message =
+      site.status === "live"
+        ? changed ? `${site.name} is live.` : `${site.name} is already live.`
+        : changed ? `${site.name} shows the Coming soon page again.` : `${site.name} already shows the Coming soon page.`;
+    return {
+      state: { status: "success", message, values: { status: site.status } },
+      revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
   }
 }
 

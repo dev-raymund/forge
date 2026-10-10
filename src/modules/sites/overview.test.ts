@@ -18,8 +18,18 @@ describe("the launch checklist (M4-2)", () => {
   it("links only to screens that exist (the address, in settings); the rest say they are not available yet", () => {
     const items = launchChecklist(facts, paths);
     expect(items.filter((item) => item.href).map((item) => [item.key, item.href])).toEqual([["domain", paths.settings]]);
-    for (const key of ["pages", "menu", "seo", "publish"]) expect(items.find((item) => item.key === key)!.note).toBe("Not available yet.");
+    for (const key of ["pages", "menu", "seo"]) expect(items.find((item) => item.key === key)!.note).toBe("Not available yet.");
     expect(items.find((item) => item.key === "domain")!.note).toBe("Visitors find it at /s/acme-bakery.");
+  });
+
+  it("publish (M4-5): says what publishing does; links to the overview's button only for those who have it, and only while Coming soon", () => {
+    const publish = (status: string, link: string | null) => launchChecklist({ ...facts, status }, { ...paths, publish: link }).find((item) => item.key === "publish")!;
+    expect(publish("coming_soon", "#publish")).toEqual({
+      key: "publish", label: "Publish your site", done: false, href: "#publish", note: "When you publish, visitors see your site instead of the Coming soon page.",
+    });
+    expect(publish("coming_soon", null).href).toBeUndefined();
+    expect(publish("live", "#publish")).toEqual({ key: "publish", label: "Publish your site", done: true, note: "Your site is live." });
+    expect(publish("suspended", "#publish")).toEqual({ key: "publish", label: "Publish your site", done: false, note: "The site is unavailable." });
   });
 
   it("a status is explained to the site's people, and a suspension's reason is never part of it", () => {

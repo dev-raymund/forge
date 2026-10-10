@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tagsForAll } from "@/platform/cache";
-import { safeAnalytics } from "./ui/analytics";
+import { ANALYTICS_SCRIPTS_ACTIVE, emitsAnalytics, safeAnalytics } from "./ui/analytics";
 
 describe("what analytics a page may carry (M4-2, ADR 0006 §5)", () => {
   it("only a GA4 measurement ID and a Plausible domain that pass their rules, checked again here", () => {
@@ -10,6 +10,11 @@ describe("what analytics a page may carry (M4-2, ADR 0006 §5)", () => {
       expect(safeAnalytics({ ga4MeasurementId }).ga4, ga4MeasurementId).toBeNull();
     }
     for (const plausibleDomain of ['example.com" onload="x', "https://example.com", "example"]) expect(safeAnalytics({ plausibleDomain }).plausible, plausibleDomain).toBeNull();
+  });
+
+  it("no page runs analytics scripts, live or coming soon, until consent behaviour exists (M4-5, ADR 0015 §6)", () => {
+    expect(ANALYTICS_SCRIPTS_ACTIVE).toBe(false);
+    for (const status of ["live", "coming_soon", "suspended", ""]) expect(emitsAnalytics(status), status).toBe(false);
   });
 
   it("a settings change flushes the site's settings tag, and only that", () => {

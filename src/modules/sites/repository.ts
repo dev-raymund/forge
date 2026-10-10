@@ -160,6 +160,23 @@ export async function launchCounts(tx: TenantTx, organizationId: string, siteId:
   return { publishedPages: pages?.n ?? 0, menusWithItems: withItems?.n ?? 0 };
 }
 
+/**
+ * The site's status, with its row locked until the transaction ends (M4-5):
+ * two status changes of one site take turns, and the second sees the first.
+ */
+export async function lockSiteStatus(tx: TenantTx, organizationId: string, siteId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ status: sites.status })
+    .from(sites)
+    .where(and(eq(sites.organizationId, organizationId), eq(sites.id, siteId), isNull(sites.deletedAt)))
+    .for("update");
+  return row?.status ?? null;
+}
+
+export async function updateSiteStatus(tx: TenantTx, organizationId: string, siteId: string, status: "coming_soon" | "live"): Promise<void> {
+  await tx.update(sites).set({ status }).where(and(eq(sites.organizationId, organizationId), eq(sites.id, siteId), isNull(sites.deletedAt)));
+}
+
 /** The general settings that are columns of the site itself. */
 export async function updateSiteColumns(tx: TenantTx, organizationId: string, siteId: string, values: { name: string; language: string; timezone: string }): Promise<void> {
   await tx

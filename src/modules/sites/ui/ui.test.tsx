@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // The forms import their Server Actions; rendering needs only their identity.
 vi.mock("../actions", () => ({
   createSiteAction: vi.fn(), changeSiteAddressAction: vi.fn(), deleteSiteAction: vi.fn(), chooseThemeAction: vi.fn(), updateSiteSettingsAction: vi.fn(),
+  setSiteStatusAction: vi.fn(),
 }));
 
 import type { Allowance } from "@/modules/billing/shared";
@@ -137,6 +138,7 @@ describe("the theme picker (M4-4)", () => {
 describe("the site overview (M4-2)", () => {
   const overview = (over: Partial<SiteOverview> = {}): SiteOverview => ({
     site: site("Bakery", "bakery", "acme-bakery"),
+    publicUrl: "https://cms.forgelinetechnologies.com/s/acme-bakery",
     theme: { key: "journal", name: "Journal" },
     tagline: "Fresh daily",
     reading: { blogPath: "news", postsPerPage: 12 },
@@ -145,17 +147,36 @@ describe("the site overview (M4-2)", () => {
     checklist: launchChecklist({ publishedPages: 0, menusWithItems: 0, seoConfigured: false, hasAddress: true, status: "coming_soon" }, { settings: "/acme-studio/sites/bakery/settings", publicSite: "/s/acme-bakery" }),
     ...over,
   });
-  const render = (props: { canManage?: boolean; activity?: { id: string; sentence: string; occurredAt: string }[] | null } = {}) =>
-    html(<SiteOverviewView orgSlug="acme-studio" overview={overview()} canManage={props.canManage ?? true} activity={props.activity ?? null} activityHref="/acme-studio/activity?site=x" />);
+  type RenderProps = { canManage?: boolean; emailVerified?: boolean; activity?: { id: string; sentence: string; occurredAt: string }[] | null; overview?: SiteOverview };
+  const render = (props: RenderProps = {}) =>
+    html(
+      <SiteOverviewView
+        orgSlug="acme-studio"
+        overview={props.overview ?? overview()}
+        canManage={props.canManage ?? true}
+        emailVerified={props.emailVerified ?? true}
+        activity={props.activity ?? null}
+        activityHref="/acme-studio/activity?site=x"
+      />,
+    );
+  const withStatus = (status: SiteSummary["status"]) =>
+    overview({
+      site: site("Bakery", "bakery", "acme-bakery", status),
+      checklist: launchChecklist(
+        { publishedPages: 0, menusWithItems: 0, seoConfigured: false, hasAddress: true, status },
+        { settings: "/acme-studio/sites/bakery/settings", publicSite: "/s/acme-bakery", publish: "#publish" },
+      ),
+    });
 
   it("says the site's status, what it means, its public address and its theme", () => {
     const markup = render();
     expect(markup).toMatch(/data-testid="site-status"[^>]*>Coming soon</);
     expect(markup).toContain("Visitors see a Coming soon page");
-    expect(markup).toMatch(/href="\/s\/acme-bakery"[^>]*data-testid="site-address"/);
+    expect(markup).toMatch(/href="https:\/\/cms\.forgelinetechnologies\.com\/s\/acme-bakery"[^>]*data-testid="site-address"[^>]*>https:\/\/cms\.forgelinetechnologies\.com\/s\/acme-bakery</);
     expect(markup).toMatch(/data-testid="site-theme"[^>]*>Journal</);
     expect(markup).toContain("Blog at <span class=\"font-medium\">/news</span>, 12 posts a page");
     expect(markup).toMatch(/data-testid="site-analytics"[^>]*>Google Analytics 4</);
+    expect(markup).toContain("Saved; tracking is not active yet.");
   });
 
   it("the checklist: five items, the address done and linked, the rest not available yet", () => {
@@ -163,7 +184,40 @@ describe("the site overview (M4-2)", () => {
     expect(count(markup, /data-testid="checklist-item"/g)).toBe(5);
     expect(count(markup, /data-done=""/g)).toBe(1);
     expect(markup).toContain("1 of 5 done.");
-    expect(count(markup, /Not available yet\./g)).toBe(4);
+    expect(count(markup, /Not available yet\./g)).toBe(3);
+    expect(markup).toContain("When you publish, visitors see your site instead of the Coming soon page.");
+  });
+
+  it("publishing (M4-5): a Coming soon site offers Publish, a live one the way back and a link to it", () => {
+    const comingSoon = render({ overview: withStatus("coming_soon") });
+    expect(comingSoon).toContain('id="publish"');
+    expect(comingSoon).toMatch(/<button[^>]*aria-haspopup="dialog"[^>]*>.*Publish site…<\/button>/);
+    expect(comingSoon).not.toContain("Switch to Coming soon");
+    expect(comingSoon).toMatch(/href="#publish"[^>]*>Publish your site</);
+
+    const live = render({ overview: withStatus("live") });
+    expect(live).toMatch(/<button[^>]*aria-haspopup="dialog"[^>]*>Switch to Coming soon…<\/button>/);
+    expect(live).not.toContain("Publish site…");
+    expect(live).toMatch(/href="https:\/\/cms\.forgelinetechnologies\.com\/s\/acme-bakery"[^>]*data-testid="view-site"/);
+    expect(live).toContain("visitors see its home page, and search engines may list it");
+    expect(live).toContain("Your site is live.");
+  });
+
+  it("publishing: nothing for those who may not, nothing for a suspended site, and a verified email address first", () => {
+    for (const markup of [render({ canManage: false, overview: withStatus("coming_soon") }), render({ canManage: false, overview: withStatus("live") })]) {
+      expect(markup).not.toContain('data-testid="site-publishing"');
+      expect(markup).not.toContain("Publish site…");
+    }
+    const suspended = render({ overview: withStatus("suspended") });
+    expect(suspended).not.toContain('data-testid="site-publishing"');
+    expect(suspended).toContain("The site is unavailable.");
+
+    const unverified = render({ emailVerified: false, overview: withStatus("coming_soon") });
+    expect(unverified).toContain("Verify your email address to publish this site.");
+    expect(unverified).toContain('href="/verify-email"');
+    expect(unverified).not.toContain("Publish site…");
+    // Switching back to Coming soon hides the site: it does not wait for the address to be verified.
+    expect(render({ emailVerified: false, overview: withStatus("live") })).toContain("Switch to Coming soon…");
   });
 
   it("links to change things only for those who may; recent activity only for those who may read the log", () => {
@@ -196,9 +250,12 @@ describe("the settings forms (M4-2)", () => {
     expect(markup).toContain("<legend");
   });
 
-  it("reading says it takes effect once the site has posts; analytics that only two services' code is added", () => {
+  it("reading says it takes effect once the site has posts; analytics that tracking is not active, and only two services will be offered", () => {
     expect(html(<ReadingSettingsForm {...bound} address="acme-bakery" values={{ blogPath: "news", postsPerPage: 10 }} />)).toContain("Your posts will be at /s/acme-bakery/news.");
     expect(html(<ReadingSettingsForm {...bound} address="a" values={{ blogPath: "blog", postsPerPage: 10 }} />)).toContain("nothing on the site uses them");
-    expect(html(<AnalyticsSettingsForm {...bound} values={{ ga4MeasurementId: "G-ABC1234567", plausibleDomain: "" }} />)).toContain("No other code can be added.");
+    const analytics = html(<AnalyticsSettingsForm {...bound} values={{ ga4MeasurementId: "G-ABC1234567", plausibleDomain: "" }} />);
+    expect(analytics).toContain("no other code can be added.");
+    // M4-5: saved and validated, never emitted until consent is supported (ADR 0015 §6).
+    expect(analytics).toContain("Tracking is not active yet");
   });
 });

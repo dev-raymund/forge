@@ -20,16 +20,17 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "site.deleted": { name: "Acme Bakery", address: "acme-bakery" },
   "site.theme_changed": { name: "Acme Bakery", previousTheme: "studio", newTheme: "journal" },
   "site.settings_changed": { name: "Acme Bakery", group: "general", fields: ["tagline", "timezone"] },
+  "site.status_changed": { name: "Acme Bakery", previousStatus: "coming_soon", newStatus: "live" },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4 and the one of M4-2, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2 and the one of M4-5, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
         "member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted",
         "member.role_changed", "member.removed", "member.left",
-        "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed",
+        "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed", "site.status_changed",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
@@ -101,6 +102,10 @@ describe("what is stored with an event", () => {
       ["member.left", null],
       ["member.left", "viewer"],
       ["member.left", []],
+      ["site.status_changed", { name: "Acme", previousStatus: "coming_soon", newStatus: "suspended" }],
+      ["site.status_changed", { name: "Acme", previousStatus: "draft", newStatus: "live" }],
+      ["site.status_changed", { name: "Acme", previousStatus: "suspended", newStatus: "live" }],
+      ["site.status_changed", { name: "Acme", previousStatus: "live" }],
     ];
     for (const [action, metadata] of invalid) expect(() => sanitizeMetadata(action, metadata), `${action} ${JSON.stringify(metadata)}`).toThrow(AuditEventError);
   });
@@ -148,6 +153,10 @@ describe("an event as a sentence", () => {
     );
     expect(say("site.settings_changed", { name: "Acme Bakery", group: "analytics", fields: ["ga4MeasurementId"] })).toBe(
       "Raymund changed the analytics settings of Acme Bakery: GA4 measurement ID.",
+    );
+    expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "coming_soon", newStatus: "live" })).toBe("Raymund published the site Acme Bakery.");
+    expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "live", newStatus: "coming_soon" })).toBe(
+      "Raymund switched the site Acme Bakery back to Coming soon.",
     );
   });
 

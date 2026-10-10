@@ -130,3 +130,10 @@ Publishing (M4-5); the pages, menus and SEO the checklist points to (M5, M8); lo
   - the snippets on a live site;
   - an Editor; another organization; a phone.
 - `tests/e2e/onboarding.spec.ts`: organization → site → theme, resumed after a refresh and after leaving; step 2's refusals; a phone.
+
+---
+
+## Addendum (M4-5, 2026-10-10): §3's emission is off; publishing is on the overview
+
+- **§3 is suspended:** no public site runs the GA4 or Plausible snippets, live or not, until an explicit consent and privacy decision has been made and built (ADR 0015 §6). The settings, their validation, saving and the overview's card are unchanged; the settings form and the overview say tracking is not active yet. The "Analytics only on live sites" row of the table above applies again once emission is turned on.
+- **§4:** the overview now has the Publish control below the status, shows the public address in full (`APP_ORIGIN` + `/s/{address}`), and the checklist's "Publish your site" links to it (ADR 0015 §7).

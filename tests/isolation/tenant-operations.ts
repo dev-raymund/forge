@@ -1,5 +1,7 @@
 import type { Actor } from "@/modules/auth/shared";
-import { listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitUpdateSiteSettings } from "@/modules/sites";
+import {
+  listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
+} from "@/modules/sites";
 import {
   acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
   resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitChangeOrganizationSlug, submitCreateOrganization,
@@ -184,6 +186,13 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "sites.submitChooseTheme(B's slug, B's site)", run: ({ actor }, b) => submitChooseTheme(actor, b.orgSlug, b.siteSlug, form({ theme: "journal" })) },
   { name: "sites.submitChooseTheme(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitChooseTheme(actor, orgSlug, b.siteSlug, form({ theme: "journal" })) },
   { name: "sites.submitChooseTheme(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitChooseTheme(actor, orgSlug, b.siteId, form({ theme: "journal" })) },
+
+  // Publishing (M4-5): B's site, live or back to Coming soon, from B's URL or A's.
+  ...(["live", "coming_soon"] as const).flatMap((status) => [
+    { name: `sites.submitSetSiteStatus(B's slug, B's site, ${status})`, run: ({ actor }: Caller, b: Foreign) => submitSetSiteStatus(actor, b.orgSlug, b.siteSlug, form({ status })) },
+    { name: `sites.submitSetSiteStatus(A's slug, B's site, ${status})`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitSetSiteStatus(actor, orgSlug, b.siteSlug, form({ status })) },
+    { name: `sites.submitSetSiteStatus(A's slug, B's site id, ${status})`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitSetSiteStatus(actor, orgSlug, b.siteId, form({ status, siteId: b.siteId })) },
+  ]),
 
   // Settings (M4-2): every group, for B's site, from B's URL or A's.
   ...(["general", "reading", "analytics"] as const).flatMap((group) => {
