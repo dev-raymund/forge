@@ -343,6 +343,11 @@ Conventions (unchanged from long-term §6):
 | `terms` | `id`, `organization_id`, `site_id`, `taxonomy` (CHECK `category`, `tag`), `parent_id`, `name`, `slug`, `description` | UQ `(site_id, taxonomy, slug)`; RLS |
 | `entry_terms` | `organization_id`, `site_id`, `entry_id`, `term_id` | PK `(entry_id, term_id)`; IX `(term_id)`; RLS |
 
+*Content as built (M1-1; verified against Postgres in M5-1, `tests/integration/content-schema.test.ts`):*
+- *Every reference inside a site is composite, `(site_id, x_id)`: parent page, parent category, an entry's draft, revisions and term links, featured media. A row of another site, or of another organization, cannot be linked even by a known id. Parent page, parent category and featured media are `ON DELETE SET NULL (col)`; drafts, revisions and term links `CASCADE` from their entry, term links from their term. `entries (id, published_revision_id)` → `entry_revisions (entry_id, id)`: the published revision is one of the entry's own, and cannot be deleted while it is published. Revisions' featured media is history, with no FK.*
+- *CHECKs: `type`, `status`, `kind`, `taxonomy`; slug `^[a-z0-9]+(-[a-z0-9]+)*$`; path one or more `/segment`s (so `/` alone is refused: see M5-2); published ⇔ `published_revision_id`; scheduled ⇔ `scheduled_at`; nothing published in the trash; only pages nest; only categories nest; draft `version > 0`.*
+- *The list indexes are `DESC NULLS LAST`; `(site_id, type, updated_at DESC)` is partial (`WHERE deleted_at IS NULL`). Ids are UUIDv7 made by the application (no database default).*
+
 **Media, navigation, SEO, platform**
 
 | Table | Key columns | Constraints / RLS |

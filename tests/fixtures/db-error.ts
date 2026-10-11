@@ -22,4 +22,6 @@ export const PG = {
   foreignKeyViolation: "23503",
   checkViolation: "23514",
   uniqueViolation: "23505",
+  notNullViolation: "23502",
+  invalidTextRepresentation: "22P02", // e.g. a tenant context that is not a uuid
 } as const;

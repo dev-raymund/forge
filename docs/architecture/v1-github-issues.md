@@ -841,9 +841,11 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M3-2, M4-1
 
 **Acceptance criteria:**
-- [ ] Tables `entries`, `entry_drafts`, `entry_revisions`, `terms`, `entry_terms` per plan §4.2, with composite FKs (parent, featured media placeholder column, terms) and `ON DELETE SET NULL (col)` where specified
-- [ ] Unique `(site_id, locale, path) WHERE deleted_at IS NULL`; list indexes; trigram index on draft titles
-- [ ] `entry_revisions` has no UPDATE grant
+- [x] Tables `entries`, `entry_drafts`, `entry_revisions`, `terms`, `entry_terms` per plan §4.2, with composite FKs (parent, featured media placeholder column, terms) and `ON DELETE SET NULL (col)` where specified *(migrations 0001 and 0002; columns, FKs and delete rules asserted from the catalog and by behaviour)*
+- [x] Unique `(site_id, locale, path) WHERE deleted_at IS NULL`; list indexes; trigram index on draft titles *(including three concurrent claims of one path: one wins)*
+- [x] `entry_revisions` has no UPDATE grant *(DELETE kept for pruning; the published revision cannot be deleted)*
+
+**Done in M5-1:** the schema was already complete, and `drizzle-kit generate` finds no difference between `src/modules/content/schema.ts` and the migrations, so there is **no new migration**. What was missing was the proof: `tests/integration/content-schema.test.ts` (real Postgres, as `forge_app` through PgBouncer) checks the columns, keys, indexes, FKs and grants; defaults and required columns; every CHECK; uniqueness at its scope, under concurrency; cross-site and cross-organization references refused (the issue's test); every delete rule; RLS on each table for the right, wrong, missing and malformed tenant context; two sites of one organization; sites and organizations trashed, suspended or removed. The isolation suite already covered the five tables (catalog, FORCE RLS, a no-WHERE read each). The issue's "services, UI" belong to M5-2 and M5-3 and were not started.
 
 **Likely files/modules:** `src/modules/content/schema.ts`, `drizzle/*`
 
@@ -853,6 +855,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** Page and post definitions and URL computation.
+
+*From M5-1: decide where the Home page's path lives before building the path builder. The plan says "Home = `/`", but `entries_path_format` (migration 0001) accepts only one or more `/segment`s, so an entry cannot be stored with the path `/`. Either the Home page keeps an ordinary path (`/home`) and `resolveRoute` serves `site_settings.homepage_entry_id` at `/` (M5-6), or a migration widens the CHECK to also allow `/` (the partial unique key then allows one Home per site and locale, and `setHomepage` must move paths). Slugs must match `^[a-z0-9]+(-[a-z0-9]+)*$` and paths their CHECK: `slugify` should produce nothing the database refuses.*
 
 **Depends on:** M5-1
 
@@ -871,6 +875,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** The core write paths.
 
 *From M3-2 (ADR 0009): add `modules/content/policies.ts`. Pages have plain keys (`entries.page.update`); posts have own/any pairs, for which `canActOn(ctx, "entries.post.update", { organizationId: entry.organizationId, ownerId: entry.authorId })` is the whole policy. Reading (`entries.{type}.read`) is held by every role. Build the key from the entry's type through the content-type registry, never from request input. Register each policy in `tenantPolicyChecks` (`tests/isolation/tenant-operations.ts`). A content type added to the registry needs its keys added to the catalog: a unit test fails until the catalog's entry types and `ENTRY_TYPES` agree.*
+
+*From M5-1: the database keeps references inside one site, but not everything. `entry_drafts.term_ids` is a `uuid[]` with no foreign key: check that every id is a term of the same site before saving (or publishing it into `entry_terms`, which is keyed). `entries.author_id` references `users` only: check the author is a member. Ids have no database default: insert through Drizzle (`$defaultFn` UUIDv7). Publishing must write the revision before setting `status = 'published'` with its `published_revision_id` (CHECK `entries_published_has_revision`, and `entries_published_revision_fk` requires the entry's own revision); trashing a published entry is refused (`entries_trash_not_live`), so unpublish first; restoring from the trash can hit the path key if the path was taken meanwhile (cms-architecture §6.7: "Restore re-suffixes the slug if it has been taken meanwhile").*
 
 *From M4-1 (ADR 0011): `createSite` (`modules/sites/sites.service.ts`) creates the site, its settings, its address and its audit row in one transaction, and no Home page yet. Add the Home page draft there, in the same transaction, and set `site_settings.homepage_entry_id`, as this issue's first criterion says.*
 
