@@ -961,19 +961,29 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M5-4
 
 **Acceptance criteria:**
-- [ ] Block registry entries (`schema`, Tiptap extension, NodeView, render) for `button`, `columns`/`column` (2–3, no nesting), `embed` (YouTube, Vimeo with privacy URLs; `generic` iframe URL after URL-safety validation), `spacer`
-- [ ] Properties side panel generated from each block's Zod schema
-- [ ] Drag handle reorder + Alt+↑/↓ + block menu (move, duplicate, delete)
-- [ ] `v` attribute + `migrate` scaffold per custom block
+- [x] Block registry entries (`schema`, Tiptap extension, NodeView, render) for `button`, `columns`/`column` (2–3, no nesting), `embed` (YouTube, Vimeo with privacy URLs; `generic` iframe URL after URL-safety validation), `spacer` *(`src/blocks/{button,columns,embed,spacer}/`, assembled by `schemas.ts`, `editor.ts`, `render.tsx`; `platform/net/url-safety.ts`; the renderers are wired to public pages in M5-6)*
+- [x] Properties side panel generated from each block's Zod schema *(`modules/content/editor/panel/`: `fieldsOf` reads the schema and its `.meta()` hints; a change is applied only when the whole block is valid)*
+- [x] Drag handle reorder + Alt+↑/↓ + block menu (move, duplicate, delete) *(drag snaps to the gaps between top-level blocks; each Alt move is its own undo step; the block menu is on the handle and on the toolbar)*
+- [x] `v` attribute + `migrate` scaffold per custom block *(`v: 1` and an empty `migrate` table each; the document pipeline runs them, tested with a v3 fixture)*
+
+**Decisions taken here (ADR 0003, addendum M5-5):**
+- **One registry, one definition per block.** The document's validation, the editor and the renderers read the same schemas. The spike is deleted; its tests were ported.
+- **Each Alt+↑/↓ is its own undo step**, and typing straight after a move is a step of its own.
+- **Embeds are made from an address**, asked for in a dialog and checked before anything is inserted. The provider follows the address. The server also blocks generic embeds of Forge's own host.
+- **Images and `entry:` links are checked on the server.** New ones on save must be this site's (media ready and not deleted; entries not trashed); none may be another site's on publish.
+- **The image block's schema is in the registry** (`editable: false`); everything else about it is M6-4's (below). A document with an image is still not opened for editing.
+- **Autosave no longer saves transactions that change nothing stored** (the trailing paragraph after a final block, a click), which had made a new version, and a false conflict for another tab, on merely opening such a page.
 
 **Likely files/modules:** `src/blocks/{button,columns,embed,spacer}/*`, `src/modules/content/editor/panel/*`
 
-**Testing:** unit: schema validation and migrate; E2E build a two-column section with a button and reorder it.
+**Testing:** unit: schema validation and migrate; E2E build a two-column section with a button and reorder it. ✔ unit: `src/blocks/{schemas,render}.test.ts(x)`, `platform/net/url-safety.test.ts`, `modules/content/document/{registry,references}.test.ts`, `modules/content/editor/{blocks,editor,text-nodes}.test.ts`, `panel/properties-panel.test.tsx`, `content/references.test.ts`; integration: `tests/integration/content-blocks.test.ts`; E2E: `tests/e2e/editor.spec.ts` (the two-column section with a button, reordered by keyboard, block menu and drag; a video; a phone; read-only; opening saves nothing).
 
 ### M5-6 · Closed renderer, theme templates, public routing
 **Labels:** `area:rendering` `type:feature` `risk:high`
 
 **Description:** Render published content on sites.
+
+*From M5-5 (ADR 0003 addendum): the custom blocks' renderers are `BLOCK_RENDERERS` in `src/blocks/render.tsx`: `({ attrs, children, context })`, each validating its own attributes and returning `null` when they are invalid. Build the whole-document renderer around them: the text nodes and marks, `columns` given each rendered column as one entry of `children`, and unknown nodes skipped. Give it a `BlockRenderContext`: `resolveEntryHref(entryId)` (live paths only; a page in the trash or unpublished gives `undefined`, and the button then renders nothing) and `blockedHosts` (the app's own host, as `modules/content/references.ts` uses). The spike's whole-document renderer and its 31-payload XSS corpus are in git (`spikes/editor/render.tsx`, `render.test.tsx` at `e55a37d`): port the corpus. The blocks emit `forge-button*`, `forge-columns`/`forge-column` (grid template from the ratio; `--stack` on phones), `forge-embed--{aspect}` and `forge-spacer--{size}` classes: style them in the theme kit. The image's renderer is M6-4's.*
 
 *From M5-3 (ADR 0016): published entries have `status = 'published'`, their live fields on `entries` and the content in the revision `published_revision_id` names. The Home page is the entry at `/` (and `site_settings.homepage_entry_id`), and it is a draft until someone publishes it: until then, render the site's current home. `entry.moved` (a live path changed without a publish) flushes the entry, `routes` and `config`. A change of the blog path in the reading settings does not move existing posts: their stored paths keep the old blog path; decide here (or in M8-5) whether saving the reading settings moves them.*
 
@@ -1113,6 +1123,12 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Use media everywhere.
 
+*From M5-5 (ADR 0003 addendum): the image block's schema is already in the registry (`src/blocks/image/schema.ts`: `mediaId`, `alt`, `caption`, `size`, `link`; `editable: false`). Stored documents with images are validated, and the server checks every new `mediaId` on save (a media item of this site, `ready`, not deleted) and refuses another site's on publish (`modules/content/references.ts`). What is left here:*
+- *An `extension.ts`, a `node-view.tsx` and a `render.tsx` (with `ResponsiveImage`) for it. Add it to `BLOCK_EDITORS` in `src/blocks/editor.ts` and `BLOCK_RENDERERS`, and set `editable: true`. `EDITOR_NODE_TYPES` then includes `image`, and pages with images open in the editor (`tests/e2e/editor.spec.ts` "a page holding blocks this editor cannot edit yet" changes with it).*
+- *Inserting one: a slash-menu entry that `asks` for a media item (like the embed's `asks: "address"`) and opens the picker, so an image is never inserted without a `mediaId`. Its alt, caption, size and link come from the properties panel, which already generates fields from the schema.*
+- *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists.*
+- *No upload path was added in M5-5. Images reach a document only through the picker and the existing upload protocol (M6-1).*
+
 **Depends on:** M6-3, M5-5
 
 **Acceptance criteria:**
@@ -1133,6 +1149,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M5-5: documents point at entries (`entry:{id}` in links, buttons and images' links) and at media (`mediaId`). Saving checks only new references, so trashing or purging a target leaves existing pointers in drafts and revisions: they render nothing (M5-6). Decide whether purging warns about pages that still point at the entry, and keep publish's rule (no pointer to another site) in mind for anything that copies documents between sites.*
 
 *From M5-3 (ADR 0016): a published entry cannot be trashed (CHECK `entries_trash_not_live`): unpublish in the same transaction first. Publishing refuses a page whose parent is in the trash, so trashing a page should also decide what happens to the pages below it. Restoring must give back a free path: if the old one was taken meanwhile, use `insertWithUniqueSlug`'s retry (a generated suffix), never overwrite. Every path change should go through `moveSubtree` so the pages below follow, and return `entry.moved` for live ones.*
 
@@ -1369,6 +1387,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:api` `type:feature`
 
 **Description:** Basic content management over the API.
+
+*From M5-5: a document written through the API must go through `saveDraft` and `publishEntry` as the editor's does: `parseDocument` (the registry's schemas, URL-safe generic embeds), and the reference checks of `modules/content/references.ts` (images and `entry:` links of this site only). Assign ids to nodes that arrive without them (ADR 0003, gap 3).*
 
 **Depends on:** M10-1, M7-1
 

@@ -2,29 +2,36 @@
 
 import "./editor.css";
 import type { JSONContent } from "@tiptap/core";
+import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
-import { Bold, Code, Italic, Link2, Strikethrough, Underline } from "lucide-react";
+import { Bold, Code, GripVertical, Italic, Link2, MoreHorizontal, Rows3, Strikethrough, Underline } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FormAlert } from "@/components/admin/form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { IDLE } from "@/platform/forms";
-import { TEXT_NODE_TYPES, textNodeExtensions } from "@/blocks/text-nodes/extensions";
 import { publishEntryAction, saveDraftAction } from "../actions";
 import { documentProblem, parseDocument } from "../document/parse";
 import { DOCUMENT_VERSION } from "../document/schema";
 import type { EditorEntry } from "../queries";
 import { clearBuffer, createAutosave, readBuffer, type AutosaveStatus, type SaveResult } from "./autosave";
 import { dedupeIds } from "./dedupe-ids";
+import { EmbedDialog } from "./embed-dialog";
+import { EDITOR_NODE_TYPES, editorExtensions } from "./extensions";
 import { LinkDialog } from "./link-dialog";
+import { currentBlock, PropertiesPanel, type CurrentBlock } from "./panel/properties-panel";
+import { runBlockAction, topLevelIndexAt, type BlockAction } from "./reorder";
 import { saveResultOf } from "./save-result";
-import { filterCommands, slashMatch, type SlashCommand, type SlashRange } from "./slash";
+import { commandsAt, filterCommands, slashMatch, type SlashCommand, type SlashRange } from "./slash";
 
 /**
- * The entry editor (M5-4; plan §6.3; ADR 0003): the title, the document, the
- * slash menu, the link picker, autosave with its status, the conflict dialog
- * and the Publish button. Client-only and lazy-loaded (./lazy.tsx).
+ * The entry editor (M5-4, M5-5; plan §6.3; ADR 0003): the title, the
+ * document with the text nodes and the registry's custom blocks, the slash
+ * menu, the link picker, the properties panel, reordering (drag handle,
+ * Alt+↑/↓, the block menu), autosave with its status, the conflict dialog and
+ * the Publish button. Client-only and lazy-loaded (./lazy.tsx).
  *
  * Everything it writes goes through the M5-3 Server Actions, which decide who
  * may and what is valid: what this screen shows or hides is a convenience, not
@@ -32,7 +39,7 @@ import { filterCommands, slashMatch, type SlashCommand, type SlashRange } from "
  * new version; a refused or failed save is shown as not saved.
  */
 
-type DraftPayload = { title: string; doc: JSONContent };
+export type DraftPayload = { title: string; doc: JSONContent };
 
 export type EntryEditorProps = {
   orgSlug: string;
@@ -65,6 +72,17 @@ export function nodeTypesOf(content: unknown): Set<string> {
   return types;
 }
 
+/**
+ * A draft as it would be stored, for telling an edit from a transaction that changes nothing saved: the empty
+ * paragraph the editor keeps after a final block (Tiptap's TrailingNode, added on the first interaction) is not
+ * content, and saving drops it (`parseDocument`).
+ */
+export function draftShape(draft: DraftPayload): string {
+  const content = [...(draft.doc.content ?? [])];
+  while (content.length > 1 && content.at(-1)!.type === "paragraph" && !content.at(-1)!.content?.length) content.pop();
+  return JSON.stringify([draft.title, content]);
+}
+
 const docOf = (content: unknown): JSONContent =>
   ((content as { doc?: JSONContent } | null)?.doc ?? { type: "doc", content: [{ type: "paragraph" }] }) as JSONContent;
 
@@ -87,10 +105,10 @@ export function statusText(status: AutosaveStatus): string {
   }
 }
 
-type SlashState = { query: string; range: SlashRange; active: number; top: number; left: number };
+type SlashState = { query: string; range: SlashRange; inColumn: boolean; active: number; top: number; left: number };
 
 export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEditorProps) {
-  const unsupported = useMemo(() => [...nodeTypesOf(entry.draft.content)].filter((type) => !TEXT_NODE_TYPES.has(type)), [entry.draft.content]);
+  const unsupported = useMemo(() => [...nodeTypesOf(entry.draft.content)].filter((type) => !EDITOR_NODE_TYPES.has(type)), [entry.draft.content]);
   const canEdit = entry.canEdit && unsupported.length === 0;
   const [storage] = useState(storageOrNull);
   // Changes typed here before a crash or a closed tab, not yet saved, for this very version of the draft.
@@ -110,6 +128,9 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
     restored ? { tone: "success", text: "Changes that had not been saved were restored. They are being saved now." } : null,
   );
   const [slash, setSlash] = useState<SlashState | null>(null);
+  // An embed asked for from the slash menu: where it goes once the address is given.
+  const [embedAt, setEmbedAt] = useState<SlashRange | null>(null);
+  const [handlePos, setHandlePos] = useState<number | null>(null);
   const slashRef = useRef<SlashState | null>(null);
   const dismissedAt = useRef<number | null>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -148,7 +169,20 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
   }, [entry.id, entry.draft.version, storage, orgSlug, siteSlug]);
 
   const payload = (editor: Editor): DraftPayload => ({ title: titleRef.current, doc: editor.getJSON() });
-  const changed = (editor: Editor) => autosaveRef.current?.change(payload(editor));
+  // The draft as last handed to autosave (or as opened). A transaction that leaves it as it is (the trailing paragraph
+  // after a final block, a click) is no edit: saving it would make a new version for nothing, and another open tab's
+  // next save a conflict. Compared with what was last handed over, not with what was last saved, so undoing an edit
+  // while it is being saved is still saved. What the editor does to the document while it is being made (ids, the
+  // trailing paragraph) is not an edit either.
+  const lastShape = useRef<string | null>(null);
+  const opened = useRef(false);
+  const changed = (editor: Editor) => {
+    const next = payload(editor);
+    const shape = draftShape(next);
+    if (shape === lastShape.current) return;
+    lastShape.current = shape;
+    if (opened.current) autosaveRef.current?.change(next);
+  };
 
   function updateSlash(editor: Editor) {
     const match = slashMatch(editor.state);
@@ -160,6 +194,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
     showSlash({
       query: match.query,
       range: match.range,
+      inColumn: match.inColumn,
       active: previous && previous.query === match.query ? previous.active : 0,
       top: caret.bottom - box.top + 4,
       left: Math.max(0, Math.min(caret.left - box.left, box.width - 240)),
@@ -174,11 +209,13 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
     const menu = slashRef.current;
     if (!editor || !menu) return;
     showSlash(null);
+    if (command.asks === "address") return setEmbedAt(menu.range);
     command.run(editor, menu.range);
   }
 
+  const extensions = useMemo(() => editorExtensions(), []);
   const editor = useEditor({
-    extensions: textNodeExtensions,
+    extensions,
     // A document with blocks this editor lacks is not loaded into it at all (ProseMirror cannot hold them): see the notice below.
     content: unsupported.length ? { type: "doc", content: [{ type: "paragraph" }] } : (restored?.doc ?? docOf(entry.draft.content)),
     editable: canEdit,
@@ -193,7 +230,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
         }
         const menu = slashRef.current;
         if (!menu) return false;
-        const items = filterCommands(menu.query);
+        const items = filterCommands(menu.query, commandsAt(menu.inColumn));
         if (event.key === "Escape") {
           dismissedAt.current = menu.range.from;
           showSlash(null);
@@ -214,7 +251,10 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
     },
     onCreate: ({ editor }) => {
       editorRef.current = editor;
-      if (restored) changed(editor);
+      opened.current = true;
+      lastShape.current = draftShape(payload(editor));
+      // Restored from this browser's buffer: not on the server yet.
+      if (restored) autosaveRef.current?.change(payload(editor));
     },
     onUpdate: ({ editor }) => {
       changed(editor);
@@ -223,6 +263,16 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
     onSelectionUpdate: ({ editor }) => updateSlash(editor),
     onBlur: () => showSlash(null),
   });
+
+  const block = useEditorState({
+    editor,
+    selector: ({ editor: current }) => (current ? currentBlock(current) : null),
+    equalityFn: (a: CurrentBlock | null, b: CurrentBlock | null) => JSON.stringify(a) === JSON.stringify(b),
+  });
+
+  function blockAction(index: number | null, action: BlockAction) {
+    if (editor && index !== null) runBlockAction(editor, index, action);
+  }
 
   const marks = useEditorState({
     editor,
@@ -279,10 +329,12 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
   const isLive = live.status === "published";
   const upToDate = isLive && live.version === savedVersion && (status.state === "idle" || status.state === "saved");
   const address = publicPrefix ? `${publicPrefix}${live.path === "/" ? "" : live.path}` : live.path;
-  const items = slash ? filterCommands(slash.query) : [];
+  const items = slash ? filterCommands(slash.query, commandsAt(slash.inColumn)) : [];
+
+  const panel = editable && editor && block ? <PropertiesPanel key={`${block.type}:${String(block.attrs.id)}`} editor={editor} block={block} orgSlug={orgSlug} siteSlug={siteSlug} /> : null;
 
   return (
-    <div className="forge-entry-editor mx-auto grid w-full max-w-3xl gap-4 px-4 py-6 sm:px-6">
+    <div className="forge-entry-editor mx-auto grid w-full max-w-5xl gap-4 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span
           data-testid="entry-status"
@@ -368,43 +420,80 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
           <Button type="button" variant="ghost" size="icon" aria-label="Link" aria-pressed={marks.link} title="Link (Ctrl+K)" onClick={() => setLinkOpen(true)} className="aria-pressed:bg-muted">
             <Link2 aria-hidden="true" />
           </Button>
-          <span className="ml-auto hidden self-center text-xs text-muted-foreground sm:inline">Type / for headings, lists, quotes and dividers</span>
+          <BlockMenu label="Block actions" editor={editor} indexOf={() => topLevelIndexAt(editor.state.doc, editor.state.selection.from)} onAction={blockAction}>
+            <Button type="button" variant="ghost" size="icon" aria-label="Block actions" title="Block actions (move, duplicate, delete)">
+              <Rows3 aria-hidden="true" />
+            </Button>
+          </BlockMenu>
+          <span className="ml-auto hidden self-center text-xs text-muted-foreground sm:inline">Type / for headings, lists, columns, buttons, video…</span>
         </div>
       ) : null}
 
-      <div ref={surface} className="relative">
-        {editor && !unsupported.length ? <EditorContent editor={editor} /> : null}
-        {slash && editable ? (
-          <ul
-            role="listbox"
-            aria-label="Insert"
-            data-testid="slash-menu"
-            className="absolute z-20 grid w-60 gap-0.5 rounded-lg border bg-popover p-1 text-sm shadow-md"
-            style={{ top: slash.top, left: slash.left }}
-          >
-            {items.length === 0 ? (
-              <li className="px-2 py-1.5 text-muted-foreground">Nothing matches</li>
-            ) : (
-              items.map((command, index) => (
-                <li
-                  key={command.key}
-                  role="option"
-                  aria-selected={index === slash.active}
-                  className={cn("cursor-pointer rounded-md px-2 py-1.5", index === slash.active && "bg-muted font-medium")}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    choose(command);
-                  }}
-                >
-                  {command.label}
-                </li>
-              ))
-            )}
-          </ul>
+      <div className={cn("grid gap-4", panel && "lg:grid-cols-[minmax(0,1fr)_18rem]")}>
+        <div ref={surface} className="relative">
+          {editor && editable && !unsupported.length ? (
+            <DragHandle editor={editor} onNodeChange={({ pos }) => setHandlePos(pos)}>
+              <div className="forge-drag-handle" data-testid="drag-handle">
+                <span className="forge-drag-grip" aria-hidden="true" title="Drag to move">
+                  <GripVertical className="size-4" />
+                </span>
+                <BlockMenu label="Block menu" editor={editor} indexOf={() => (handlePos === null ? null : topLevelIndexAt(editor.state.doc, handlePos))} onAction={blockAction}>
+                  <button type="button" className="forge-drag-menu" aria-label="Block menu" data-testid="block-menu-button">
+                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  </button>
+                </BlockMenu>
+              </div>
+            </DragHandle>
+          ) : null}
+          {editor && !unsupported.length ? <EditorContent editor={editor} /> : null}
+          {slash && editable ? (
+            <ul
+              role="listbox"
+              aria-label="Insert"
+              data-testid="slash-menu"
+              className="absolute z-20 grid w-60 gap-0.5 rounded-lg border bg-popover p-1 text-sm shadow-md"
+              style={{ top: slash.top, left: slash.left }}
+            >
+              {items.length === 0 ? (
+                <li className="px-2 py-1.5 text-muted-foreground">Nothing matches</li>
+              ) : (
+                items.map((command, index) => (
+                  <li
+                    key={command.key}
+                    role="option"
+                    aria-selected={index === slash.active}
+                    className={cn("cursor-pointer rounded-md px-2 py-1.5", index === slash.active && "bg-muted font-medium")}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      choose(command);
+                    }}
+                  >
+                    {command.label}
+                  </li>
+                ))
+              )}
+            </ul>
+          ) : null}
+        </div>
+        {/* The selected block's settings: beside the text on a wide screen, kept in view at the bottom on a phone. */}
+        {panel ? (
+          <div className="max-lg:sticky max-lg:bottom-0 max-lg:z-20 max-lg:max-h-[45vh] max-lg:overflow-y-auto max-lg:bg-background lg:sticky lg:top-14 lg:self-start">{panel}</div>
         ) : null}
       </div>
 
       {editor && editable ? <LinkDialog editor={editor} open={linkOpen} onOpenChange={setLinkOpen} orgSlug={orgSlug} siteSlug={siteSlug} /> : null}
+      {editor && editable ? (
+        <EmbedDialog
+          open={embedAt !== null}
+          onOpenChange={(open) => {
+            if (!open) setEmbedAt(null);
+          }}
+          onInsert={(attrs) => {
+            if (embedAt) editor.chain().focus().deleteRange(embedAt).insertContent({ type: "embed", attrs }).run();
+            setEmbedAt(null);
+          }}
+        />
+      ) : null}
 
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
         <DialogContent className="sm:max-w-md" data-testid="conflict-dialog">
@@ -426,5 +515,36 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * The block menu (M5-5): move the block up or down, duplicate it, delete it. For the block under the drag handle, or the
+ * one holding the caret; worked out when the menu opens, from the document as it is then.
+ */
+function BlockMenu({
+  label, editor, indexOf, onAction, children,
+}: { label: string; editor: Editor; indexOf: () => number | null; onAction: (index: number | null, action: BlockAction) => void; children: React.ReactNode }) {
+  const [target, setTarget] = useState<{ index: number | null; count: number }>({ index: null, count: 0 });
+  const { index, count } = target;
+  return (
+    <DropdownMenu onOpenChange={(open) => open && setTarget({ index: indexOf(), count: editor.state.doc.childCount })}>
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+      <DropdownMenuContent align="start" aria-label={label}>
+        <DropdownMenuItem disabled={index === null || index <= 0} onSelect={() => onAction(index, "up")}>
+          Move up
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={index === null || index >= count - 1} onSelect={() => onAction(index, "down")}>
+          Move down
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={index === null} onSelect={() => onAction(index, "duplicate")}>
+          Duplicate
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={index === null} variant="destructive" onSelect={() => onAction(index, "delete")}>
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

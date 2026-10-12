@@ -11,6 +11,7 @@ import { HOME_PATH, ParentChainError, parentChain, pathUnder, postPath, reserved
 import { canPublishEntry } from "./policies";
 import { ancestorsOf, findDraft, findEntry, insertRevision, nextRevisionNumber, replaceEntryTerms, revisionById, siteFacts, updateEntry } from "./repository";
 import { isEntrySlug } from "./slugs";
+import { assertOwnReferences } from "./references";
 import { moveSubtree, withPathTaken, type MovedEntry } from "./tree";
 import { versionSchema, parseInput } from "./validation";
 
@@ -61,6 +62,8 @@ export async function publishEntry(ctx: SiteContext, entryId: string, expectedDr
     const definition = definitionOf(entry);
     const document = parseDocument(draft.content);
     if (!document.ok) throw validationError({ content: [documentProblem(document)] });
+    // Nothing in it may point at another site's images or entries (M5-5).
+    await assertOwnReferences(tx, ctx, document.document);
     if (!isEntrySlug(draft.slug)) throw validationError({ slug: ["Use lowercase letters, numbers and single hyphens, like about-us."] });
     if (!definition.fields.safeParse(draft.fields).success) throw validationError({ fields: [`${definition.label.plural} have no such fields.`] });
     const site = await siteFacts(tx, ctx.org.id, ctx.site.id);

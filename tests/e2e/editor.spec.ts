@@ -11,6 +11,9 @@ import { addMember, seedUser } from "./helpers/sites";
  * M5-4 end to end against the production build: the entry editor. Write and
  * reload; the slash menu and the toolbar; a link to another page; two tabs;
  * hostile paste; publish; a closed tab's unsaved changes; who may; which site.
+ * M5-5: the custom blocks: columns with a button, built and set in the
+ * properties panel, reordered by keyboard, the block menu and dragging; a
+ * video; on a phone; read-only.
  */
 
 const tail = () => randomBytes(3).toString("hex");
@@ -238,7 +241,7 @@ test("only this site's entries: another organization's, another site's, the othe
   await Promise.all([other.close(), anonymous.close()]);
 });
 
-test("a page holding blocks this editor cannot edit yet (M5-5's) is not opened for editing, so nothing of them is lost", async ({ page }) => {
+test("a page holding blocks this editor cannot edit yet (an image: M6-4's) is not opened for editing, so nothing of them is lost", async ({ page }) => {
   const { org, site } = await withSite(page);
   const id = uuidv7();
   const image = { type: "image", attrs: { id: uuidv7(), v: 1, mediaId: uuidv7(), alt: null, caption: null, size: "content", link: null } };
@@ -259,4 +262,247 @@ test("a site made before Home pages existed says so on its overview; on a phone 
   await removeHomePage(org.id, site.id);
   await page.goto(`/${org.slug}/sites/${site.slug}`);
   await expect(page.getByTestId("home-page-missing").filter({ visible: true })).toHaveText("This site has no home page yet.");
+});
+
+// ── M5-5: custom blocks ──────────────────────────────────────────────────────
+
+type StoredNode = { type: string; attrs?: Record<string, unknown>; content?: StoredNode[]; text?: string };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** The editor's top-level blocks as it shows them: a custom block by its name, a text block by its tag and text. */
+const order = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelector('[data-testid="editor"]')!.children]
+      .filter((element) => !element.classList.contains("forge-drop-gap"))
+      .map((element) => element.querySelector("[data-forge-node]")?.getAttribute("data-forge-node") ?? element.getAttribute("data-forge-node") ?? `${element.tagName.toLowerCase()}:${element.textContent}`),
+  );
+const idsIn = (nodes: StoredNode[]): string[] => nodes.flatMap((node) => [...(typeof node.attrs?.id === "string" ? [node.attrs.id] : []), ...idsIn(node.content ?? [])]);
+
+/** Hovers a top-level block and waits for the drag handle to sit beside it (it is positioned asynchronously). */
+async function handleFor(page: Page, block: ReturnType<Page["locator"]>) {
+  await block.hover();
+  const handle = page.getByTestId("drag-handle");
+  await expect(handle).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [h, b] = [await handle.boundingBox(), await block.boundingBox()];
+      return !!h && !!b && h.y + h.height / 2 > b.y - 2 && h.y < b.y + Math.min(b.height, 40);
+    })
+    .toBe(true);
+  return handle;
+}
+
+test("a two-column section with a button: built from the slash menu, set in the panel, reordered by keyboard, the block menu and dragging; saved and still there after a reload", async ({ page }) => {
+  const { org, home, editorUrl } = await withSite(page);
+  await openEditor(page, editorUrl);
+  const menu = page.getByTestId("slash-menu");
+  await editor(page).click();
+  await page.keyboard.type("Intro");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/two");
+  await expect(menu.getByRole("option")).toHaveText(["Two columns"]);
+  await page.keyboard.press("Enter");
+  const columns = editor(page).getByTestId("block-columns");
+  await expect(columns).toHaveCount(1);
+  const column = (n: number) => columns.locator('[data-forge-node="column"]').nth(n);
+  await column(0).locator("p").click();
+  await page.keyboard.type("Fresh bread daily");
+
+  // In a column the menu offers blocks, but never columns.
+  await column(1).locator("p").click();
+  await page.keyboard.type("/col");
+  await expect(menu.getByText("Nothing matches")).toBeVisible();
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Backspace");
+  await page.keyboard.type("butt");
+  await expect(menu.getByRole("option")).toHaveText(["Button"]);
+  await page.keyboard.press("Enter");
+  const button = editor(page).getByTestId("block-button");
+  await expect(button).toContainText("Button");
+  await expect(order(page)).resolves.toEqual(["p:Intro", "columns", "p:"]);
+
+  // The properties panel: a change is applied only when the block is valid.
+  await button.click();
+  const panel = page.getByTestId("properties-panel");
+  await expect(panel.getByRole("heading", { name: "Button" })).toBeVisible();
+  await panel.getByLabel("Text").fill("Order now");
+  await panel.getByLabel("Link").fill("javascript:alert(1)");
+  await expect(panel.getByRole("alert")).toHaveText("Use an https:// address, mailto:, tel:, a path like /contact, or a page of this site.");
+  await expect(panel.getByLabel("Link")).toHaveAttribute("aria-invalid", "true");
+  await expect(button).toContainText("→ /");
+  await panel.getByLabel("Link").fill("/order");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await panel.getByLabel("Style").selectOption("secondary");
+  await expect(button).toContainText("Order now");
+  await expect(button).toContainText("→ /order");
+  // The columns' own settings, from its label.
+  await columns.getByRole("button", { name: "Columns · 2" }).click();
+  await expect(panel.getByRole("heading", { name: "Columns" })).toBeVisible();
+  await panel.getByLabel("Widths").selectOption("2:1");
+  await expect(columns).toHaveAttribute("style", /--forge-columns:\s*2fr 1fr/);
+
+  // Keyboard: each Alt+↓ is its own undo step, however quick.
+  await editor(page).locator("p", { hasText: "Intro" }).click();
+  // ProseMirror takes a click's caret from the browser's selectionchange, which can arrive after a key sent at once:
+  // the columns' panel closing says the editor has it.
+  await expect(panel).toBeHidden();
+  await page.keyboard.press("Alt+ArrowDown");
+  await page.keyboard.press("Alt+ArrowDown");
+  await expect.poll(() => order(page)).toEqual(["columns", "p:", "p:Intro"]);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => order(page)).toEqual(["columns", "p:Intro", "p:"]);
+  // The toolbar's block menu, for keyboard users: the block holding the caret.
+  await page.getByRole("button", { name: "Block actions" }).click();
+  await page.getByRole("menu", { name: "Block actions" }).getByRole("menuitem", { name: "Move up" }).click();
+  await expect.poll(() => order(page)).toEqual(["p:Intro", "columns", "p:"]);
+
+  // The drag handle's block menu: duplicate the columns (new ids), then delete the copy.
+  await (await handleFor(page, columns)).getByTestId("block-menu-button").click();
+  const blockMenu = page.getByRole("menu", { name: "Block menu" });
+  await expect(blockMenu.getByRole("menuitem", { name: "Move up" })).toBeEnabled();
+  await blockMenu.getByRole("menuitem", { name: "Duplicate" }).click();
+  await expect.poll(() => order(page)).toEqual(["p:Intro", "columns", "columns", "p:"]);
+  const stored = async () => (await draftOf(org.id, home)).content.doc.content as StoredNode[];
+  await expect.poll(async () => (await stored()).filter((node) => node.type === "columns").length, { timeout: 15_000 }).toBe(2);
+  const twice = await stored();
+  const [first, copy] = twice.filter((node) => node.type === "columns");
+  expect(idsIn([copy!]).length).toBe(idsIn([first!]).length);
+  expect(idsIn([copy!]).some((id) => idsIn([first!]).includes(id))).toBe(false);
+  await (await handleFor(page, columns.nth(1))).getByTestId("block-menu-button").click();
+  await page.getByRole("menu", { name: "Block menu" }).getByRole("menuitem", { name: "Delete" }).click();
+  await expect.poll(() => order(page)).toEqual(["p:Intro", "columns", "p:"]);
+
+  // Dragging by the handle: a visible gap between top-level blocks, and the block lands in it.
+  const handle = await handleFor(page, columns);
+  const grip = (await handle.locator(".forge-drag-grip").boundingBox())!;
+  const intro = (await editor(page).locator("p", { hasText: "Intro" }).boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(intro.x + intro.width / 2, intro.y + 2, { steps: 12 });
+  await expect(editor(page).getByTestId("drop-gap")).toBeVisible();
+  await page.mouse.up();
+  await expect(editor(page).getByTestId("drop-gap")).toHaveCount(0);
+  await expect.poll(() => order(page)).toEqual(["columns", "p:Intro", "p:"]);
+
+  await expect.poll(async () => (await stored()).map((node) => node.type), { timeout: 15_000 }).toEqual(["columns", "paragraph"]);
+  await saved(page);
+  const blocks = await stored();
+  const section = blocks[0]!;
+  expect(section.attrs).toMatchObject({ v: 1, count: 2, ratio: "2:1", stackOnMobile: true });
+  expect(section.content![0]!.content![0]!.content![0]!.text).toBe("Fresh bread daily");
+  expect(section.content![1]!.content![0]).toMatchObject({ type: "button", attrs: { v: 1, label: "Order now", href: "/order", style: "secondary", align: "start", newTab: false } });
+  const ids = idsIn(blocks);
+  ids.forEach((id) => expect(id).toMatch(UUID));
+  expect(new Set(ids).size).toBe(ids.length);
+
+  await page.reload();
+  await expect(editor(page)).toBeVisible({ timeout: 15_000 });
+  await expect(editor(page).getByTestId("block-columns")).toHaveCount(1);
+  await expect(editor(page).getByTestId("block-button")).toContainText("Order now");
+  await expect.poll(() => order(page)).toEqual(["columns", "p:Intro"]);
+  expect(idsIn((await draftOf(org.id, home)).content.doc.content as StoredNode[])).toEqual(ids); // reopening changes nothing
+});
+
+test("a video from the slash menu: an unsafe address is refused in the dialog; YouTube is kept, shown as an address (nothing third-party loads in the admin), and published", async ({ page }) => {
+  const { org, home, editorUrl } = await withSite(page);
+  await openEditor(page, editorUrl);
+  await editor(page).click();
+  await page.keyboard.type("/video");
+  await expect(page.getByTestId("slash-menu").getByRole("option")).toHaveText(["Video or embed"]);
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Video or embed" });
+  const refusal = "Use a YouTube or Vimeo video address, or an https:// address of a public page.";
+  for (const address of ["javascript:alert(1)", "http://www.openstreetmap.org/", "https://localhost/admin", "https://127.0.0.1/"]) {
+    await dialog.getByLabel("Address").fill(address);
+    await dialog.getByRole("button", { name: "Add" }).click();
+    await expect(dialog.getByText(refusal), address).toBeVisible();
+  }
+  await expect(editor(page).getByTestId("block-embed")).toHaveCount(0);
+  await dialog.getByLabel("Address").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  await dialog.getByRole("button", { name: "Add" }).click();
+  await expect(dialog).toBeHidden();
+  const embed = editor(page).getByTestId("block-embed");
+  await expect(embed).toContainText("YouTube video · 16:9");
+  await expect(embed).toContainText("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(editor(page)).not.toContainText("/video");
+
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(page.getByTestId("entry-status")).toHaveText("Published", { timeout: 15_000 });
+  const blocks = (await draftOf(org.id, home)).content.doc.content as StoredNode[];
+  expect(blocks.find((node) => node.type === "embed")).toMatchObject({ attrs: { v: 1, provider: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", aspect: "16:9" } });
+});
+
+/** A page with a two-column section holding a button, made behind the app's back. */
+async function seedSection(orgId: string, siteId: string) {
+  const id = uuidv7();
+  const section = {
+    type: "columns",
+    attrs: { id: uuidv7(), v: 1, count: 2, ratio: "1:1", stackOnMobile: true },
+    content: [
+      { type: "column", attrs: { id: uuidv7() }, content: [{ type: "paragraph", attrs: { id: uuidv7() }, content: [{ type: "text", text: "Left side" }] }] },
+      { type: "column", attrs: { id: uuidv7() }, content: [{ type: "button", attrs: { id: uuidv7(), v: 1, label: "Call us", href: "tel:+15550100", style: "primary", align: "start", newTab: false } }] },
+    ],
+  };
+  await seedEntry(orgId, siteId, { id, type: "page", title: "Sections", slug: "sections", path: "/sections", paragraphId: uuidv7(), extraBlocks: [section, { type: "spacer", attrs: { id: uuidv7(), v: 1, size: "md" } }] });
+  return id;
+}
+
+test("opening a page that ends with a block and clicking around saves nothing (no new version, no conflict for another tab); an edit does", async ({ page }) => {
+  const { org, site } = await withSite(page);
+  const id = await seedSection(org.id, site.id);
+  await openEditor(page, `/${org.slug}/sites/${site.slug}/pages/${id}`);
+  await editor(page).getByTestId("block-button").click();
+  await editor(page).locator("p", { hasText: "Left side" }).click();
+  await editor(page).getByTestId("block-spacer").click();
+  // Autosave waits 2 s after a change: give it time to (wrongly) save.
+  await page.waitForTimeout(3_000);
+  await expect(status(page)).toHaveText("All changes saved");
+  expect((await draftOf(org.id, id)).version).toBe(1);
+
+  await editor(page).locator("p", { hasText: "Left side" }).click();
+  // The editor has taken the click (see the keyboard test above) when the panel is the columns' rather than the spacer's.
+  await expect(page.getByTestId("properties-panel").getByRole("heading")).toHaveText("Columns");
+  await page.keyboard.press("End");
+  await page.keyboard.type(" and more");
+  await expect.poll(async () => (await draftOf(org.id, id)).version, { timeout: 15_000 }).toBe(2);
+  const content = JSON.stringify((await draftOf(org.id, id)).content);
+  expect(content).toContain("Left side and more");
+  expect(content).toContain('"type":"spacer"');
+});
+
+test("on a phone the columns stack, the page does not scroll sideways, and the panel stays in view at the bottom", async ({ page }) => {
+  const { org, site } = await withSite(page);
+  const id = await seedSection(org.id, site.id);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await openEditor(page, `/${org.slug}/sites/${site.slug}/pages/${id}`);
+  const columns = editor(page).getByTestId("block-columns").locator('[data-forge-node="column"]');
+  const [left, right] = [(await columns.nth(0).boundingBox())!, (await columns.nth(1).boundingBox())!];
+  expect(right.y).toBeGreaterThanOrEqual(left.y + left.height - 1);
+  await editor(page).getByTestId("block-button").click();
+  const panel = page.getByTestId("properties-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByLabel("Text")).toHaveValue("Call us");
+  // The panel scrolls inside a sheet kept at the bottom of the screen.
+  const sheet = (await panel.locator("xpath=..").boundingBox())!;
+  expect(sheet.width).toBeLessThanOrEqual(360);
+  expect(sheet.y + sheet.height).toBeLessThanOrEqual(740 + 1);
+  expect(sheet.height).toBeLessThanOrEqual(740 / 2);
+  await panel.getByLabel("Text").fill("Call us today");
+  await expect(editor(page).getByTestId("block-button")).toContainText("Call us today");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+test("a Viewer sees the blocks but cannot change them: no handle, no block menu, no panel", async ({ page }) => {
+  const { org, site } = await withSite(page, "viewer");
+  const id = await seedSection(org.id, site.id);
+  await openEditor(page, `/${org.slug}/sites/${site.slug}/pages/${id}`);
+  await expect(page.getByTestId("read-only")).toBeVisible();
+  await expect(editor(page).getByTestId("block-button")).toContainText("Call us");
+  await editor(page).getByTestId("block-columns").hover();
+  await editor(page).getByTestId("block-button").click();
+  await expect(page.getByTestId("drag-handle")).toHaveCount(0);
+  await expect(page.getByTestId("properties-panel")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Block actions" })).toHaveCount(0);
+  await page.keyboard.press("Alt+ArrowDown");
+  await expect.poll(() => order(page)).toEqual(["p:", "columns", "spacer", "p:"]); // nothing moved
 });

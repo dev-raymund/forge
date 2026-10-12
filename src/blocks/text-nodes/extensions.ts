@@ -1,23 +1,20 @@
 import { Extension, type AnyExtension } from "@tiptap/core";
 import Blockquote from "@tiptap/extension-blockquote";
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
-import UniqueID from "@tiptap/extension-unique-id";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
-import { uuidv7 } from "uuidv7";
-import { isSafeHref } from "@/modules/content/shared";
+import { isSafeHref } from "../links";
 
 /**
  * The editor's text nodes (M5-4; plan §6.1; from the M0-5 spike, ADR 0003):
  * heading (2–4), paragraph, bullet and numbered lists, quote and divider, with
- * the marks bold, italic, underline, strike, code and link. Shared by the
- * editor and its tests; no React here.
+ * the marks bold, italic, underline, strike, code and link. No React here.
+ * The editor's whole schema (these, the custom blocks, ids, reordering) is
+ * assembled in `modules/content/editor/extensions.ts` (M5-5).
  *
- * The schema is closed: only these exist in the editor, so pasted HTML can
- * only become these (a `<script>`, an `<iframe>` or a `<div data-forge-node>`
- * has nowhere to go). Links keep only `http(s)`, `mailto`, `tel`, site paths
- * and `entry:{id}`. The custom blocks (image, button, columns, embed, spacer)
- * join in M5-5, with their own paste guard.
+ * The schema is closed: pasted HTML can only become what exists (a `<script>`
+ * or an `<iframe>` has nowhere to go). Links keep only `http(s)`, `mailto`,
+ * `tel`, site paths and `entry:{id}`.
  */
 
 /** `style` would collide with the HTML style attribute: it travels as `data-style`. */
@@ -55,11 +52,13 @@ const PastedHeadings = Extension.create({
 /** Node types that carry a stable `id` (plan §6.2: every top-level node). */
 export const TEXT_ID_TYPES = ["paragraph", "heading", "blockquote", "bulletList", "orderedList", "horizontalRule"] as const;
 
-/** Every node type this editor can hold. A stored document with any other is not opened for editing here (it would lose them). */
+/** The text node types (with the document and list items). */
 export const TEXT_NODE_TYPES: ReadonlySet<string> = new Set(["doc", "text", "listItem", ...TEXT_ID_TYPES]);
 
-export const textNodeExtensions: AnyExtension[] = [
+/** The text nodes and marks. The document node is the editor's (it also holds the "layout" group: columns). */
+export const textNodes: AnyExtension[] = [
   StarterKit.configure({
+    document: false,
     blockquote: false,
     horizontalRule: false,
     codeBlock: false, // not in the V1 block set
@@ -77,5 +76,4 @@ export const textNodeExtensions: AnyExtension[] = [
   ForgeBlockquote,
   ForgeHorizontalRule,
   PastedHeadings,
-  UniqueID.configure({ types: [...TEXT_ID_TYPES], attributeName: "id", generateID: () => uuidv7() }),
 ];

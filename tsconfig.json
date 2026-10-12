@@ -17,8 +17,7 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./src/*"],
-      "@spikes/*": ["./spikes/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [

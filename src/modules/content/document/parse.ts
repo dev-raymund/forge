@@ -1,4 +1,5 @@
 import { uuidv7 } from "uuidv7";
+import { NODE_MIGRATIONS as REGISTRY_MIGRATIONS } from "@/blocks/schemas";
 import {
   countNodes,
   DOCUMENT_VERSION,
@@ -23,21 +24,15 @@ export function emptyDocument(paragraphId: string = uuidv7()): StoredDocument {
 }
 
 type Attrs = Record<string, unknown>;
-export type NodeMigrations = Record<string, { v: number; migrate: Record<number, (attrs: Attrs) => Attrs> }>;
+export type NodeMigrations = Readonly<Record<string, { v: number; migrate: Readonly<Record<number, (attrs: Attrs) => Attrs>> }>>;
 
 /**
- * Registry of versioned custom nodes: `v` is the current attrs version and
- * `migrate[n]` upgrades attrs from version n to n + 1. All nodes are at v1 in
- * V1, so there is nothing to migrate yet; the mechanism is tested with a
- * fixture registry.
+ * The versioned custom nodes: `v` is the current attributes version and
+ * `migrate[n]` upgrades attributes from version n to n + 1. From the block
+ * registry (`src/blocks/schemas.ts`, M5-5). All nodes are at v1 in V1, so
+ * there is nothing to migrate yet; the mechanism is tested with a fixture.
  */
-export const NODE_MIGRATIONS: NodeMigrations = {
-  image: { v: 1, migrate: {} },
-  button: { v: 1, migrate: {} },
-  columns: { v: 1, migrate: {} },
-  embed: { v: 1, migrate: {} },
-  spacer: { v: 1, migrate: {} },
-};
+export const NODE_MIGRATIONS: NodeMigrations = REGISTRY_MIGRATIONS as NodeMigrations;
 
 export class DocumentMigrationError extends Error {}
 

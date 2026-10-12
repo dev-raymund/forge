@@ -1,121 +1,31 @@
 import { z } from "zod";
+import { isSafeHref, LINK_MAX } from "@/blocks/links";
+import { NODE_ATTRS } from "@/blocks/schemas";
 
 /**
  * Stored document contract (plan §6.2): `{ v, doc }` in ProseMirror JSON shape.
  * Closed: only these nodes and marks exist. Server-safe (no DOM, no React).
  *
- * Carried over from the M0-5 spike (spikes/editor/schema.ts, ADR 0003) in M5-3,
- * where saving and publishing start validating documents. M5-4 and M5-5 move
- * each custom node's attributes into the block registry (`src/blocks/*`); the
- * rules do not change on the way.
+ * Carried over from the M0-5 spike (spikes/editor/schema.ts, ADR 0003) in M5-3.
+ * Since M5-5 every node's attributes come from the block registry
+ * (`src/blocks/schemas.ts`); what is here is the tree: which node may hold
+ * which, the marks, and the limits.
  */
 
 export const DOCUMENT_VERSION = 1;
 export const MAX_DOCUMENT_BYTES = 1_000_000;
 export const MAX_NODES = 2_000;
 
-// ── Links ────────────────────────────────────────────────────────────────────
+// ── Links, embeds and attributes: the block registry's (src/blocks, M5-5) ───
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SAFE_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+export { entryIdOf, isSafeHref } from "@/blocks/links";
+export { EMBED_PROVIDERS, embedSrc, providerOf } from "@/blocks/embed/schema";
+export type { EmbedProvider } from "@/blocks/embed/schema";
 
-/** `http(s)`, `mailto`, `tel`, a site-relative `/path`, or `entry:{uuid}` (§6.1). */
-export function isSafeHref(href: string): boolean {
-  if (href.startsWith("entry:")) return UUID.test(href.slice("entry:".length));
-  if (href.startsWith("/")) return !href.startsWith("//") && !href.includes("\\");
-  try {
-    return SAFE_PROTOCOLS.has(new URL(href).protocol);
-  } catch {
-    return false;
-  }
-}
+/** Every node type's attributes, from the block registry: the one definition of what a document may hold. */
+export const attrs = NODE_ATTRS;
 
-const href = z.string().max(2048).refine(isSafeHref, "Unsupported link");
-
-// ── Embeds ───────────────────────────────────────────────────────────────────
-
-export const EMBED_PROVIDERS = ["youtube", "vimeo"] as const;
-export type EmbedProvider = (typeof EMBED_PROVIDERS)[number];
-
-/** The privacy-enhanced iframe URL for an allow-listed provider, or null. */
-export function embedSrc(provider: string, url: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== "https:") return null;
-  const host = u.hostname.replace(/^www\.|^m\./, "");
-  if (provider === "youtube") {
-    const id =
-      host === "youtu.be"
-        ? u.pathname.slice(1)
-        : host === "youtube.com" || host === "youtube-nocookie.com"
-          ? u.pathname === "/watch"
-            ? u.searchParams.get("v")
-            : u.pathname.match(/^\/(?:embed|shorts)\/([^/]+)/)?.[1]
-          : null;
-    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? `https://www.youtube-nocookie.com/embed/${id}` : null;
-  }
-  if (provider === "vimeo") {
-    const id = host === "vimeo.com" ? u.pathname.match(/^\/(\d{6,12})$/)?.[1] : null;
-    return id ? `https://player.vimeo.com/video/${id}?dnt=1` : null;
-  }
-  return null;
-}
-
-// ── Attributes (one schema per node type) ────────────────────────────────────
-
-const id = z.uuid();
-const text = (max: number) => z.string().max(max);
-
-export const attrs = {
-  paragraph: z.object({ id }),
-  heading: z.object({ id, level: z.union([z.literal(2), z.literal(3), z.literal(4)]) }),
-  blockquote: z.object({ id, cite: text(200).nullable().default(null) }),
-  bulletList: z.object({ id }),
-  orderedList: z.object({ id, start: z.int().min(1).max(10_000).default(1) }),
-  horizontalRule: z.object({ id, style: z.enum(["line", "space"]).default("line") }),
-  image: z.object({
-    id,
-    v: z.literal(1),
-    mediaId: z.uuid(),
-    alt: text(500).nullable().default(null),
-    caption: text(1000).nullable().default(null),
-    size: z.enum(["content", "wide", "full"]).default("content"),
-    link: href.nullable().default(null),
-  }),
-  button: z.object({
-    id,
-    v: z.literal(1),
-    label: text(80).min(1),
-    href,
-    style: z.enum(["primary", "secondary"]).default("primary"),
-    align: z.enum(["start", "center", "end"]).default("start"),
-    newTab: z.boolean().default(false),
-  }),
-  columns: z
-    .object({
-      id,
-      v: z.literal(1),
-      count: z.union([z.literal(2), z.literal(3)]),
-      ratio: z.enum(["1:1", "2:1", "1:2", "1:1:1", "2:1:1", "1:2:1", "1:1:2"]).default("1:1"),
-      stackOnMobile: z.boolean().default(true),
-    })
-    .refine((a) => a.ratio.split(":").length === a.count, { message: "ratio must have one part per column" }),
-  column: z.object({ id }),
-  embed: z
-    .object({
-      id,
-      v: z.literal(1),
-      provider: z.enum(EMBED_PROVIDERS),
-      url: z.url().max(2048),
-      aspect: z.enum(["16:9", "4:3", "1:1", "9:16"]).default("16:9"),
-    })
-    .refine((a) => embedSrc(a.provider, a.url) !== null, { message: "Unsupported embed URL", path: ["url"] }),
-  spacer: z.object({ id, v: z.literal(1), size: z.enum(["sm", "md", "lg", "xl"]).default("md") }),
-} as const;
+const href = z.string().max(LINK_MAX).refine(isSafeHref, "Unsupported link");
 
 // ── Marks and inline content ─────────────────────────────────────────────────
 

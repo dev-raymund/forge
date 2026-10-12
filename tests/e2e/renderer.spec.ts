@@ -110,7 +110,7 @@ test("routing guards: /render is internal, a site path is never the admin's, the
   expect((await page.goto(`/render/address~${site.address}`))?.status()).toBe(404);
   expect((await page.goto(siteUrl(site, `/render/address~${site.address}`)))?.status()).toBe(200); // just a path inside the site
 
-  await page.goto(siteUrl(site, "/dev/editor"));
+  await page.goto(siteUrl(site, "/account"));
   expect(await publicView(page)).toMatchObject({ heading: site.name, theme: "studio" });
   const api = await page.goto(siteUrl(site, "/api/health"));
   expect(api?.headers()["content-type"]).toContain("text/html"); // the site, not the JSON endpoint

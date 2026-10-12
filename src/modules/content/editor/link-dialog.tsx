@@ -2,14 +2,13 @@
 
 import type { Editor } from "@tiptap/core";
 import { FileText, Newspaper } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ENTRY_SEARCH_PATH } from "../admin-paths";
 import { isSafeHref } from "../document/schema";
-import type { ContentTypeKey } from "../types/definition";
+import { useEntrySearch } from "./entry-search";
 
 /**
  * The link dialog (plan §6.1; M5-4): a web address, an email, a phone number,
@@ -19,8 +18,6 @@ import type { ContentTypeKey } from "../types/definition";
  * Whatever is chosen is checked with the document's own rule (`isSafeHref`);
  * the server checks the saved document again.
  */
-
-type Match = { id: string; type: ContentTypeKey; title: string; path: string; status: string };
 
 export const LINK_RULE = "Use a web address (https://…), an email (mailto:…), a phone number (tel:…) or a path on this site (/about).";
 
@@ -40,31 +37,10 @@ function LinkForm({ editor, current, orgSlug, siteSlug, close }: { editor: Edito
   const [href, setHref] = useState(current.startsWith("entry:") ? "" : current);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Match[] | null>(null);
-  const [searchError, setSearchError] = useState(false);
   const urlId = useId();
   const searchId = useId();
 
-  // The site's pages and posts matching what is typed (the latest when nothing is), a quarter of a second after the last key.
-  useEffect(() => {
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ org: orgSlug, site: siteSlug, q: query });
-        const response = await fetch(`${ENTRY_SEARCH_PATH}?${params}`, { signal: controller.signal, headers: { accept: "application/json" } });
-        if (!response.ok) throw new Error(String(response.status));
-        const body = (await response.json()) as { entries: Match[] };
-        setResults(body.entries);
-        setSearchError(false);
-      } catch (cause) {
-        if ((cause as Error).name !== "AbortError") setSearchError(true);
-      }
-    }, 250);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [orgSlug, siteSlug, query]);
+  const { results, failed: searchError } = useEntrySearch(orgSlug, siteSlug, query);
 
   function apply(target: string, text: string) {
     if (!isSafeHref(target)) return setError(LINK_RULE);

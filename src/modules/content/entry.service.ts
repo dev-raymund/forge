@@ -10,7 +10,8 @@ import type { StoredDocument } from "./document/schema";
 import { DRAFT_CHANGED } from "./messages";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "./paths";
 import { canAssignTerms, canCreateEntry, canCreditOthers, canUpdateEntry, type EntryRef } from "./policies";
-import { findEntry, insertDraft, insertEntry, isMember, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, type EntryRow } from "./repository";
+import { assertNewReferences } from "./references";
+import { findDraft, findEntry, insertDraft, insertEntry, isMember, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, type EntryRow } from "./repository";
 import { slugFromTitle } from "./slugs";
 import type { ContentTypeDefinition, ContentTypeKey } from "./types/definition";
 import { contentType } from "./types/registry";
@@ -176,6 +177,8 @@ export async function saveDraft(ctx: SiteContext, entryId: string, expectedVersi
     if (draft.content !== undefined) {
       const parsed = parseDocument(draft.content);
       if (!parsed.ok) throw validationError({ content: [documentProblem(parsed)] });
+      // Images and links new in this save must be this site's (M5-5).
+      await assertNewReferences(tx, ctx, parsed.document, (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.content);
       values.content = parsed.document;
       values.contentHash = contentHashOf(parsed.document);
     }
