@@ -23,6 +23,9 @@ const slug = line(63);
 const address = line(63);
 /** A theme's key (`studio`). The activity page turns it into a word. */
 const themeKey = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
+/** An entry's type, and its path on its site (`/` or `/segment/…`: the `entries_path_format` rule). */
+const entryType = z.enum(["page", "post"]);
+const entryPath = z.string().max(2048).regex(/^(\/|(\/[a-z0-9]+(-[a-z0-9]+)*)+)$/);
 
 export const AUDIT_EVENTS = {
   "organization.created": {
@@ -109,6 +112,22 @@ export const AUDIT_EVENTS = {
     label: "Site status changed",
     // Only the two statuses a member may move between: a suspended site is refused before anything is recorded.
     metadata: z.object({ name: line(), previousStatus: z.enum(["coming_soon", "live"]), newStatus: z.enum(["coming_soon", "live"]) }),
+  },
+  // M5-3 (ADR 0016): entries, and the site's home page.
+  "entry.created": {
+    resourceType: "entry",
+    label: "Entry created",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath }),
+  },
+  "entry.published": {
+    resourceType: "entry",
+    label: "Entry published",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, revision: z.int().min(1) }),
+  },
+  "site.homepage_changed": {
+    resourceType: "site",
+    label: "Home page changed",
+    metadata: z.object({ name: line(), title: line(), previousTitle: line().optional() }),
   },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
@@ -210,6 +229,10 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.settings_changed": (actor, m) => `${actor} changed the ${m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
   "site.status_changed": (actor, m) =>
     m.newStatus === "live" ? `${actor} published the site ${m.name}.` : `${actor} switched the site ${m.name} back to Coming soon.`,
+  "entry.created": (actor, m) => `${actor} created the ${m.type} ${m.title} at ${m.path}.`,
+  "entry.published": (actor, m) => `${actor} published the ${m.type} ${m.title} at ${m.path}.`,
+  "site.homepage_changed": (actor, m) =>
+    m.previousTitle ? `${actor} made ${m.title} the home page of ${m.name}, in place of ${m.previousTitle}.` : `${actor} made ${m.title} the home page of ${m.name}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -230,6 +253,9 @@ const PLAIN: Record<AuditAction, string> = {
   "site.theme_changed": "changed a site’s theme",
   "site.settings_changed": "changed a site’s settings",
   "site.status_changed": "changed a site’s status",
+  "entry.created": "created a page or post",
+  "entry.published": "published a page or post",
+  "site.homepage_changed": "changed a site’s home page",
 };
 
 /**

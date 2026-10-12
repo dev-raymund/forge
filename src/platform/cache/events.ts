@@ -8,6 +8,8 @@ import { tags } from "./tags";
 
 export type CacheEvent =
   | { type: "entry.published" | "entry.unpublished" | "entry.trashed"; siteId: string; entryId: string; contentType: string; pathChanged?: boolean }
+  // A live entry's path changed without it being published again: a page below one whose path changed, or the old and new Home (M5-3).
+  | { type: "entry.moved"; siteId: string; entryId: string; contentType: string }
   | { type: "site.configChanged"; siteId: string } // settings, theme, menus, redirects
   | { type: "site.statusChanged"; siteId: string } // coming soon ↔ live ↔ suspended, theme switch
   | { type: "domain.changed"; siteId: string; hostnames: readonly string[] }
@@ -27,6 +29,12 @@ export function tagsFor(event: CacheEvent): TagSet {
           tags.routes(event.siteId),
           ...(event.pathChanged ? [tags.config(event.siteId)] : []),
         ],
+        stale: [tags.list(event.siteId, event.contentType)],
+      };
+    case "entry.moved":
+      // As a publish that changed the path: its own page, the routes, the config (for M8-5's redirect), its lists.
+      return {
+        immediate: [tags.entry(event.siteId, event.entryId), tags.routes(event.siteId), tags.config(event.siteId)],
         stale: [tags.list(event.siteId, event.contentType)],
       };
     case "site.configChanged":

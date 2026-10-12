@@ -58,8 +58,8 @@ describe("the activity page", () => {
   });
 
   it("an event from elsewhere, or one whose details are unreadable, is still a line", () => {
-    const out = view({ page: { items: [event(2, { action: "entry.published", metadata: { type: "post" } }), event(1, { metadata: {} })], nextCursor: null } });
-    expect(out).toContain("Raymund did something Forge cannot describe yet (entry.published).");
+    const out = view({ page: { items: [event(2, { action: "entry.scheduled", metadata: { type: "post" } }), event(1, { metadata: {} })], nextCursor: null } });
+    expect(out).toContain("Raymund did something Forge cannot describe yet (entry.scheduled).");
     expect(out).toContain("Raymund changed a member’s role.");
   });
 

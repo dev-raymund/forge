@@ -19,6 +19,9 @@ describe("tagsFor (the invalidation map)", () => {
       { immediate: [tags.entry(S, E), tags.routes(S)], stale: [tags.list(S, "post")] }],
     [{ type: "entry.unpublished", siteId: S, entryId: E, contentType: "page", pathChanged: true } as const,
       { immediate: [tags.entry(S, E), tags.routes(S), tags.config(S)], stale: [tags.list(S, "page")] }],
+    // M5-3: a live page whose path changed without being published again (below a moved page, or the Home page changing).
+    [{ type: "entry.moved", siteId: S, entryId: E, contentType: "page" } as const,
+      { immediate: [tags.entry(S, E), tags.routes(S), tags.config(S)], stale: [tags.list(S, "page")] }],
     [{ type: "site.configChanged", siteId: S } as const, { immediate: [`site:${S}:config`], stale: [] }],
     [{ type: "site.statusChanged", siteId: S } as const, { immediate: [`site:${S}`], stale: [] }],
     [{ type: "domain.changed", siteId: S, hostnames: ["old.com", "new.com"] } as const,

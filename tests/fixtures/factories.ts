@@ -196,7 +196,7 @@ export async function createTenantGraph() {
       .returning();
     const [audit] = await tx
       .insert(t.auditLogs)
-      .values({ organizationId: org.id, siteId: site.id, actorType: "user", actorId: user.id, action: "entry.published" })
+      .values({ organizationId: org.id, siteId: site.id, actorType: "user", actorId: user.id, action: "entry.scheduled" })
       .returning();
     return { menu: menu!, redirect: redirect!, apiKey: apiKey!, invitation: invitation!, audit: audit! };
   });

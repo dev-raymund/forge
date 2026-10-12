@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
+import { createEntry, publishEntry, setHomepage } from "@/modules/content";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
@@ -221,7 +222,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, and the sites of M4-1, M4-4, M4-2 and M4-5)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -245,6 +246,10 @@ describe("every change writes its line, in the same transaction", () => {
     const siteCtx = await resolveSiteContext(a.actor, a.org.slug, site.slug);
     await updateSiteSettings(siteCtx, "reading", { blogPath: "news", postsPerPage: "12" }, (await getSiteSettings(siteCtx)).version);
     await setSiteStatus(siteCtx, { status: "live" });
+    // Entries (M5-3): their own tests are tests/integration/content-entries.test.ts.
+    const { entry } = await createEntry(siteCtx, { type: "page", title: "Covered" });
+    await publishEntry(siteCtx, entry.id, 1);
+    await setHomepage(siteCtx, entry.id);
     await deleteSite(await resolveSiteContext(a.actor, a.org.slug, site.slug));
     await transferOwnership(ctx, { memberId: one.memberId });
     expect(new Set(await actionsOf(a.org.id))).toEqual(new Set(AUDIT_ACTIONS));
@@ -618,13 +623,13 @@ describe("reading the activity log", () => {
   it("an event this code does not know is listed by its name, not hidden and not an error", async () => {
     const a = await newTenant();
     await withTenant({ orgId: a.org.id, userId: a.user.id }, (tx) =>
-      tx.insert(t.auditLogs).values({ organizationId: a.org.id, actorType: "user", actorId: a.user.id, actorLabel: a.user.email, action: "entry.published", resourceType: "entry", metadata: { type: "post" } }),
+      tx.insert(t.auditLogs).values({ organizationId: a.org.id, actorType: "user", actorId: a.user.id, actorLabel: a.user.email, action: "entry.scheduled", resourceType: "entry", metadata: { type: "post" } }),
     );
     const { items } = await listActivity(a.ctx);
-    expect(items[0]!.action).toBe("entry.published");
-    expect(describeEvent(items[0]!)).toBe(`${a.user.name} did something Forge cannot describe yet (entry.published).`);
+    expect(items[0]!.action).toBe("entry.scheduled");
+    expect(describeEvent(items[0]!)).toBe(`${a.user.name} did something Forge cannot describe yet (entry.scheduled).`);
     // It cannot be asked for by name through the page's filters, which know the catalog only.
-    expect(parseActivityQuery({ action: "entry.published" })).toEqual({});
+    expect(parseActivityQuery({ action: "entry.scheduled" })).toEqual({});
   });
 });
 

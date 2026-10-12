@@ -90,7 +90,11 @@ describe("registered operations given another tenant's identifiers answer NotFou
   /** Everything an organization owns in the tenancy tables, as one digest: any change to any row changes it. */
   // The activity log is in it: nothing done from A may add a line to B's record, any more than change B's rows.
   // So are B's site addresses (M4-1): `domains` is a platform table, without RLS, so this is its only witness.
-  const TENANCY_TABLES = ["organizations", "organization_members", "organization_invitations", "subscriptions", "sites", "site_settings", "domains", "audit_logs"];
+  // And B's content (M5-3): entries, their drafts, revisions and terms.
+  const TENANCY_TABLES = [
+    "organizations", "organization_members", "organization_invitations", "subscriptions", "sites", "site_settings", "domains", "audit_logs",
+    "entries", "entry_drafts", "entry_revisions", "terms", "entry_terms",
+  ];
   const fingerprintOf = (orgId: string) =>
     withTenant({ orgId }, async (tx) => {
       const hash = createHash("sha256");
@@ -107,19 +111,22 @@ describe("registered operations given another tenant's identifiers answer NotFou
   beforeAll(async () => {
     const [A, B] = await Promise.all([createTenantGraph(), createTenantGraph()]);
     const actor: Actor = { kind: "user", userId: A.user.id, sessionId: A.user.id, emailVerified: true };
-    caller = { actor, ctx: await resolveOrgContext(actor, A.org.slug), orgSlug: A.org.slug };
+    caller = { actor, ctx: await resolveOrgContext(actor, A.org.slug), orgSlug: A.org.slug, siteSlug: A.site.slug };
     aOrgId = A.org.id;
     const memberOfB = await withTenant({ orgId: B.org.id }, (tx) =>
       tx.execute<{ id: string }>(sql`select id from organization_members where organization_id = ${B.org.id} limit 1`),
     );
     foreign = {
       orgId: B.org.id, orgSlug: B.org.slug, siteId: B.site.id, siteSlug: B.site.slug, memberId: memberOfB.rows[0]!.id, userId: B.user.id, invitationId: B.invitation.id,
+      entryId: B.entry.id,
     };
 
     const viewer = await addUser(A.org, await createUser(), "viewer");
-    bystander = { actor: viewer.actor, ctx: await resolveOrgContext(viewer.actor, A.org.slug), orgSlug: A.org.slug };
+    bystander = { actor: viewer.actor, ctx: await resolveOrgContext(viewer.actor, A.org.slug), orgSlug: A.org.slug, siteSlug: A.site.slug };
     const tail = randomBytes(4).toString("hex");
-    nowhere = { orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7(), invitationId: uuidv7() };
+    nowhere = {
+      orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7(), invitationId: uuidv7(), entryId: uuidv7(),
+    };
   });
 
   it("has operations to check, and the fixtures are what the checks assume", async () => {

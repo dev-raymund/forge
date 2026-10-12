@@ -21,33 +21,37 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "site.theme_changed": { name: "Acme Bakery", previousTheme: "studio", newTheme: "journal" },
   "site.settings_changed": { name: "Acme Bakery", group: "general", fields: ["tagline", "timezone"] },
   "site.status_changed": { name: "Acme Bakery", previousStatus: "coming_soon", newStatus: "live" },
+  "entry.created": { type: "page", title: "About us", path: "/about-us" },
+  "entry.published": { type: "post", title: "Hello", path: "/blog/hello", revision: 1 },
+  "site.homepage_changed": { name: "Acme Bakery", title: "Welcome", previousTitle: "Home" },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2 and the one of M4-5, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5 and the three of M5-3, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
         "member.invited", "invitation.resent", "invitation.revoked", "invitation.accepted",
         "member.role_changed", "member.removed", "member.left",
         "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed", "site.status_changed",
+        "entry.created", "entry.published", "site.homepage_changed",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
   });
 
-  it("every event is about an organization, a membership, an invitation or a site, and has a name for the filter list", () => {
+  it("every event is about an organization, a membership, an invitation, a site or an entry, and has a name for the filter list", () => {
     for (const action of AUDIT_ACTIONS) {
-      expect(["organization", "membership", "invitation", "site"], action).toContain(AUDIT_EVENTS[action].resourceType);
+      expect(["organization", "membership", "invitation", "site", "entry"], action).toContain(AUDIT_EVENTS[action].resourceType);
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
-    expect(eventLabel("entry.published")).toBe("entry.published"); // an event from elsewhere keeps its own name
+    expect(eventLabel("entry.scheduled")).toBe("entry.scheduled"); // an event from elsewhere keeps its own name
   });
 
   it("knows an event from something that is not one", () => {
     for (const action of AUDIT_ACTIONS) expect(isAuditAction(action)).toBe(true);
-    for (const junk of ["", "member", "member.", "MEMBER.INVITED", "member.invited ", "entry.published", "toString", "__proto__", "constructor", null, undefined, 1, {}, ["member.invited"]]) {
+    for (const junk of ["", "member", "member.", "MEMBER.INVITED", "member.invited ", "entry.scheduled", "toString", "__proto__", "constructor", null, undefined, 1, {}, ["member.invited"]]) {
       expect(isAuditAction(junk), String(junk)).toBe(false);
     }
   });
@@ -106,12 +110,19 @@ describe("what is stored with an event", () => {
       ["site.status_changed", { name: "Acme", previousStatus: "draft", newStatus: "live" }],
       ["site.status_changed", { name: "Acme", previousStatus: "suspended", newStatus: "live" }],
       ["site.status_changed", { name: "Acme", previousStatus: "live" }],
+      ["entry.created", { type: "product", title: "X", path: "/x" }],
+      ["entry.created", { type: "page", title: "", path: "/x" }],
+      ["entry.created", { type: "page", title: "X", path: "/x/" }],
+      ["entry.created", { type: "page", title: "X", path: "javascript:alert(1)" }],
+      ["entry.published", { type: "post", title: "X", path: "/blog/x", revision: 0 }],
+      ["entry.published", { type: "post", title: "X", path: "/blog/x" }],
+      ["site.homepage_changed", { name: "Acme" }],
     ];
     for (const [action, metadata] of invalid) expect(() => sanitizeMetadata(action, metadata), `${action} ${JSON.stringify(metadata)}`).toThrow(AuditEventError);
   });
 
   it("refuses an event that is not in the vocabulary, including names an object would answer to", () => {
-    for (const action of ["member.promoted", "entry.published", "", "toString", "__proto__", "constructor", "hasOwnProperty", null, undefined, 7]) {
+    for (const action of ["member.promoted", "entry.scheduled", "", "toString", "__proto__", "constructor", "hasOwnProperty", null, undefined, 7]) {
       expect(() => sanitizeMetadata(action, {}), String(action)).toThrow(/is not an audit event/);
     }
   });
@@ -158,6 +169,13 @@ describe("an event as a sentence", () => {
     expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "live", newStatus: "coming_soon" })).toBe(
       "Raymund switched the site Acme Bakery back to Coming soon.",
     );
+    expect(say("entry.created", { type: "page", title: "About us", path: "/about-us" })).toBe("Raymund created the page About us at /about-us.");
+    expect(say("entry.published", { type: "post", title: "Hello", path: "/blog/hello", revision: 3 })).toBe("Raymund published the post Hello at /blog/hello.");
+    expect(say("entry.published", { type: "page", title: "Home", path: "/", revision: 1 })).toBe("Raymund published the page Home at /.");
+    expect(say("site.homepage_changed", { name: "Acme Bakery", title: "Welcome", previousTitle: "Home" })).toBe(
+      "Raymund made Welcome the home page of Acme Bakery, in place of Home.",
+    );
+    expect(say("site.homepage_changed", { name: "Acme Bakery", title: "Welcome" })).toBe("Raymund made Welcome the home page of Acme Bakery.");
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {
@@ -179,7 +197,7 @@ describe("an event as a sentence", () => {
   });
 
   it("an event this code does not know is named, not hidden; an actor with no name is 'Someone'", () => {
-    expect(say("entry.published", { type: "post" })).toBe("Raymund did something Forge cannot describe yet (entry.published).");
+    expect(say("entry.scheduled", { type: "post" })).toBe("Raymund did something Forge cannot describe yet (entry.scheduled).");
     expect(say("member.left", { role: "viewer" }, "")).toBe("Someone left the organization.");
     expect(say("member.left", { role: "viewer" }, "   ")).toBe("Someone left the organization.");
   });

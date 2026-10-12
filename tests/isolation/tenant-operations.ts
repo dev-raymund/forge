@@ -1,4 +1,5 @@
 import type { Actor } from "@/modules/auth/shared";
+import { canPublishEntry, canUpdateEntry, submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "@/modules/content";
 import {
   listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
 } from "@/modules/sites";
@@ -36,7 +37,7 @@ import {
  */
 
 /** Who is asking: a user who belongs to A (as an Owner, so permission is never the reason for a refusal). */
-export type Caller = { actor: Actor; ctx: OrgContext; orgSlug: string };
+export type Caller = { actor: Actor; ctx: OrgContext; orgSlug: string; /** A site of A's (M5-3: entry forms are on a site's URL). */ siteSlug: string };
 
 /** Identifiers that belong to the other organization. */
 export type Foreign = {
@@ -49,6 +50,8 @@ export type Foreign = {
   userId: string;
   /** An open invitation of B. Its id, which is not its token. */
   invitationId: string;
+  /** A page of B's site (M5-3). */
+  entryId: string;
 };
 
 export type TenantOperation = {
@@ -194,6 +197,18 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
     { name: `sites.submitSetSiteStatus(A's slug, B's site id, ${status})`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitSetSiteStatus(actor, orgSlug, b.siteId, form({ status, siteId: b.siteId })) },
   ]),
 
+  // Entries (M5-3): B's entry from B's URL, or from A's own site's URL; a new entry on B's site.
+  { name: "content.submitCreateEntry(B's slug, B's site)", run: ({ actor }: Caller, b: Foreign) => submitCreateEntry(actor, b.orgSlug, b.siteSlug, "page", form({ title: "Hijack" })) },
+  { name: "content.submitCreateEntry(A's slug, B's site)", run: ({ actor, orgSlug }: Caller, b: Foreign) => submitCreateEntry(actor, orgSlug, b.siteSlug, "post", form({ title: "Hijack" })) },
+  ...([
+    ["submitSaveDraft", (actor: Actor, org: string, site: string, entry: string) => submitSaveDraft(actor, org, site, entry, form({ version: "1", draft: JSON.stringify({ title: "Hijacked" }) }))],
+    ["submitPublishEntry", (actor: Actor, org: string, site: string, entry: string) => submitPublishEntry(actor, org, site, entry, form({ version: "1" }))],
+    ["submitSetHomepage", (actor: Actor, org: string, site: string, entry: string) => submitSetHomepage(actor, org, site, entry, form({}))],
+  ] as const).flatMap(([name, submit]) => [
+    { name: `content.${name}(B's slug, B's site, B's entry)`, run: ({ actor }: Caller, b: Foreign) => submit(actor, b.orgSlug, b.siteSlug, b.entryId) },
+    { name: `content.${name}(A's slug, A's site, B's entry)`, run: ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => submit(actor, orgSlug, siteSlug, b.entryId) },
+  ]),
+
   // Settings (M4-2): every group, for B's site, from B's URL or A's.
   ...(["general", "reading", "analytics"] as const).flatMap((group) => {
     const fields = form({ name: "Hijacked", tagline: "x", language: "en", timezone: "UTC", blogPath: "hijack", postsPerPage: "5", ga4MeasurementId: "G-HIJACK123", version: "1" });
@@ -217,4 +232,13 @@ const OWN_SCOPES: OwnScope[] = ["entries.post.update", "entries.post.publish", "
 export const tenantPolicyChecks: { name: string; run: (ctx: OrgContext, resource: OwnedResource) => string[] }[] = [
   { name: "tenancy.can(every permission, the resource)", run: (ctx, resource) => PERMISSIONS.filter((key: Permission) => can(ctx, key, resource)) },
   { name: "tenancy.canActOn(every own/any scope, the resource)", run: (ctx, resource) => OWN_SCOPES.filter((scope) => canActOn(ctx, scope, resource)) },
+  // M5-3: B's page or post, recorded as written by this very user.
+  {
+    name: "content.canUpdateEntry / canPublishEntry(B's page and post)",
+    run: (ctx, resource) =>
+      (["page", "post"] as const).flatMap((type) => {
+        const entry = { type, organizationId: resource.organizationId, authorId: resource.ownerId };
+        return [canUpdateEntry(ctx, entry) ? `update ${type}` : null, canPublishEntry(ctx, entry) ? `publish ${type}` : null].filter((key): key is string => key !== null);
+      }),
+  },
 ];

@@ -891,9 +891,9 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M5-2, M3-5
 
 **Acceptance criteria:**
-- [ ] `createEntry` (type, title, parent/template) → entry + draft v1; Home page created automatically at site creation and set as homepage
-- [ ] `saveDraft(entryId, expectedVersion, draft)` → `Conflict` on mismatch; content validated (allow-list, size and node limits)
-- [ ] `publishEntry(entryId, expectedDraftVersion)` in one transaction:
+- [x] `createEntry` (type, title, parent/template) → entry + draft v1; Home page created automatically at site creation and set as homepage *(Home: a draft page at `/`, slug `home`, made in `createSite`'s transaction)*
+- [x] `saveDraft(entryId, expectedVersion, draft)` → `Conflict` on mismatch; content validated (allow-list, size and node limits) *(the spike's document pipeline, now `modules/content/document/`)*
+- [x] `publishEntry(entryId, expectedDraftVersion)` in one transaction:
   1. lock the entry
   2. idempotency check
   3. `publish` revision
@@ -901,7 +901,17 @@ The suite can run against real R2 with `TEST_S3_*`.
   5. replace `entry_terms`
   6. audit
   7. return events
-- [ ] Server Actions in `content/actions.ts` flush `invalidate(events)`
+- [x] Server Actions in `content/actions.ts` flush `invalidate(events)` *(`createEntryAction`, `saveDraftAction`, `publishEntryAction`, `setHomepageAction`, through `finish`)*
+
+**Decisions taken here (ADR 0016):**
+- **`setHomepage` is built here** (the M5-3 instructions; plan §21's action list): the old Home moves to an ordinary path where it sits in the tree, the new one to `/`, and the pages below each follow, in one transaction under the settings row's lock. It takes `site.settings.manage` (the homepage is a website setting, plan §3).
+- **A page's path change on publish carries to every page below it** (`moveSubtree`), in the same transaction; a taken address refuses the whole publish. Redirects from the old paths are M8-5's.
+- **The draft is partial**: only the fields sent are written. Autosave is neither recorded nor flushed.
+- **A typed slug is used as typed or refused** (format, 100 characters, reserved path); one that collides is refused at publish with a Conflict naming the address, never suffixed. Generated slugs (creation, the old Home's new place) are suffixed.
+- **Authors**: the creator by default; crediting someone else at creation takes the type's "any" edit right, and a member of the organization. Changing the author later is M5-7's.
+- **`published_at` is the entry's date**: set at the first publish, kept when it is published again.
+- **Trash, unpublish and restore are M7-1's** and were not built; the safeguards they need are in its hand-off.
+- New audit events `entry.created`, `entry.published`, `site.homepage_changed`; new cache event `entry.moved`.
 
 **Likely files/modules:** `src/modules/content/{entry,publishing}.service.ts`, repositories, actions
 
@@ -911,6 +921,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:editor` `type:feature` `risk:high`
 
 **Description:** The Tiptap editor per ADR 0003.
+
+*From M5-3 (ADR 0016): save through `saveDraftAction(orgSlug, siteSlug, entryId)` with two fields: `version` (the draft version the editor started from) and `draft` (JSON: only the fields that changed, e.g. `{ title, content }`). Success returns `values.version` (the new one); a mismatch is a Conflict (`DRAFT_CHANGED`) and writes nothing. The document is checked by `parseDocument` from `@/modules/content/shared`: run it in the browser before saving, and move the per-node attribute schemas from `modules/content/document/schema.ts` into the block registry without changing the rules. New entries start with `emptyDocument()` (one empty paragraph). Publish with `publishEntryAction(…, entryId)` and `version`; the same version twice answers "Already published."; a newer save is a Conflict (`NEWER_SAVE`).*
 
 *From M0-5: start from `spikes/editor/`. Carry over the paste guard, the columns normalizer and the client-only (`ssr: false`) loading. Add client-side id dedupe before save (ADR 0003, gap 3).*
 
@@ -954,6 +966,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Render published content on sites.
 
+*From M5-3 (ADR 0016): published entries have `status = 'published'`, their live fields on `entries` and the content in the revision `published_revision_id` names. The Home page is the entry at `/` (and `site_settings.homepage_entry_id`), and it is a draft until someone publishes it: until then, render the site's current home. `entry.moved` (a live path changed without a publish) flushes the entry, `routes` and `config`. A change of the blog path in the reading settings does not move existing posts: their stored paths keep the old blog path; decide here (or in M8-5) whether saving the reading settings moves them.*
+
 *From M4-4 (ADR 0012): add the new templates to `TEMPLATE_KEYS` and `TemplateProps` in `src/themes/types.ts`; the types then require them of every theme. Studio's and Journal's `page` template take the page's `title` and its content as `children`, inside `Prose`. Block renderers go in `src/themes/_kit/blocks/`, drawn with the kit's variables.*
 
 *From M4-5 (ADR 0015): the Publish dialog (`modules/sites/ui/site-publishing.tsx`) tells the customer that the live home page "shows its name and tagline in its theme. Adding pages and posts is not available yet", and `STATUS_EXPLANATIONS.live` says visitors see "its home page". Once a live site serves real pages, update both, and `tests/e2e/publishing.spec.ts`'s expectations.*
@@ -981,6 +995,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Everything around the editor.
 
+*From M5-3 (ADR 0016): the new forms post to `createEntryAction(orgSlug, siteSlug, type)` with `title`, `parentId`, `template`, `authorId` (success: `values.entryId`); "Set as homepage" to `setHomepageAction(…, entryId)` (Owner, Admin). Not built yet, and the sidebar needs: changing an existing entry's author (check membership as `createEntry` does: `isMember`), and moving a page (`parent_id`): refuse it when `wouldCreateCycle` says so, require a page of the same site, and carry the path change with `moveSubtree` in the same transaction. A typed slug that collides with another entry is refused at publish; an early hint at save would be a read-only check.*
+
 **Depends on:** M5-4
 
 **Acceptance criteria:**
@@ -998,6 +1014,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** Taxonomy management and assignment.
+
+*From M5-3 (ADR 0016): `saveDraft` already writes `entry_drafts.term_ids` (with `terms.assign`), and checks each id is a term of the same site in a taxonomy the type uses; `publishEntry` checks them again and replaces `entry_terms`. Deleting a term removes its `entry_terms` (CASCADE) but not its id from drafts' `term_ids`: remove it there too, or the next publish of such a draft is refused.*
 
 **Depends on:** M5-3
 
@@ -1104,6 +1122,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M5-3 (ADR 0016): a published entry cannot be trashed (CHECK `entries_trash_not_live`): unpublish in the same transaction first. Publishing refuses a page whose parent is in the trash, so trashing a page should also decide what happens to the pages below it. Restoring must give back a free path: if the old one was taken meanwhile, use `insertWithUniqueSlug`'s retry (a generated suffix), never overwrite. Every path change should go through `moveSubtree` so the pages below follow, and return `entry.moved` for live ones.*
 
 **Depends on:** M5-3
 
@@ -1253,6 +1273,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** URLs never break.
+
+*From M5-3 (ADR 0016): paths change in three places, each in one transaction that returns the moved entries: `publishEntry` (slug change, its `moved`), `setHomepage` (both Home pages and the pages below them), and `moveSubtree` (shared by both). Insert the auto 301s there, from each `MovedEntry`'s `from` to `to` for live entries. Saving the reading settings with a new blog path does not move posts yet (see M5-6).*
 
 **Depends on:** M8-4, M7-1
 

@@ -21,6 +21,9 @@ export function pathUnder(dir: string, slug: string): string {
   return dir === "" || dir === HOME_PATH ? `/${slug}` : `${dir}/${slug}`;
 }
 
+/** Where a stored path's last segment sits: `/about/team` → `/about`, `/about` → `""` (the top level). */
+export const parentDir = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+
 /** A page's path: `/` for the Home page, otherwise its slug under its parent's path (or the top level). */
 export function pagePath(page: { slug: string; home?: boolean }, parentPath: string | null): string {
   return page.home ? HOME_PATH : pathUnder(parentPath ?? "", page.slug);

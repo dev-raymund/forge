@@ -28,9 +28,15 @@ const MIGRATIONS = path.resolve(import.meta.dirname, "../../drizzle");
 
 type Tenant = Awaited<ReturnType<typeof newTenant>>;
 
+/**
+ * A site with no entries. These tests are about the table and the slug helper, so they start from an empty site:
+ * since M5-3, createSite gives every site a Home page at `/`, which is removed here (content-entries.test.ts tests it).
+ */
 async function siteIn(tenant: Tenant): Promise<SiteContext> {
   const { site } = await createSite(tenant.ctx, { name: "Paths", address: newSlug("paths"), language: "en", timezone: "UTC" });
-  return resolveSiteContext(tenant.actor, tenant.org.slug, site.slug);
+  const ctx = await resolveSiteContext(tenant.actor, tenant.org.slug, site.slug);
+  await inTenant(ctx, (tx) => tx.delete(t.entries).where(eq(t.entries.siteId, site.id)));
+  return ctx;
 }
 
 /** A draft entry row, as M5-3's createEntry will write it (test code: M5-2 has no entry service). */

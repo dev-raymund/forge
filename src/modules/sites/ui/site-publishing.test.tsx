@@ -112,7 +112,9 @@ describe("publishing, in a browser's DOM", () => {
     await click(/Switch to Coming soon…/);
     await click(/^Cancel$/);
     expect(dialog()).toBeNull();
-    expect(document.activeElement).toBe(button(/Switch to Coming soon…/));
+    // Radix returns focus on a timer after the dialog unmounts, which act() does not wait for.
+    await vi.waitFor(() => expect(document.activeElement).toBe(button(/Switch to Coming soon…/)));
+    expect(container.querySelector("[data-form-alert]")).not.toBe(document.activeElement);
   });
 
   it("a refusal stays in the dialog, as an alert, and the site is not said to be live", async () => {

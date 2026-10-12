@@ -451,7 +451,7 @@ interface ContentTypeDefinition<F = Record<string, never>> {
 
 *Paths as built (M5-2, `src/modules/content/{paths,slugs,unique-slug}.ts`, `types/`):*
 - *The Home page is stored at `/`: `/` is its one canonical path (decided 2026-10-12). It keeps an ordinary slug (`home`), which is not a route, and there is no `/home` alias or redirect. `(site_id, locale, path)` allows one `/` per site and locale. A page under Home sits at the top level (`/{slug}`).*
-- *Slugs: lowercase letters and digits in hyphen-separated groups, at most 100 characters; from a title by `slugify`, `untitled` when nothing is left. A free slug is found where the entry will live (site, locale, parent or blog path, not in the trash) as `base`, `base-2`, …, and the insert retries the next one in a savepoint if a concurrent writer took it.*
+- *Slugs: lowercase letters and digits in hyphen-separated groups, at most 100 characters; from a title by `slugify`, `untitled` when nothing is left. A free slug is found where the entry will live (site, locale, parent or blog path, not in the trash) as `base`, `base-2`, …, and the insert retries the next one in a savepoint if a concurrent writer took it. A slug someone types is used as typed or refused (format, 100 characters, reserved path, or an address another entry holds at publish), never suffixed (M5-3, ADR 0016).*
 - *Reserved: `/_forge/…`, `/sitemap.xml`, `/robots.txt` on every site, and, for pages, the blog's path and everything under it.*
 
 **How Service, Case Study, Team Member, Property, Product or Event arrive later, without a rewrite:**

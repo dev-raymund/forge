@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  HOME_PATH, isEntryPath, pagePath, ParentChainError, parentChain, pathFromChain, pathUnder, postPath, RESERVED_PATHS, reservedPathReason, wouldCreateCycle, type PageNode,
+  HOME_PATH, isEntryPath, pagePath, parentDir, ParentChainError, parentChain, pathFromChain, pathUnder, postPath, RESERVED_PATHS, reservedPathReason, wouldCreateCycle, type PageNode,
 } from "./paths";
 
 /** The `entries_path_format` CHECK as migration 0005 leaves it: `/`, or one or more `/segment`s. */
@@ -27,6 +27,14 @@ describe("paths", () => {
     expect(pagePath({ slug: "contact" }, "/")).toBe("/contact");
     // Being Home wins over a parent: there is one root.
     expect(pagePath({ slug: "home", home: true }, "/about")).toBe("/");
+  });
+
+  it("a stored path's directory: where a new slug for the same entry would go", () => {
+    expect(parentDir("/about")).toBe("");
+    expect(parentDir("/about/team")).toBe("/about");
+    expect(parentDir("/blog/hello")).toBe("/blog");
+    expect(pathUnder(parentDir("/about/team"), "people")).toBe("/about/people");
+    expect(pathUnder(parentDir("/contact"), "reach-us")).toBe("/reach-us");
   });
 
   it("posts: under the blog's path, whatever it is", () => {

@@ -1,6 +1,7 @@
 import "server-only";
 import { record } from "@/modules/audit";
 import { allowanceOf, assertLimit, type Allowance } from "@/modules/billing";
+import { createHomePage } from "@/modules/content";
 import { inTenant, requirePermission, type OrgContext, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
 import { isUniqueViolation } from "@/platform/db";
@@ -40,8 +41,9 @@ function addressTaken(error: unknown): never {
 }
 
 /**
- * Creates a site with its settings and its address, and records it, in one
- * transaction: all of it exists, or none of it does.
+ * Creates a site with its settings, its address and its Home page (a draft at
+ * `/`, M5-3), and records it, in one transaction: all of it exists, or none of
+ * it does.
  *
  * Two people asking for the same address at once: the unique constraint lets
  * one of them have it, and the other is told it is taken. Two sites created at
@@ -57,6 +59,8 @@ export async function createSite(ctx: OrgContext, input: CreateSiteInput): Promi
       // Under the organization's lock (taken by assertLimit): no other site of it can take the slug meanwhile.
       const slug = siteSlugFor(address, await slugsInUse(tx, ctx.org.id));
       const site = await insertSite(tx, { organizationId: ctx.org.id, name, slug, language, timezone, createdBy: ctx.actor.userId }, address);
+      // Its Home page: a draft page at `/`, named by site_settings.homepage_entry_id (M5-3). Covered by the site's own record.
+      await createHomePage(tx, ctx, { id: site.id, locale: site.language });
       await record(tx, { action: "site.created", resourceType: "site", resourceId: site.id, siteId: site.id, metadata: { name, address } }, ctx);
       // Someone may have asked for this address before it existed: the cached "no such site" goes.
       return { site, events: [{ type: "domain.changed", siteId: site.id, hostnames: [address] }] };
