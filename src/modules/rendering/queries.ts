@@ -5,7 +5,7 @@ import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
 import { withPlatform, withTenant } from "@/platform/db";
 import { domains, siteSettings, sites } from "@/platform/db/schema";
 import type { SiteLocator } from "@/platform/routing/hosts";
-import { readAnalytics, readGeneral, socialLinks, type AnalyticsSettings } from "@/modules/sites/shared";
+import { readAnalytics, readGeneral, readReading, socialLinks, type AnalyticsSettings, type ReadingSettings } from "@/modules/sites/shared";
 
 /**
  * The public read path (M4-3, ADR 0013; from the M0-4 spike, ADR 0002).
@@ -45,6 +45,8 @@ export async function resolveSite(locator: SiteLocator): Promise<ResolvedSite | 
 /** What a public page may know about a site. No member, no id beyond the site's own, nothing private. */
 export type PublicSite = {
   id: string;
+  /** For the content reads (./content.ts). Never handed to a theme (`renderableSite`). */
+  orgId: string;
   name: string;
   tagline: string;
   status: string;
@@ -57,6 +59,8 @@ export type PublicSite = {
   social: { label: string; href: string }[];
   /** Analytics IDs that passed their rules (M4-2). Emitted only on a live site's pages. */
   analytics: AnalyticsSettings;
+  /** Where the blog lives and how many posts a list shows (M4-2's reading settings; M5-6 routes by them). */
+  reading: ReadingSettings;
 };
 
 /**
@@ -80,6 +84,7 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
         general: siteSettings.general,
         analytics: siteSettings.analytics,
         theme: siteSettings.theme,
+        reading: siteSettings.reading,
       })
       .from(sites)
       .leftJoin(siteSettings, and(eq(siteSettings.siteId, sites.id), eq(siteSettings.organizationId, sites.organizationId)))
@@ -89,6 +94,7 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
   const general = readGeneral(row.general);
   return {
     id: row.id,
+    orgId,
     name: row.name,
     tagline: general.tagline,
     status: row.status,
@@ -98,5 +104,6 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
     themeSettings: row.theme ?? {},
     social: socialLinks(general.social).map(({ label, href }) => ({ label, href })),
     analytics: readAnalytics(row.analytics),
+    reading: readReading(row.reading),
   };
 }

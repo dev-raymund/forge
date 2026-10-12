@@ -1,3 +1,4 @@
+import { uuidv7 } from "uuidv7";
 import { inTenant } from "./sites";
 
 /** Content as the database holds it (M5-4), read inside the organization's context. */
@@ -45,4 +46,73 @@ export async function seedEntry(
 /** Removes the site's Home page, as a site made before M5-3 is. */
 export async function removeHomePage(orgId: string, siteId: string) {
   await inTenant(orgId, (c) => c.query("delete from entries where site_id = $1 and path = '/'", [siteId]));
+}
+
+// ── M5-6: published content, written as the database holds it ───────────────
+
+export type PublishedSeed = {
+  id: string;
+  type: "page" | "post";
+  title: string;
+  slug: string;
+  path: string;
+  content: unknown;
+  parentId?: string | null;
+  template?: string | null;
+  excerpt?: string;
+  termIds?: string[];
+  /** When it was published (lists are newest first). */
+  publishedAt?: Date;
+  /** Left as a draft: the row and its draft, never published. */
+  draftOnly?: boolean;
+};
+
+/**
+ * A published entry made behind the app's back: the entry, its draft, a `publish` revision holding `content` as it
+ * is (no validation: hostile documents included), and its published terms. As `publishEntry` leaves them.
+ */
+export async function seedPublishedEntry(orgId: string, siteId: string, seed: PublishedSeed) {
+  await inTenant(orgId, async (c) => {
+    await c.query(
+      "insert into entries (id, organization_id, site_id, type, locale, parent_id, title, slug, path, excerpt) values ($1, $2, $3, $4, 'en', $5, $6, $7, $8, $9)",
+      [seed.id, orgId, siteId, seed.type, seed.parentId ?? null, seed.title, seed.slug, seed.path, seed.excerpt ?? ""],
+    );
+    await c.query("insert into entry_drafts (entry_id, organization_id, site_id, title, slug, template, content, term_ids) values ($1, $2, $3, $4, $5, $6, $7, $8)", [
+      seed.id, orgId, siteId, seed.title, seed.slug, seed.template ?? null, JSON.stringify(seed.content), seed.termIds ?? [],
+    ]);
+    if (seed.draftOnly) return;
+    const revisionId = uuidv7();
+    await c.query(
+      `insert into entry_revisions (id, organization_id, site_id, entry_id, number, kind, title, slug, excerpt, template, content, term_ids, content_hash, source_draft_version)
+       values ($1, $2, $3, $4, 1, 'publish', $5, $6, $7, $8, $9, $10, '', 1)`,
+      [revisionId, orgId, siteId, seed.id, seed.title, seed.slug, seed.excerpt ?? "", seed.template ?? null, JSON.stringify(seed.content), seed.termIds ?? []],
+    );
+    const at = seed.publishedAt ?? new Date();
+    await c.query("update entries set status = 'published', published_revision_id = $1, published_at = $2, first_published_at = $2 where id = $3", [revisionId, at, seed.id]);
+    for (const termId of seed.termIds ?? []) {
+      await c.query("insert into entry_terms (organization_id, site_id, entry_id, term_id) values ($1, $2, $3, $4)", [orgId, siteId, seed.id, termId]);
+    }
+  });
+}
+
+export async function seedTerm(orgId: string, siteId: string, taxonomy: "category" | "tag", slug: string, name: string, description = "") {
+  const id = uuidv7();
+  await inTenant(orgId, (c) =>
+    c.query("insert into terms (id, organization_id, site_id, taxonomy, name, slug, description) values ($1, $2, $3, $4, $5, $6, $7)", [id, orgId, siteId, taxonomy, name, slug, description]),
+  );
+  return id;
+}
+
+/** Reading and analytics settings, written behind the app's back (the site's cache is fresh: nothing has read it yet). */
+export async function seedSiteSettings(orgId: string, siteId: string, settings: { reading?: unknown; analytics?: unknown }) {
+  await inTenant(orgId, (c) =>
+    c.query("update site_settings set reading = coalesce($1::jsonb, reading), analytics = coalesce($2::jsonb, analytics) where site_id = $3", [
+      settings.reading ? JSON.stringify(settings.reading) : null, settings.analytics ? JSON.stringify(settings.analytics) : null, siteId,
+    ]),
+  );
+}
+
+/** Moves a published entry to the trash, as M7-1 will: unpublished first (CHECK `entries_trash_not_live`). */
+export async function trashEntry(orgId: string, entryId: string) {
+  await inTenant(orgId, (c) => c.query("update entries set status = 'draft', published_revision_id = null, deleted_at = now() where id = $1", [entryId]));
 }

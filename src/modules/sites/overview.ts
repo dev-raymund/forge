@@ -61,6 +61,6 @@ export function launchChecklist(facts: ChecklistFacts, paths: { settings: string
 /** What a status means to the people who run the site. Nothing about why a site is suspended. */
 export const STATUS_EXPLANATIONS: Readonly<Record<string, string>> = {
   coming_soon: "Visitors see a Coming soon page, and search engines are asked not to list the site.",
-  live: "The site is published: visitors see its home page, and search engines may list it.",
+  live: "The site is published: visitors see its published pages and posts, and search engines may list it.",
   suspended: "The site is unavailable to visitors.",
 };

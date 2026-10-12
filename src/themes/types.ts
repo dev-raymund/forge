@@ -30,9 +30,24 @@ export type ThemeDefinition<K extends string = string> = {
   readonly preview: "business" | "editorial";
 };
 
-/** The page templates every theme has in M4-4. M5-6 adds post, blog index and archives; M8-2 Journal's. */
-export const TEMPLATE_KEYS = ["page", "coming-soon", "not-found"] as const;
+/**
+ * The templates every theme has (plan §7): M4-4's page, coming-soon and not-found, and M5-6's two other page
+ * templates, the post, the blog index and the term archive. A theme may draw some with the kit's defaults
+ * (`_kit/templates/`): Journal does for the blog's until M8-2 designs its own.
+ */
+export const TEMPLATE_KEYS = ["page", "page-full-width", "page-landing", "post", "blog-index", "term-archive", "coming-soon", "not-found"] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
+
+/**
+ * The page templates an author may choose for a page (`entry_drafts.template`, M5-7's sidebar): the stored key and
+ * the template it draws with. Null, or a key no theme has, is the default page template.
+ */
+export const PAGE_TEMPLATES = { default: "page", "full-width": "page-full-width", landing: "page-landing" } as const satisfies Record<string, TemplateKey>;
+export type PageTemplateChoice = keyof typeof PAGE_TEMPLATES;
+
+export function pageTemplateKey(stored: string | null | undefined): (typeof PAGE_TEMPLATES)[PageTemplateChoice] {
+  return stored && Object.hasOwn(PAGE_TEMPLATES, stored) ? PAGE_TEMPLATES[stored as PageTemplateChoice] : "page";
+}
 
 /** A link in a menu. Menus arrive in M8-3; until then the lists are empty. */
 export type NavItem = { readonly label: string; readonly href: string };
@@ -58,8 +73,29 @@ export type ThemeContext = {
   readonly menus: { readonly header: readonly NavItem[]; readonly footer: readonly NavItem[] };
 };
 
+/** A date as the site shows it: machine-readable for `<time dateTime>`, and written in the site's language and time zone. */
+export type DateLabel = { readonly iso: string; readonly label: string };
+
+/** A post in a list: its address is already the public one (with the site's base). */
+export type PostCard = { readonly title: string; readonly href: string; readonly excerpt: string; readonly date: DateLabel | null };
+
+/** Where a list is: page `page` of `pages`, and the neighbouring pages' addresses. */
+export type Pagination = { readonly page: number; readonly pages: number; readonly previousHref?: string; readonly nextHref?: string };
+
+export type TermLink = { readonly taxonomy: "category" | "tag"; readonly name: string; readonly href: string };
+
+type PageProps = { context: ThemeContext; title: string; children?: ReactNode };
+
+/** Every template's props. Content arrives rendered (`children`): a theme draws the frame around it, never the document itself. */
 export type TemplateProps = {
-  page: { context: ThemeContext; title: string; children?: ReactNode };
+  page: PageProps;
+  "page-full-width": PageProps;
+  "page-landing": PageProps;
+  post: { context: ThemeContext; title: string; date: DateLabel | null; terms: readonly TermLink[]; blogHref: string; children?: ReactNode };
+  "blog-index": { context: ThemeContext; title: string; posts: readonly PostCard[]; pagination: Pagination };
+  "term-archive": {
+    context: ThemeContext; taxonomy: "category" | "tag"; name: string; description: string; blogHref: string; posts: readonly PostCard[]; pagination: Pagination;
+  };
   "coming-soon": { context: ThemeContext };
   "not-found": { context: ThemeContext };
 };

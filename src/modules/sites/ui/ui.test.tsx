@@ -213,7 +213,7 @@ describe("the site overview (M4-2)", () => {
     expect(live).toMatch(/<button[^>]*aria-haspopup="dialog"[^>]*>Switch to Coming soon…<\/button>/);
     expect(live).not.toContain("Publish site…");
     expect(live).toMatch(/href="https:\/\/cms\.forgelinetechnologies\.com\/s\/acme-bakery"[^>]*data-testid="view-site"/);
-    expect(live).toContain("visitors see its home page, and search engines may list it");
+    expect(live).toContain("visitors see its published pages and posts, and search engines may list it");
     expect(live).toContain("Your site is live.");
   });
 

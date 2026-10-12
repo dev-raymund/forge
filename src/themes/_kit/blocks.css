@@ -1,0 +1,266 @@
+/*
+ * The content a page is made of (M5-6): the text nodes and the custom blocks as
+ * the closed renderer emits them (modules/rendering/document.tsx and the block
+ * registry's renderers), and the blog's lists. Shared by every theme, drawn
+ * with the kit's variables; a theme adjusts them in its own styles.css.
+ */
+
+/* ── Text ──────────────────────────────────────────────────────────────── */
+
+.forge-prose--wide {
+  max-width: none;
+}
+
+.forge-prose :where(h4) {
+  margin-top: calc(var(--forge-gap) * 1.5);
+  font-size: 1.1rem;
+}
+
+.forge-prose :where(code) {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3em;
+  background: var(--forge-wash);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.forge-prose :where(li > * + *) {
+  margin-top: 0.35em;
+}
+
+.forge-quote figcaption {
+  margin-top: 0.5rem;
+  padding-left: calc(1.1rem + 3px);
+  color: var(--forge-muted);
+  font-size: 0.95em;
+}
+
+.forge-quote figcaption::before {
+  content: "— ";
+}
+
+.forge-quote cite {
+  font-style: normal;
+}
+
+.forge-divider {
+  height: 0;
+  margin-block: calc(var(--forge-gap) * 2);
+  border: 0;
+  border-top: 1px solid var(--forge-line);
+}
+
+.forge-divider--space {
+  border-top-color: transparent;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+.forge-button-row {
+  display: flex;
+}
+
+.forge-button-row--center {
+  justify-content: center;
+}
+
+.forge-button-row--end {
+  justify-content: flex-end;
+}
+
+/* Inside text a link is the primary colour: a button keeps its own. */
+.forge-prose .forge-button {
+  color: var(--forge-color-on-primary);
+  text-decoration: none;
+}
+
+.forge-button--secondary,
+.forge-prose .forge-button--secondary {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--forge-color-primary);
+  color: var(--forge-color-primary);
+}
+
+.forge-button--secondary:hover {
+  background: var(--forge-wash);
+}
+
+/* ── Columns ───────────────────────────────────────────────────────────── */
+
+.forge-columns {
+  display: grid;
+  grid-template-columns: var(--forge-columns, 1fr 1fr);
+  gap: calc(var(--forge-gap) * 1.5);
+}
+
+/* A long word or address in a column wraps instead of widening the page. */
+.forge-column {
+  min-width: 0;
+}
+
+.forge-column > * + * {
+  margin-top: calc(var(--forge-gap) * 1.15);
+}
+
+@media (max-width: 639px) {
+  .forge-columns--stack {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Embeds ────────────────────────────────────────────────────────────── */
+
+.forge-embed {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--forge-radius);
+  background: var(--forge-wash);
+}
+
+.forge-embed--4-3 {
+  aspect-ratio: 4 / 3;
+}
+
+.forge-embed--1-1 {
+  aspect-ratio: 1 / 1;
+}
+
+.forge-embed--9-16 {
+  max-width: 24rem;
+  margin-inline: auto;
+  aspect-ratio: 9 / 16;
+}
+
+.forge-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* ── Spacers ───────────────────────────────────────────────────────────── */
+
+.forge-spacer--sm {
+  height: var(--forge-gap);
+}
+
+.forge-spacer--md {
+  height: calc(var(--forge-gap) * 2);
+}
+
+.forge-spacer--lg {
+  height: calc(var(--forge-gap) * 4);
+}
+
+.forge-spacer--xl {
+  height: calc(var(--forge-gap) * 6);
+}
+
+/* ── The blog ──────────────────────────────────────────────────────────── */
+
+.forge-post,
+.forge-archive {
+  padding-block: calc(var(--forge-gap) * 3.5) calc(var(--forge-gap) * 5);
+}
+
+.forge-post__header {
+  margin-bottom: calc(var(--forge-gap) * 2.5);
+}
+
+.forge-post__header h1,
+.forge-archive__title {
+  font-size: clamp(2rem, 1.5rem + 2.2vw, 3rem);
+}
+
+.forge-post__eyebrow {
+  margin-bottom: calc(var(--forge-gap) * 0.75);
+  color: var(--forge-muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.forge-post__meta,
+.forge-archive__description {
+  margin-top: calc(var(--forge-gap) * 0.75);
+  color: var(--forge-muted);
+}
+
+.forge-post-list {
+  display: grid;
+  gap: calc(var(--forge-gap) * 2);
+  margin: calc(var(--forge-gap) * 2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forge-post-card__title {
+  font-size: clamp(1.3rem, 1.15rem + 0.6vw, 1.6rem);
+}
+
+.forge-post-card__title a {
+  text-decoration: none;
+}
+
+.forge-post-card__title a:hover {
+  text-decoration: underline;
+}
+
+.forge-post-card__date {
+  margin-top: 0.35rem;
+  color: var(--forge-muted);
+  font-size: 0.9rem;
+}
+
+.forge-post-card__excerpt {
+  max-width: 68ch;
+  margin-top: 0.5rem;
+}
+
+.forge-post-list__empty {
+  margin-top: calc(var(--forge-gap) * 2);
+  color: var(--forge-muted);
+}
+
+.forge-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-top: calc(var(--forge-gap) * 3);
+  padding-top: calc(var(--forge-gap) * 1.5);
+  border-top: 1px solid var(--forge-line);
+}
+
+.forge-pagination__link {
+  color: var(--forge-color-primary);
+  font-weight: 600;
+}
+
+.forge-pagination__where {
+  color: var(--forge-muted);
+  font-size: 0.9rem;
+}
+
+.forge-terms {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 68ch;
+  margin-top: calc(var(--forge-gap) * 2.5);
+  padding-top: calc(var(--forge-gap) * 1.25);
+  border-top: 1px solid var(--forge-line);
+  color: var(--forge-muted);
+  font-size: 0.95rem;
+}
+
+.forge-terms a {
+  color: var(--forge-color-primary);
+}
+
+.forge-terms__label {
+  font-weight: 600;
+}

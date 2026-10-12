@@ -997,6 +997,8 @@ Reserved org slugs: `login`, `signup`, `onboarding`, `account`, `invite`, `platf
 | `/sitemap.xml` | Per-site sitemap (V1: `/s/{address}/sitemap.xml`). In path mode `robots.txt` is the host's: it allows `/s/` and points to each live site's sitemap; a site that discourages indexing gets `noindex` meta and is left out |
 | `/_forge/preview/{token}` | Draft preview. V1: on the app host root (`cms.forgelinetechnologies.com/_forge/preview/{token}`); the token alone identifies the site |
 
+*As built (M5-6, ADR 0017): every path is an entry's exact stored path or one of the blog's routes; other spellings and `…/page/1` are 404s. `/` shows the published Home page, or the site's name and tagline while there is none. A post stays at the path it was published at when the blog's path changes. Public reads are cached per organization, site and language, and tagged as in §20.*
+
 **Route handlers on the app host:** `/api/auth/[...all]` · `/api/v1/**` · `/api/app/**` · `/api/webhooks/stripe` · `/api/internal/cron` (+ `/daily`) · `/api/health`.
 
 ---

@@ -31,6 +31,16 @@ describe("button", () => {
     expect(html("button", { ...buttonAttrs, href: "entry:0192f000-0000-7000-8000-000000000099" })).toBe("");
   });
 
+  it("a path of the site gets the site's base; its home is the base itself; other addresses are kept", () => {
+    const at = (href: string) => renderToStaticMarkup(<>{BLOCK_RENDERERS.button!({ attrs: { ...buttonAttrs, href }, children: [], context: { ...context, basePath: "/s/acme" } })}</>);
+    expect(at("/contact")).toContain('href="/s/acme/contact"');
+    expect(at("/contact?x=1#form")).toContain('href="/s/acme/contact?x=1#form"');
+    expect(at("/")).toContain('href="/s/acme"');
+    expect(at("https://example.org/")).toContain('href="https://example.org/"');
+    expect(at("mailto:hi@example.org")).toContain('href="mailto:hi@example.org"');
+    expect(at(`entry:${ENTRY}`)).toContain('href="/s/acme/services"'); // the resolver gives the whole public address
+  });
+
   it("opens a new tab without giving the page a handle on this one", () => {
     expect(html("button", { ...buttonAttrs, newTab: true, style: "secondary", align: "end" })).toContain('target="_blank" rel="noopener noreferrer"');
   });
@@ -57,9 +67,9 @@ describe("columns", () => {
 
   it("lays its columns out by the ratio, one below the other on phones when asked", () => {
     expect(html("columns", attrs, ["a", "b"])).toBe(
-      '<div class="forge-columns forge-columns--stack" style="grid-template-columns:2fr 1fr"><div class="forge-column">a</div><div class="forge-column">b</div></div>',
+      '<div class="forge-columns forge-columns--stack" style="--forge-columns:2fr 1fr"><div class="forge-column">a</div><div class="forge-column">b</div></div>',
     );
-    expect(html("columns", { ...attrs, count: 3, ratio: "1:2:1", stackOnMobile: false }, ["a", "b", "c"])).toContain('class="forge-columns" style="grid-template-columns:1fr 2fr 1fr"');
+    expect(html("columns", { ...attrs, count: 3, ratio: "1:2:1", stackOnMobile: false }, ["a", "b", "c"])).toContain('class="forge-columns" style="--forge-columns:1fr 2fr 1fr"');
   });
 
   it("renders nothing when the columns do not match `count`, or the ratio is not one of the allowed", () => {
@@ -86,10 +96,12 @@ describe("embed", () => {
     expect(html("embed", { ...attrs, provider: "vimeo", url: "https://vimeo.com/76979871" })).toContain('src="https://player.vimeo.com/video/76979871?dnt=1"');
   });
 
-  it("frames a URL-safe page as given, without the video permissions", () => {
+  it("frames a URL-safe page as given, without the video permissions; it may submit a form (a map or a form is what it is for)", () => {
     const out = html("embed", { ...attrs, provider: "generic", url: "https://www.openstreetmap.org/export/embed.html", aspect: "4:3" });
     expect(out).toContain('src="https://www.openstreetmap.org/export/embed.html"');
+    expect(out).toContain('sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-forms"');
     expect(out).not.toMatch(/allow="|allowFullScreen/);
+    expect(html("embed", attrs)).not.toContain("allow-forms");
   });
 
   it.each([

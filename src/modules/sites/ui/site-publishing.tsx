@@ -118,7 +118,7 @@ export function SiteStatusControl({ orgSlug, siteSlug, siteName, status, publicU
                 <ul className="grid list-disc gap-1.5 pl-5 text-sm text-muted-foreground" data-testid="publish-consequences">
                   <li>Visitors see your site instead of the Coming soon page, and search engines may list it.</li>
                   <li>
-                    For now, your site&rsquo;s home page shows its name and tagline in its theme. Adding pages and posts is not available yet.
+                    Visitors see your published pages and posts. Until your Home page is published, the home page shows the site&rsquo;s name and tagline.
                   </li>
                   <li>You can switch it back to Coming soon at any time.</li>
                 </ul>

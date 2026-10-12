@@ -65,7 +65,7 @@ const setStatusDirectly = (orgId: string, siteId: string, status: "coming_soon" 
 async function publicView(address: string) {
   const resolved = await resolveSite({ kind: "address", address });
   const site = resolved ? await loadPublicSite(resolved.orgId, resolved.siteId) : null;
-  const { kind } = renderStateFor(site, []);
+  const { kind } = renderStateFor(site);
   return { state: kind, robots: robotsFor(kind), site };
 }
 
@@ -94,7 +94,7 @@ describe("publishing a site", () => {
     expect(Object.keys(events[0]!.metadata as object).sort()).toEqual(["name", "newStatus", "previousStatus"]);
 
     // The same address, now live: the home page, indexable; the theme and name as before.
-    expect(await publicView(address)).toMatchObject({ state: "home", robots: { index: true, follow: true }, site: { id: site.id, name: "Launch", status: "live", themeKey: "studio" } });
+    expect(await publicView(address)).toMatchObject({ state: "live", robots: { index: true, follow: true }, site: { id: site.id, name: "Launch", status: "live", themeKey: "studio" } });
     expect((await getSiteOverview(await siteCtx(a, slug))).checklist.find((item) => item.key === "publish")).toMatchObject({ done: true, note: "Your site is live." });
   });
 

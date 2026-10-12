@@ -7,7 +7,7 @@ import { FONT_CLASSES, fontClasses } from "./_kit/fonts";
 import { kitSettingsSchema } from "./_kit/tokens";
 import { activeThemeDefinition, DEFAULT_THEME_KEY, isThemeKey, THEME_KEYS, THEMES, themeDefinition } from "./registry";
 import { themeFor, themeManifest, type RenderableSite } from "./render";
-import { TEMPLATE_KEYS, type TemplateKey } from "./types";
+import { pageTemplateKey, TEMPLATE_KEYS, type Pagination, type PostCard, type TemplateKey, type TermLink } from "./types";
 
 /** The registry, the manifests and the templates (M4-4, ADR 0012). */
 
@@ -73,13 +73,46 @@ const site = (themeKey: string, extra: Partial<RenderableSite> = {}): Renderable
   ...extra,
 });
 
-function render(themeKey: string, template: TemplateKey, extra: Partial<RenderableSite> = {}) {
+const cards = (count: number): PostCard[] =>
+  Array.from({ length: count }, (_, i) => ({ title: `Post <${i}>`, href: `/s/harbor/blog/post-${i}`, excerpt: i === 0 ? "An excerpt & more" : "", date: { iso: "2026-09-12T08:00:00.000Z", label: "12 September 2026" } }));
+const pages = (page: number, total: number): Pagination => ({
+  page, pages: total, previousHref: page > 1 ? "/s/harbor/blog" : undefined, nextHref: page < total ? `/s/harbor/blog/page/${page + 1}` : undefined,
+});
+
+function render(themeKey: string, template: TemplateKey, extra: Partial<RenderableSite> = {}, list = { posts: cards(2), pagination: pages(1, 2) }) {
   const { theme, context } = themeFor(site(themeKey, extra));
   const { Layout, templates } = theme;
-  const Page = templates.page;
-  const ComingSoon = templates["coming-soon"];
-  const NotFound = templates["not-found"];
-  const body = template === "page" ? <Page context={context} title="About us"><p>Hello</p></Page> : template === "coming-soon" ? <ComingSoon context={context} /> : <NotFound context={context} />;
+  const body = (() => {
+    switch (template) {
+      case "page":
+      case "page-full-width":
+      case "page-landing": {
+        const Page = templates[template];
+        return <Page context={context} title="About us"><p>Hello</p></Page>;
+      }
+      case "post": {
+        const Post = templates.post;
+        const terms: TermLink[] = [{ taxonomy: "category", name: "Bread <3", href: "/s/harbor/blog/category/bread" }, { taxonomy: "tag", name: "Rye", href: "/s/harbor/blog/tag/rye" }];
+        return <Post context={context} title="A post" date={{ iso: "2026-09-12T08:00:00.000Z", label: "12 September 2026" }} terms={terms} blogHref="/s/harbor/blog"><p>Hello</p></Post>;
+      }
+      case "blog-index": {
+        const BlogIndex = templates["blog-index"];
+        return <BlogIndex context={context} title="Blog" posts={list.posts} pagination={list.pagination} />;
+      }
+      case "term-archive": {
+        const TermArchive = templates["term-archive"];
+        return <TermArchive context={context} taxonomy="tag" name="Rye <b>" description="All about rye" blogHref="/s/harbor/blog" posts={list.posts} pagination={list.pagination} />;
+      }
+      case "coming-soon": {
+        const ComingSoon = templates["coming-soon"];
+        return <ComingSoon context={context} />;
+      }
+      case "not-found": {
+        const NotFound = templates["not-found"];
+        return <NotFound context={context} />;
+      }
+    }
+  })();
   return renderToStaticMarkup(<Layout context={context}>{body}</Layout>);
 }
 
@@ -128,5 +161,57 @@ describe("the templates", () => {
 
   it("a site whose stored theme is unknown is drawn with Studio", () => {
     expect(render("retired-theme", "coming-soon")).toContain('data-theme="studio"');
+  });
+});
+
+describe("the content templates (M5-6)", () => {
+  it.each(THEME_KEYS.map((key) => [key] as const))("%s: a page's three templates; the wide two give the content the wide container", (key) => {
+    expect(render(key, "page")).not.toContain("forge-prose--wide");
+    for (const template of ["page-full-width", "page-landing"] as const) {
+      const html = render(key, template);
+      expect(html, template).toContain("forge-container--wide");
+      expect(html, template).toContain('<div class="forge-prose forge-prose--wide"><p>Hello</p></div>');
+    }
+  });
+
+  it("a page's stored template picks the template; anything else is the default", () => {
+    expect([null, undefined, "default", "full-width", "landing", "Landing", "__proto__", "hasOwnProperty", "page-landing", ""].map(pageTemplateKey)).toEqual([
+      "page", "page", "page", "page-full-width", "page-landing", "page", "page", "page", "page", "page",
+    ]);
+  });
+
+  it.each(THEME_KEYS.map((key) => [key] as const))("%s: a post has its date, its categories and tags as links, and a way back to the blog", (key) => {
+    const html = render(key, "post");
+    expect(html).toContain('<time dateTime="2026-09-12T08:00:00.000Z">12 September 2026</time>');
+    expect(html).toContain('<a href="/s/harbor/blog/category/bread">Bread &lt;3</a>');
+    expect(html).toContain('<a href="/s/harbor/blog/tag/rye">Rye</a>');
+    expect(html).toContain('<a href="/s/harbor/blog">Blog</a>');
+    expect(html).toMatch(/<h1[^>]*>A post<\/h1>/);
+  });
+
+  it.each(THEME_KEYS.map((key) => [key] as const))("%s: a list of posts: each title an h2 link, its date and excerpt as text; pages linked both ways", (key) => {
+    const html = render(key, "blog-index", {}, { posts: cards(2), pagination: pages(2, 3) });
+    expect(html).toContain('<h2 class="forge-post-card__title"><a href="/s/harbor/blog/post-0">Post &lt;0&gt;</a></h2>');
+    expect(html).toContain("An excerpt &amp; more");
+    expect(html.match(/<h2[ >]/g)).toHaveLength(2);
+    expect(html).toContain('<nav class="forge-pagination" aria-label="Pages of posts">');
+    expect(html).toContain('href="/s/harbor/blog" rel="prev"');
+    expect(html).toContain('href="/s/harbor/blog/page/3" rel="next"');
+    expect(html).toContain("Page 2 of 3");
+  });
+
+  it.each(THEME_KEYS.map((key) => [key] as const))("%s: an empty list says so; one page has no page links", (key) => {
+    const empty = render(key, "blog-index", {}, { posts: [], pagination: pages(1, 1) });
+    expect(empty).toContain("No posts yet.");
+    expect(empty).not.toContain("forge-pagination");
+    expect(render(key, "term-archive", {}, { posts: [], pagination: pages(1, 1) })).toContain("No posts here yet.");
+  });
+
+  it.each(THEME_KEYS.map((key) => [key] as const))("%s: a term's archive names it, and what it is, as text", (key) => {
+    const html = render(key, "term-archive");
+    expect(html).toMatch(/<h1[^>]*>Rye &lt;b&gt;<\/h1>/);
+    expect(html).toContain("Tag");
+    expect(html).toContain("All about rye");
+    expect(html).not.toContain("<b>");
   });
 });

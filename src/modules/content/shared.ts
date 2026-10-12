@@ -14,6 +14,9 @@ export { ENTRY_SLUG_MAX, FALLBACK_SLUG, isEntrySlug, nextFreeSlug, slugFromTitle
 export { canonicalJson, documentProblem, emptyDocument, parseDocument } from "./document/parse";
 export type { ParseResult } from "./document/parse";
 export { DOCUMENT_VERSION, isSafeHref, MAX_DOCUMENT_BYTES, MAX_NODES, storedDocumentSchema } from "./document/schema";
+// M5-6: what a document points at, for the public renderer's `entry:` links.
+export { referencesOf } from "./document/references";
+export type { DocumentReferences } from "./document/references";
 export type { StoredDocument } from "./document/schema";
 export {
   createEntrySchema, draftSchema, ENTRY_EXCERPT_MAX, ENTRY_TERMS_MAX, ENTRY_TITLE_MAX, typedSlug, versionSchema,

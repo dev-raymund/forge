@@ -122,7 +122,7 @@ test("on a phone (360 px): the theme picker fits, and works", async ({ page }) =
 
 test.describe("the theme gallery (development only)", () => {
   for (const theme of ["studio", "journal"]) {
-    for (const template of ["page", "coming-soon", "not-found"]) {
+    for (const template of ["page", "page-full-width", "page-landing", "post", "blog-index", "term-archive", "coming-soon", "not-found"]) {
       test(`${theme} / ${template}: drawn by the theme, accessible landmarks, the site's words as text, and it fits a phone`, async ({ page }) => {
         const response = (await page.goto(`/dev/themes/${theme}/${template}`))!;
         expect(response.status()).toBe(200);

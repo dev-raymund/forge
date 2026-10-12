@@ -995,24 +995,33 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 *From M4-3 (ADR 0013): replace the `home` / `page-not-found` decision for live sites in `modules/rendering/render-state.ts` with `resolveRoute(siteId, path)`, keeping coming soon and unavailable as they are. The page (`app/(sites)/render/[site]/[[...path]]/page.tsx`) calls `notFound()` for a missing route; `not-found.tsx` already draws the theme's not-found template from `requestSite()`. Cached reads must take `siteId` (lint).*
 
-*From M4-2 (ADR 0014): the reading settings exist: `readReading(site_settings.reading)` → `{ blogPath, postsPerPage }` (defaults `blog`, 10). `resolveRoute` takes the blog's path from there. The overview's checklist counts published pages already (`launchCounts`): give its "Add your pages" item the pages screen's link.*
+*From M4-2 (ADR 0014): the reading settings exist: `readReading(site_settings.reading)` → `{ blogPath, postsPerPage }` (defaults `blog`, 10). `resolveRoute` takes the blog's path from there. The overview's checklist counts published pages already (`launchCounts`): give its "Add your pages" item the pages screen's link.* *(M5-6: done for the blog's path; the pages screen is M5-7's, so the checklist link moved there.)*
 
 **Depends on:** M5-3, M4-3, M4-4
 
 **Acceptance criteria:**
-- [ ] Closed node → React renderer (no `dangerouslySetInnerHTML`); `entry:{id}` links resolved to live paths; unknown nodes skipped
-- [ ] `resolveRoute` (cached): homepage, pages by path, blog index, post, category/tag archives, pagination, 404
-- [ ] Studio templates: page (default, full-width, landing), post, blog index, term archive
-- [ ] Cache tags `routes`, `entry`, `list:{type}` applied; publish invalidation verified
+- [x] Closed node → React renderer (no `dangerouslySetInnerHTML`); `entry:{id}` links resolved to live paths; unknown nodes skipped *(`modules/rendering/document.tsx`: every node checked again against the registry; skips reported and logged once per cache fill; the image skipped until M6-4)*
+- [x] `resolveRoute` (cached): homepage, pages by path, blog index, post, category/tag archives, pagination, 404 *(`modules/rendering/{routes,content}.ts`; exact stored paths only; `/` without a published Home page shows the site's name and tagline)*
+- [x] Studio templates: page (default, full-width, landing), post, blog index, term archive *(Journal: its page templates, and the kit's post, blog index and archive until M8-2; block styles in `_kit/blocks.css`)*
+- [x] Cache tags `routes`, `entry`, `list:{type}` applied; publish invalidation verified *(plus `site:{id}` on every read; no event changed)*
+
+**Decisions taken here (ADR 0017):**
+- **The public read rule** (published, not in the trash, this site and language, content from the published revision) lives in `modules/rendering`.
+- **One spelling per address:** exact stored paths, `…/page/1` and other spellings are 404s; no redirects (M8-5).
+- **A blog path change** moves the index and archives; posts stay at the path they were published at until published again (M5-3's open question).
+- **Generic embeds may submit forms** (`allow-forms`): forms and booking widgets are the approved generic use. Videos get the media `allow` list instead.
+- **The Publish dialog and the live status text** now say visitors see the published pages and posts (M4-5's hand-off).
 
 **Likely files/modules:** `src/modules/rendering/*`, `src/themes/studio/templates/*`, `src/themes/_kit/blocks/*`
 
-**Testing:** renderer XSS corpus; E2E publish → visible; edit + republish → updated without purge.
+**Testing:** renderer XSS corpus; E2E publish → visible; edit + republish → updated without purge. ✔ unit: `modules/rendering/{document,routes}.test.ts(x)` (the spike's 31 payloads and 21 more), `ui/public-page.test.tsx`, `themes/themes.test.tsx`; integration: `tests/integration/public-content.test.ts` (draft privacy, isolation, lists, links, and each operation's tags against each read's); E2E: `tests/e2e/public-content.spec.ts` (a site's pages, posts, blog, archives and blocks; 404s for drafts, the trash and other sites; a hostile document; a phone; publish → visible, draft private, republish → updated, Coming soon ↔ live and a theme switch, made in the admin).
 
 ### M5-7 · Pages and posts admin: lists, new forms, entry sidebar
 **Labels:** `area:content` `type:feature`
 
 **Description:** Everything around the editor.
+
+*From M5-6 (ADR 0017): a page's template is `entry_drafts.template`, published with it: `default` (or null), `full-width`, `landing` (`PAGE_TEMPLATES` in `src/themes/types.ts`); the sidebar offers those three. A live site without a published Home page shows its name and tagline at `/`, so "Set as homepage" and publishing it are what change the public home. From M4-2: give the overview checklist's "Add your pages" item the pages screen's link.*
 
 *From M5-4: the editor is at `entryEditorPath(orgSlug, siteSlug, type, id)` from `@/modules/content/shared`; the lists and "new" forms link and redirect there. **Sites made before M5-3 have no Home page** (the overview says so): give the Owner and Admin a way to make one, i.e. create a page and "Set as homepage" (`setHomepageAction`), and decide whether existing production sites need a one-off backfill before public launch (none was done: no destructive or implicit bulk change).*
 
@@ -1035,6 +1044,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** Taxonomy management and assignment.
+
+*From M5-6 (ADR 0017): the public site reads terms in three cached places: `resolveRoute` (an archive's term, tag `site:{id}:routes`), `loadPostList` (an archive's posts, `site:{id}:list:post`), and `loadEntry` (a post's term names and slugs, `site:{id}:entry:{eid}`). Creating, renaming, re-slugging or deleting a term must return a cache event that flushes the routes and `list:post` at once, and either the entries of the posts that carry it or, more simply, the site umbrella; add that event to `platform/cache/events.ts`.*
 
 *From M5-3 (ADR 0016): `saveDraft` already writes `entry_drafts.term_ids` (with `terms.assign`), and checks each id is a term of the same site in a taxonomy the type uses; `publishEntry` checks them again and replaces `entry_terms`. Deleting a term removes its `entry_terms` (CASCADE) but not its id from drafts' `term_ids`: remove it there too, or the next publish of such a draft is refused.*
 
@@ -1128,6 +1139,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 - *Inserting one: a slash-menu entry that `asks` for a media item (like the embed's `asks: "address"`) and opens the picker, so an image is never inserted without a `mediaId`. Its alt, caption, size and link come from the properties panel, which already generates fields from the schema.*
 - *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists.*
 - *No upload path was added in M5-5. Images reach a document only through the picker and the existing upload protocol (M6-1).*
+- *From M5-6 (ADR 0017): the public renderer skips `image` and reports it (`NOT_RENDERED_YET` in `modules/rendering/document.tsx`). Add the image's renderer to `BLOCK_RENDERERS` (its media resolved through the render context, never a stored URL), remove it from `NOT_RENDERED_YET`, tag `loadEntry` with each media item's `media:{mid}` it draws (plan §20, capped), and add `figure`/`img` cases to the XSS corpus. `RENDERED_ELEMENTS` already lists `figure` and `figcaption`.*
 
 **Depends on:** M6-3, M5-5
 
@@ -1149,6 +1161,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M5-6 (ADR 0017): the public reads show only `status = 'published'` and `deleted_at is null`, so an unpublished or trashed entry disappears from its path, the lists and every link to it as soon as `entry.unpublished` / `entry.trashed` (already in `platform/cache/events.ts`) are returned and invalidated. Tests for that belong with the services.*
 
 *From M5-5: documents point at entries (`entry:{id}` in links, buttons and images' links) and at media (`mediaId`). Saving checks only new references, so trashing or purging a target leaves existing pointers in drafts and revisions: they render nothing (M5-6). Decide whether purging warns about pages that still point at the entry, and keep publish's rule (no pointer to another site) in mind for anything that copies documents between sites.*
 
@@ -1208,6 +1222,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Private draft preview. V1: on the app host (ADR 0006); post-V1: on the site's platform subdomain.
 
+*From M5-6 (ADR 0017): draw a preview with the same pieces as the public page: `renderDocument` (the draft's document, checked node by node) and the theme's template through `PublicPageView`'s choices, never the cached public reads. A preview must bypass Coming soon (ADR 0013) and carry `noindex`.*
+
 **Depends on:** M5-6
 
 **Acceptance criteria:**
@@ -1249,6 +1265,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** The second, blog-first theme on the kit.
 
+*From M5-6 (ADR 0017, ADR 0012 addendum): Journal draws `page-full-width` and `page-landing` with one wide layout (`JournalPageWide`) and the kit's `post`, `blog-index` and `term-archive` (`_kit/templates/blog.tsx`). Replace those with Journal's own; the block styles (`_kit/blocks.css`) are shared and may be adjusted in `journal/styles.css`.*
+
 *From M4-4 (ADR 0012): Journal is already registered, with a skeleton (layout, `centered` header, `simple` footer, page, coming-soon and not-found templates, `styles.css`, defaults: Fraunces and Source Serif 4, narrow, relaxed). What remains: the blog templates (post, blog index, archives), the full styles, and the Lighthouse work.*
 
 **Depends on:** M8-1
@@ -1285,6 +1303,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Search-ready output.
 
+*From M5-6 (ADR 0017): public pages carry a title (`{title} · {site name}`; the site's name alone for its home; `· Page n` on later list pages) and the robots meta by status; nothing else. Canonical URLs, descriptions, Open Graph, JSON-LD and the sitemap are here; the lists' cached reads (`loadPostList`, tag `site:{id}:list:post`) are the sitemap's source for posts.*
+
 **Depends on:** M5-6, M6-4
 
 **Acceptance criteria:**
@@ -1306,6 +1326,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** URLs never break.
 
 *From M5-3 (ADR 0016): paths change in three places, each in one transaction that returns the moved entries: `publishEntry` (slug change, its `moved`), `setHomepage` (both Home pages and the pages below them), and `moveSubtree` (shared by both). Insert the auto 301s there, from each `MovedEntry`'s `from` to `to` for live entries. Saving the reading settings with a new blog path does not move posts yet (see M5-6).*
+
+*From M5-6 (ADR 0017): decided there: a new blog path moves the index and the archives at once; each post stays at the path it was published at until it is published again. Add the redirects for both here (old index and archives → new; a post's old path → its new one when it moves). Public paths are exact (no case or trailing-segment normalization, `…/page/1` is a 404); if redirects should cover other spellings, that is this issue's decision.*
 
 **Depends on:** M8-4, M7-1
 
@@ -1369,6 +1391,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Safe read access for other systems.
+
+*From M5-6 (ADR 0017): the public read rule (published, not in the trash, this site and language, content from the published revision) is in `modules/rendering/content.ts`. When the API reads pages and posts, move that rule behind the content module's API rather than writing it a second time, and render `contentHtml` with `renderDocument`.*
 
 *From M3-5 (ADR 0010): the same for API keys: an `api_key` actor in the audit writer, with the key's name as the label, added as an explicit caller when the first write endpoint exists (M10-2).*
 

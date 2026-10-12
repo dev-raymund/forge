@@ -76,7 +76,7 @@ describe("publishing, in a browser's DOM", () => {
     expect(shown.querySelector('[data-testid="publish-url"]')!.textContent).toBe(URL_);
     const consequences = shown.querySelector('[data-testid="publish-consequences"]')!.textContent!;
     expect(consequences).toContain("search engines may list it");
-    expect(consequences).toContain("shows its name and tagline in its theme. Adding pages and posts is not available yet.");
+    expect(consequences).toContain("Visitors see your published pages and posts. Until your Home page is published, the home page shows the site’s name and tagline.");
     expect(server.calls).toEqual([]);
   });
 

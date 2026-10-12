@@ -151,3 +151,10 @@ A theme marketplace, uploaded themes, custom CSS, tenant code, editable template
 ## Addendum (M4-2, 2026-10-10): social links in the theme context
 
 `ThemeContext.site.social` holds the site's social links (already validated as `https` addresses, ADR 0014), in the networks' order. Studio's and Journal's footers draw them as a "Social" navigation (`rel="me noopener noreferrer"`) when `settings.footer.showSocial` (default true; the switch is M8-1's). The theme context still has no analytics: the site layout emits those (ADR 0014 §3).
+
+## Addendum (M5-6, 2026-10-13)
+
+- **Templates.** `TEMPLATE_KEYS` now has eight: `page`, `page-full-width`, `page-landing`, `post`, `blog-index`, `term-archive`, `coming-soon`, `not-found` (ADR 0017 §5). A page's stored template (`default`, `full-width`, `landing`: `PAGE_TEMPLATES`) picks one of the three page templates.
+- **Studio** draws all eight. **Journal** draws its page templates and uses the kit's own post, blog index and archive (`_kit/templates/blog.tsx`) until M8-2: the types require every theme to draw every template, and Journal's blog design is M8-2's.
+- **The kit** gained the post list, pagination and term links (`_kit/components/`) and the content blocks' styles (`_kit/blocks.css`, loaded by `ThemeFrame`). They use only the kit's variables. A theme adjusts them in its own `styles.css`.
+- **The gallery** draws every template of both themes with made-up data, and `tests/e2e/appearance.spec.ts` checks each one, including at 360 px.

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { isThemeKey, THEME_KEYS } from "@/themes/registry";
 import { themeFor, type RenderableSite } from "@/themes/render";
-import { TEMPLATE_KEYS, type TemplateKey } from "@/themes/types";
+import { TEMPLATE_KEYS, type PostCard, type TemplateKey } from "@/themes/types";
 
 /**
  * The theme gallery (M4-4): every template of every theme, drawn through the
@@ -41,6 +41,11 @@ const fixture = (themeKey: string): RenderableSite => ({
   ],
 });
 
+const posts = (base: string): PostCard[] => [
+  { title: "A kitchen in nine square metres", href: `${base}/blog/a-kitchen-in-nine-square-metres`, excerpt: "Every drawer earns its place.", date: { iso: "2026-09-12T08:00:00.000Z", label: "12 September 2026" } },
+  { title: "Light, <em>and</em> where to find it", href: `${base}/blog/light`, excerpt: "", date: { iso: "2026-08-03T08:00:00.000Z", label: "3 August 2026" } },
+];
+
 export default async function ThemeGalleryPage({ params }: PageProps<"/dev/themes/[theme]/[template]">) {
   if (process.env.VERCEL_ENV === "production") notFound();
   const { theme: key, template } = await params;
@@ -48,35 +53,72 @@ export default async function ThemeGalleryPage({ params }: PageProps<"/dev/theme
 
   const { theme, context } = themeFor(fixture(key));
   const { Layout, templates } = theme;
-  const Page = templates.page;
-  const ComingSoon = templates["coming-soon"];
-  const NotFound = templates["not-found"];
-
-  return (
-    <Layout context={context}>
-      {template === "page" ? (
-        <Page context={context} title="About the studio">
-          <p>
-            We design calm, practical rooms for people who live and work in small spaces. Every project starts with how you use the room, not with how it
-            looks in a photograph.
-          </p>
-          <h2>How we work</h2>
-          <p>
-            A first visit, a measured survey and a set of drawings you can build from. We stay on until the last shelf is up. Read more about{" "}
-            <a href={`${context.site.basePath}/services`}>our services</a>.
-          </p>
-          <ul>
-            <li>Kitchens and living rooms</li>
-            <li>Studios and home offices</li>
-            <li>Shops and small restaurants</li>
-          </ul>
-          <blockquote>They found room we did not know we had.</blockquote>
-        </Page>
-      ) : template === "coming-soon" ? (
-        <ComingSoon context={context} />
-      ) : (
-        <NotFound context={context} />
-      )}
-    </Layout>
+  const base = context.site.basePath;
+  const pagination = { page: 2, pages: 3, previousHref: `${base}/blog`, nextHref: `${base}/blog/page/3` };
+  const content = (
+    <>
+      <p>
+        We design calm, practical rooms for people who live and work in small spaces. Every project starts with how you use the room, not with how it
+        looks in a photograph.
+      </p>
+      <h2>How we work</h2>
+      <p>
+        A first visit, a measured survey and a set of drawings you can build from. We stay on until the last shelf is up. Read more about{" "}
+        <a href={`${base}/services`}>our services</a>.
+      </p>
+      <ul>
+        <li>Kitchens and living rooms</li>
+        <li>Studios and home offices</li>
+        <li>Shops and small restaurants</li>
+      </ul>
+      <blockquote>They found room we did not know we had.</blockquote>
+    </>
   );
+
+  const page = (() => {
+    switch (template) {
+      case "page":
+      case "page-full-width":
+      case "page-landing": {
+        const Page = templates[template];
+        return (
+          <Page context={context} title="About the studio">
+            {content}
+          </Page>
+        );
+      }
+      case "post": {
+        const Post = templates.post;
+        return (
+          <Post
+            context={context}
+            title="A kitchen in nine square metres"
+            date={{ iso: "2026-09-12T08:00:00.000Z", label: "12 September 2026" }}
+            terms={[{ taxonomy: "category", name: "Kitchens", href: `${base}/blog/category/kitchens` }, { taxonomy: "tag", name: "Small spaces", href: `${base}/blog/tag/small-spaces` }]}
+            blogHref={`${base}/blog`}
+          >
+            {content}
+          </Post>
+        );
+      }
+      case "blog-index": {
+        const BlogIndex = templates["blog-index"];
+        return <BlogIndex context={context} title="Blog" posts={posts(base)} pagination={pagination} />;
+      }
+      case "term-archive": {
+        const TermArchive = templates["term-archive"];
+        return <TermArchive context={context} taxonomy="category" name="Kitchens" description="Rooms where people cook." blogHref={`${base}/blog`} posts={posts(base)} pagination={pagination} />;
+      }
+      case "coming-soon": {
+        const ComingSoon = templates["coming-soon"];
+        return <ComingSoon context={context} />;
+      }
+      case "not-found": {
+        const NotFound = templates["not-found"];
+        return <NotFound context={context} />;
+      }
+    }
+  })();
+
+  return <Layout context={context}>{page}</Layout>;
 }

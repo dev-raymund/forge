@@ -100,3 +100,19 @@
 [data-theme="journal"] .journal-footer .forge-nav ul {
   justify-content: center;
 }
+
+/* M5-6: the wide page templates, and the kit's blog templates in Journal's measure (Journal's own blog design is M8-2's). */
+
+[data-theme="journal"] .forge-post__header,
+[data-theme="journal"] .forge-archive__title,
+[data-theme="journal"] .forge-archive .forge-post__eyebrow,
+[data-theme="journal"] .forge-archive__description {
+  text-align: center;
+}
+
+[data-theme="journal"] .forge-post .forge-terms,
+[data-theme="journal"] .forge-post-list,
+[data-theme="journal"] .forge-pagination {
+  max-width: 68ch;
+  margin-inline: auto;
+}

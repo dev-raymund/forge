@@ -13,3 +13,18 @@ export function JournalPage({ title, children }: TemplateProps["page"]) {
     </article>
   );
 }
+
+/**
+ * The full-width and landing templates (M5-6): the same title, with the content across the wide container. Journal's
+ * own designs for them, and for the blog, are M8-2's.
+ */
+export function JournalPageWide({ title, children }: TemplateProps["page-full-width"]) {
+  return (
+    <article className="journal-page journal-page--wide">
+      <Container wide>
+        <h1 className="journal-page__title">{title}</h1>
+        <Prose className="forge-prose--wide">{children}</Prose>
+      </Container>
+    </article>
+  );
+}

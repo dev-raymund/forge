@@ -117,3 +117,7 @@ Its guarantees are kept by `tests/e2e/renderer.spec.ts` on the real renderer, ex
   - a theme switch showing on the very next request, with another site's cache untouched;
   - two sites' branding.
 - `tests/e2e/tenancy.spec.ts`: a member of any role sees what a stranger sees, `<main>` for `<main>`.
+
+## Addendum (M5-6, 2026-10-13)
+
+A live site now serves its published content (ADR 0017). `renderStateFor` decides from the status alone (`live` replaces `home`); a live site's path is then resolved by `publicPageFor` (`resolveRoute` and the cached content reads), and a path that names nothing is still the theme's not-found page with a real 404. The M4-3 live home (the site's name and tagline) remains what `/` shows while a site has no published Home page. `PublicSite` gained the organization's id (for the content reads; never handed to a theme) and the reading settings. Everything else in this ADR stands.

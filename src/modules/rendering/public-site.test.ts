@@ -6,6 +6,7 @@ import type { PublicSite } from "./queries";
 
 const site: PublicSite = {
   id: "0199a000-0000-7000-8000-000000000001",
+  orgId: "0199a000-0000-7000-8000-000000000002",
   name: "Acme <Bakery>",
   tagline: "Bread & more",
   status: "coming_soon",
@@ -15,6 +16,7 @@ const site: PublicSite = {
   themeSettings: { tokens: { colors: { primary: "#123456" } } },
   social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
   analytics: { ga4MeasurementId: "G-ABC1234567" },
+  reading: { blogPath: "news", postsPerPage: 5 },
 };
 
 describe("the public context", () => {

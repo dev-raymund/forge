@@ -2,6 +2,7 @@ import type { ThemeContext } from "../../types";
 import { fontClasses } from "../fonts";
 import { themeVariables } from "../tokens";
 import "../kit.css";
+import "../blocks.css";
 
 /**
  * The outermost element of every page of a site: which theme draws it, the

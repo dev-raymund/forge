@@ -72,7 +72,7 @@ test("an Owner publishes: asked first with the real public URL; then live in the
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(`The site goes from Coming soon to live at ${publicUrl}.`);
   await expect(dialog.getByTestId("publish-url")).toHaveText(publicUrl);
-  await expect(dialog).toContainText("For now, your site’s home page shows its name and tagline in its theme. Adding pages and posts is not available yet.");
+  await expect(dialog).toContainText("Visitors see your published pages and posts. Until your Home page is published, the home page shows the site’s name and tagline.");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(open).toBeFocused();
@@ -88,7 +88,7 @@ test("an Owner publishes: asked first with the real public URL; then live in the
   await expect(shown(page, "published-link")).toHaveAttribute("href", publicUrl);
   await expect(dialog).toBeHidden();
   await expect(shown(page, "site-status")).toHaveText("Live");
-  await expect(shown(page, "status-explanation")).toContainText("visitors see its home page, and search engines may list it");
+  await expect(shown(page, "status-explanation")).toContainText("visitors see its published pages and posts, and search engines may list it");
   await expect(shown(page, "checklist-item").filter({ hasText: "Publish your site" })).toHaveAttribute("data-done", "");
   await expect(page.getByRole("button", { name: "Switch to Coming soon…" })).toBeVisible();
   expect((await sitesIn(org.id))[0]).toMatchObject({ status: "live", address });

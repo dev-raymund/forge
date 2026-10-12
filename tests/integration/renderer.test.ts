@@ -10,7 +10,7 @@ import { newSlug, newTenant } from "../fixtures/tenants";
 // The renderer's data functions are `'use cache'`. Outside Next their cache calls have nothing to talk to: they are
 // made to do nothing, and the queries behind them run as they do in production.
 vi.mock("next/cache", async (original) => ({ ...(await original<typeof import("next/cache")>()), cacheLife: () => {}, cacheTag: () => {} }));
-const { loadPublicSite, renderableSite, renderStateFor, resolveSite } = await import("@/modules/rendering");
+const { loadPublicSite, publicPageFor, renderableSite, renderStateFor, resolveSite } = await import("@/modules/rendering");
 
 /**
  * M4-3 against real Postgres, as forge_app through PgBouncer: from a public
@@ -34,8 +34,8 @@ describe("an address → its site", () => {
     const { tenant, site, address } = await newSite();
     expect(await at(address)).toEqual({ siteId: site.id, orgId: tenant.org.id, isPrimary: true });
     expect(await loadPublicSite(tenant.org.id, site.id)).toEqual({
-      id: site.id, name: "Public Site", tagline: "", status: "coming_soon", language: "fil", timezone: "Asia/Manila", themeKey: "studio", themeSettings: {},
-      social: [], analytics: {},
+      id: site.id, orgId: tenant.org.id, name: "Public Site", tagline: "", status: "coming_soon", language: "fil", timezone: "Asia/Manila", themeKey: "studio",
+      themeSettings: {}, social: [], analytics: {}, reading: { blogPath: "blog", postsPerPage: 10 },
     });
   });
 
@@ -63,13 +63,17 @@ describe("an address → its site", () => {
 describe("what is rendered", () => {
   it("each status, through the same lookups: coming soon, live, suspended", async () => {
     const { tenant, site, address } = await newSite();
+    // The status decides; on a live site, the path (M5-6). A new site's Home page is a draft: `/` shows its name and tagline.
     const stateAt = async (path: string[] = []) => {
       const resolved = await at(address);
-      return renderStateFor(resolved ? await loadPublicSite(resolved.orgId, resolved.siteId) : null, path).kind;
+      const loaded = resolved ? await loadPublicSite(resolved.orgId, resolved.siteId) : null;
+      const { kind } = renderStateFor(loaded);
+      if (kind !== "live") return kind;
+      return (await publicPageFor(loaded!, path))?.kind ?? "page-not-found";
     };
     expect([await stateAt(), await stateAt(["about"])]).toEqual(["coming-soon", "coming-soon"]);
     await setStatus(tenant.org.id, site.id, "live");
-    expect([await stateAt(), await stateAt(["about"])]).toEqual(["home", "page-not-found"]);
+    expect([await stateAt(), await stateAt(["about"])]).toEqual(["site-home", "page-not-found"]);
     await setStatus(tenant.org.id, site.id, "suspended");
     expect([await stateAt(), await stateAt(["about"])]).toEqual(["site-unavailable", "site-unavailable"]);
     expect(renderStateFor(null).kind).toBe("site-not-found");
