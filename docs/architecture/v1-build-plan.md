@@ -345,7 +345,7 @@ Conventions (unchanged from long-term §6):
 
 *Content as built (M1-1; verified against Postgres in M5-1, `tests/integration/content-schema.test.ts`):*
 - *Every reference inside a site is composite, `(site_id, x_id)`: parent page, parent category, an entry's draft, revisions and term links, featured media. A row of another site, or of another organization, cannot be linked even by a known id. Parent page, parent category and featured media are `ON DELETE SET NULL (col)`; drafts, revisions and term links `CASCADE` from their entry, term links from their term. `entries (id, published_revision_id)` → `entry_revisions (entry_id, id)`: the published revision is one of the entry's own, and cannot be deleted while it is published. Revisions' featured media is history, with no FK.*
-- *CHECKs: `type`, `status`, `kind`, `taxonomy`; slug `^[a-z0-9]+(-[a-z0-9]+)*$`; path one or more `/segment`s (so `/` alone is refused: see M5-2); published ⇔ `published_revision_id`; scheduled ⇔ `scheduled_at`; nothing published in the trash; only pages nest; only categories nest; draft `version > 0`.*
+- *CHECKs: `type`, `status`, `kind`, `taxonomy`; slug `^[a-z0-9]+(-[a-z0-9]+)*$`; path `/` (the Home page, migration 0005, M5-2) or one or more `/segment`s; published ⇔ `published_revision_id`; scheduled ⇔ `scheduled_at`; nothing published in the trash; only pages nest; only categories nest; draft `version > 0`.*
 - *The list indexes are `DESC NULLS LAST`; `(site_id, type, updated_at DESC)` is partial (`WHERE deleted_at IS NULL`). Ids are UUIDv7 made by the application (no database default).*
 
 **Media, navigation, SEO, platform**
@@ -448,6 +448,11 @@ interface ContentTypeDefinition<F = Record<string, never>> {
 | Path | `/{parent-path}/{slug}` (Home = `/`) | `/{blogPath}/{slug}` (`blogPath` default `blog`, set in reading settings) |
 | Archive | — | `/{blogPath}`, `/{blogPath}/category/{slug}`, `/{blogPath}/tag/{slug}`, `…/page/{n}` |
 | Extras | Parent, template (from the theme), sort order | Excerpt, featured image, author, categories, tags |
+
+*Paths as built (M5-2, `src/modules/content/{paths,slugs,unique-slug}.ts`, `types/`):*
+- *The Home page is stored at `/`: `/` is its one canonical path (decided 2026-10-12). It keeps an ordinary slug (`home`), which is not a route, and there is no `/home` alias or redirect. `(site_id, locale, path)` allows one `/` per site and locale. A page under Home sits at the top level (`/{slug}`).*
+- *Slugs: lowercase letters and digits in hyphen-separated groups, at most 100 characters; from a title by `slugify`, `untitled` when nothing is left. A free slug is found where the entry will live (site, locale, parent or blog path, not in the trash) as `base`, `base-2`, …, and the insert retries the next one in a savepoint if a concurrent writer took it.*
+- *Reserved: `/_forge/…`, `/sitemap.xml`, `/robots.txt` on every site, and, for pages, the blog's path and everything under it.*
 
 **How Service, Case Study, Team Member, Property, Product or Event arrive later, without a rewrite:**
 

@@ -40,6 +40,7 @@ export type EntryType = (typeof ENTRY_TYPES)[number];
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
 const SLUG_RE = "^[a-z0-9]+(-[a-z0-9]+)*$";
+/** One or more `/segment`s. The Home page's path, `/`, is the one other path there is (M5-2). */
 const PATH_RE = "^(/[a-z0-9]+(-[a-z0-9]+)*)+$";
 
 export const entries = pgTable(
@@ -81,7 +82,8 @@ export const entries = pgTable(
     oneOf("entries_type_check", t.type, ENTRY_TYPES),
     oneOf("entries_status_check", t.status, ENTRY_STATUSES),
     check("entries_slug_format", sql`slug ~ ${sql.raw(`'${SLUG_RE}'`)}`),
-    check("entries_path_format", sql`path ~ ${sql.raw(`'${PATH_RE}'`)}`),
+    // The Home page is stored at `/` (plan §5, decided in M5-2); `(site_id, locale, path)` keeps it to one per site and locale.
+    check("entries_path_format", sql`path = '/' or path ~ ${sql.raw(`'${PATH_RE}'`)}`),
     // Invariants from v1-build-plan §5 / D-13, enforced by the database:
     check("entries_published_has_revision", sql`(status = 'published') = (published_revision_id is not null)`),
     check("entries_scheduled_has_time", sql`(status = 'scheduled') = (scheduled_at is not null)`),

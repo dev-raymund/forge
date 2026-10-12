@@ -856,18 +856,24 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Page and post definitions and URL computation.
 
-*From M5-1: decide where the Home page's path lives before building the path builder. The plan says "Home = `/`", but `entries_path_format` (migration 0001) accepts only one or more `/segment`s, so an entry cannot be stored with the path `/`. Either the Home page keeps an ordinary path (`/home`) and `resolveRoute` serves `site_settings.homepage_entry_id` at `/` (M5-6), or a migration widens the CHECK to also allow `/` (the partial unique key then allows one Home per site and locale, and `setHomepage` must move paths). Slugs must match `^[a-z0-9]+(-[a-z0-9]+)*$` and paths their CHECK: `slugify` should produce nothing the database refuses.*
+*From M5-1: decide where the Home page's path lives before building the path builder. The plan says "Home = `/`", but `entries_path_format` (migration 0001) accepts only one or more `/segment`s, so an entry cannot be stored with the path `/`. Either the Home page keeps an ordinary path (`/home`) and `resolveRoute` serves `site_settings.homepage_entry_id` at `/` (M5-6), or a migration widens the CHECK to also allow `/` (the partial unique key then allows one Home per site and locale, and `setHomepage` must move paths). Slugs must match `^[a-z0-9]+(-[a-z0-9]+)*$` and paths their CHECK: `slugify` should produce nothing the database refuses.* **Resolved in M5-2: `/` is the Home page's stored, canonical path (migration 0005).**
 
 **Depends on:** M5-1
 
 **Acceptance criteria:**
-- [ ] `ContentTypeDefinition` interface + `page` and `post` definitions (plan §5)
-- [ ] `slugify`, unique-slug with suffix retry on conflict, reserved path check (`/_forge`, `/sitemap.xml`, `/robots.txt`, blog path)
-- [ ] Path builder: pages from parent chain (Home = `/`), posts from the blog path
+- [x] `ContentTypeDefinition` interface + `page` and `post` definitions (plan §5) *(`content/types/`: definition, page, post, registry; keys checked against `entries_type_check` and the permission catalog; unknown keys find nothing)*
+- [x] `slugify`, unique-slug with suffix retry on conflict, reserved path check (`/_forge`, `/sitemap.xml`, `/robots.txt`, blog path) *(`lib/slugify.ts`; `content/slugs.ts`; `content/unique-slug.ts`: `insertWithUniqueSlug`, savepoint retry on `entries_site_locale_path_unique`, at most 10 attempts, then Conflict; `content/paths.ts`: `reservedPathReason`)*
+- [x] Path builder: pages from parent chain (Home = `/`), posts from the blog path *(`pagePath`, `postPath`, `parentChain`, `pathFromChain`, `wouldCreateCycle`)*
+
+**Decisions taken here:**
+- **The Home page's path is `/`, stored** (the M5-2 instructions; plan §5 "Home = `/`"). Migration 0005 widens `entries_path_format` to `path = '/' or` the old rule; nothing else changes. There is no `/home` route.
+- **A free slug is chosen where the entry will live**, from what is in use there now (`base`, `base-2`, …, gaps reused, reserved paths skipped), and the insert is retried in a savepoint with the next one if a concurrent writer took it. Reading first keeps a site with many `untitled` pages from spending its attempts on known collisions; the retry is what makes it safe.
+- **Slugs are at most 100 characters** (`ENTRY_SLUG_MAX`); the database has no length limit.
+- **No service, action or UI:** `insertWithUniqueSlug` is a building block that runs inside M5-3's transactions after their permission check; it takes the `SiteContext`, never a site id.
 
 **Likely files/modules:** `src/modules/content/types/*`, `src/modules/content/paths.ts`
 
-**Testing:** unit tables for paths, slugs, reserved words, parent chains.
+**Testing:** unit tables for paths, slugs, reserved words, parent chains. *(Also `tests/integration/content-paths.test.ts`: `/` and migration 0005 on a fresh database and on one migrated to 0004 with content; races for `/` and for slugs.)*
 
 ### M5-3 · Entry services: create, autosave, publish transaction
 **Labels:** `area:content` `type:feature` `risk:high`
@@ -875,6 +881,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** The core write paths.
 
 *From M3-2 (ADR 0009): add `modules/content/policies.ts`. Pages have plain keys (`entries.page.update`); posts have own/any pairs, for which `canActOn(ctx, "entries.post.update", { organizationId: entry.organizationId, ownerId: entry.authorId })` is the whole policy. Reading (`entries.{type}.read`) is held by every role. Build the key from the entry's type through the content-type registry, never from request input. Register each policy in `tenantPolicyChecks` (`tests/isolation/tenant-operations.ts`). A content type added to the registry needs its keys added to the catalog: a unit test fails until the catalog's entry types and `ENTRY_TYPES` agree.*
+
+*From M5-2: create entries with `insertWithUniqueSlug(tx, ctx, { type, locale, dir, base, blogPath }, insert)` from `@/modules/content`, inside the service's transaction and after its permission check; `dir` is `""` for a top-level page, the parent's stored path, or `/{blogPath}` for a post, and `base` is `slugFromTitle(title)` (`untitled` for a new entry). The Home page is the one entry written at `/` without it: slug `home`, path `/`, and `site_settings.homepage_entry_id` set to it; only a page may be given `/` (the CHECK allows `/` for any type; `post.routing` never produces it). A slug someone types should be refused, not suffixed, when it is not `isEntrySlug` or its path has a `reservedPathReason`. A new parent must be refused when `wouldCreateCycle` says so. `setHomepage` moves the old Home to a free top-level path and the new one to `/` in one transaction.*
 
 *From M5-1: the database keeps references inside one site, but not everything. `entry_drafts.term_ids` is a `uuid[]` with no foreign key: check that every id is a term of the same site before saving (or publishing it into `entry_terms`, which is keyed). `entries.author_id` references `users` only: check the author is a member. Ids have no database default: insert through Drizzle (`$defaultFn` UUIDv7). Publishing must write the revision before setting `status = 'published'` with its `published_revision_id` (CHECK `entries_published_has_revision`, and `entries_published_revision_fk` requires the entry's own revision); trashing a published entry is refused (`entries_trash_not_live`), so unpublish first; restoring from the trash can hit the path key if the path was taken meanwhile (cms-architecture §6.7: "Restore re-suffixes the slug if it has been taken meanwhile").*
 
@@ -949,6 +957,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M4-4 (ADR 0012): add the new templates to `TEMPLATE_KEYS` and `TemplateProps` in `src/themes/types.ts`; the types then require them of every theme. Studio's and Journal's `page` template take the page's `title` and its content as `children`, inside `Prose`. Block renderers go in `src/themes/_kit/blocks/`, drawn with the kit's variables.*
 
 *From M4-5 (ADR 0015): the Publish dialog (`modules/sites/ui/site-publishing.tsx`) tells the customer that the live home page "shows its name and tagline in its theme. Adding pages and posts is not available yet", and `STATUS_EXPLANATIONS.live` says visitors see "its home page". Once a live site serves real pages, update both, and `tests/e2e/publishing.spec.ts`'s expectations.*
+
+*From M5-2: the Home page is stored at path `/` (migration 0005), so `/` resolves with the same `(site_id, locale, path)` lookup as every other page; `site_settings.homepage_entry_id` names the same entry. Paths come from `contentType(type).routing(…)` and `pathFromChain` in `@/modules/content`.*
 
 *From M4-3 (ADR 0013): replace the `home` / `page-not-found` decision for live sites in `modules/rendering/render-state.ts` with `resolveRoute(siteId, path)`, keeping coming soon and unavailable as they are. The page (`app/(sites)/render/[site]/[[...path]]/page.tsx`) calls `notFound()` for a missing route; `not-found.tsx` already draws the theme's not-found template from `requestSite()`. Cached reads must take `siteId` (lint).*
 

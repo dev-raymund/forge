@@ -36,6 +36,13 @@
       "when": 1791156478203,
       "tag": "0004_membership_write_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791779357358,
+      "tag": "0005_entries_root_path",
+      "breakpoints": true
     }
   ]
 }
