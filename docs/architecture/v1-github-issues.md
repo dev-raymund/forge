@@ -929,11 +929,18 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M0-5, M5-3
 
 **Acceptance criteria:**
-- [ ] Editor route `/…/pages/[entryId]` and `/…/posts/[entryId]` (lazy-loaded bundle)
-- [ ] Nodes: heading (2–4), paragraph, bullet/ordered list, blockquote, divider; marks: bold, italic, underline, strike, code, link (with an entry picker from `/api/app/entries/search`)
-- [ ] Slash menu, stable IDs, allow-listed paste normalisation
-- [ ] Autosave (2 s debounce, 30 s max) with status indicator; local buffer per entry + version; conflict dialog
-- [ ] Title field; publish button (basic publish)
+- [x] Editor route `/…/pages/[entryId]` and `/…/posts/[entryId]` (lazy-loaded bundle) *(`EntryEditorPage`; `next/dynamic` with `ssr: false`; other sites', other types' and trashed entries are the 404 page)*
+- [x] Nodes: heading (2–4), paragraph, bullet/ordered list, blockquote, divider; marks: bold, italic, underline, strike, code, link (with an entry picker from `/api/app/entries/search`) *(`src/blocks/text-nodes/`; links stored as `entry:{id}`)*
+- [x] Slash menu, stable IDs, allow-listed paste normalisation *(UUIDv7 ids, deduped before saving; pasted h1 → h2, h5/h6 → h4)*
+- [x] Autosave (2 s debounce, 30 s max) with status indicator; local buffer per entry + version; conflict dialog *(the dialog offers "Load the latest version" and "Copy my changes"; overwrite is M7-3's, see below)*
+- [x] Title field; publish button (basic publish)
+
+**Decisions taken here (ADR 0003, addendum M5-4):**
+- **The conflict dialog has two of plan §6.3's three choices.** "Overwrite (the other version saved as a revision first)" needs `save` revisions (M7-3) and is added there.
+- **A document with blocks this editor lacks is not opened for editing** (nothing can be lost by saving it). It goes away when M5-5 and M6 add those blocks.
+- **Autosave does not re-render the page** (`FormOutcome.refresh: false`).
+- **The site overview links to the Home page's editor**, so the editor is reachable before M5-7's lists. A site made before M5-3 shows "This site has no home page yet."; giving it one is M5-7's (below). No data was backfilled.
+- **Every member can open an editor; only those the policies allow can change or publish** (read-only otherwise).
 
 **Likely files/modules:** `src/modules/content/editor/*`, `src/blocks/{text-nodes}/*`
 
@@ -943,6 +950,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:editor` `type:feature`
 
 **Description:** The structural blocks.
+
+*From M5-4 (ADR 0003 addendum): the editor's schema is `src/blocks/text-nodes/extensions.ts` plus whatever the block registry adds; `TEXT_NODE_TYPES` is the list of what the editor can hold, and a stored document with any other node is not opened for editing (`data-testid="unsupported-blocks"`): widen that list as blocks are added, then delete the spike (`spikes/editor/`, `/dev/editor`, `tests/e2e/editor-spike.spec.ts`) once its custom nodes, NodeViews, drag handle and `PasteGuard` have moved. The slash menu's commands are `SLASH_COMMANDS` in `modules/content/editor/slash.ts`: add the blocks there. The document's per-node attribute schemas are still in `modules/content/document/schema.ts`.*
 
 *From M0-5: button, columns, embed and spacer already exist in `spikes/editor/`. Decided 2026-10-01 (plan §6.1, §6.3):*
 - *Embeds: YouTube and Vimeo, plus a `generic` https iframe URL only after URL-safety validation (`platform/net/url-safety` must exist first). No provider-specific integrations.*
@@ -994,6 +1003,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** Everything around the editor.
+
+*From M5-4: the editor is at `entryEditorPath(orgSlug, siteSlug, type, id)` from `@/modules/content/shared`; the lists and "new" forms link and redirect there. **Sites made before M5-3 have no Home page** (the overview says so): give the Owner and Admin a way to make one, i.e. create a page and "Set as homepage" (`setHomepageAction`), and decide whether existing production sites need a one-off backfill before public launch (none was done: no destructive or implicit bulk change).*
 
 *From M5-3 (ADR 0016): the new forms post to `createEntryAction(orgSlug, siteSlug, type)` with `title`, `parentId`, `template`, `authorId` (success: `values.entryId`); "Set as homepage" to `setHomepageAction(…, entryId)` (Owner, Admin). Not built yet, and the sidebar needs: changing an existing entry's author (check membership as `createEntry` does: `isMember`), and moving a page (`parent_id`): refuse it when `wouldCreateCycle` says so, require a page of the same site, and carry the path change with `moveSubtree` in the same transaction. A typed slug that collides with another entry is refused at publish; an early hint at save would be a read-only check.*
 
@@ -1160,6 +1171,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** Snapshot history.
+
+*From M5-4 (ADR 0003 addendum): the editor's conflict dialog (`modules/content/editor/entry-editor.tsx`) offers "Load the latest version" and "Copy my changes". Add plan §6.3's third choice here: overwrite, after saving the other version as a `save` revision.*
 
 **Depends on:** M5-3
 

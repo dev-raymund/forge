@@ -81,3 +81,32 @@ The spike covers the risky parts of M5-4, M5-5 and M5-6: schema, the pipeline, t
 - Theme styles for the rendered blocks, and gaps 3, 4 and 8 above.
 
 Editor work (M5-4 + M5-5) is estimated at **about 2 engineer-weeks**. That fits inside the plan's 3.5 weeks for Phase 5, so the plan does not change.
+
+---
+
+## Addendum (M5-4, 2026-10-12): the editor shell, text nodes only
+
+What was built, from the spike, and the decisions it took:
+
+- **Where it lives.**
+  - The text nodes: `src/blocks/text-nodes/extensions.ts` (StarterKit without code blocks and line breaks; headings 2–4; quote with `cite`; divider with `style`; links limited to `isSafeHref`; UniqueID with UUIDv7 on every top-level node).
+  - The editor: `src/modules/content/editor/` (autosave, slash menu, link dialog, the screen).
+  - The routes: `/…/pages/[entryId]` and `/…/posts/[entryId]`, via `EntryEditorPage`.
+  - The spike's custom nodes, drag handle and `/dev/editor` page stay until M5-5 moves them into the block registry.
+- **Client-only and lazy** (gap 5): `next/dynamic(…, { ssr: false })`. The admin's other pages do not load Tiptap.
+- **A document with blocks this editor lacks** (image, button, columns, embed, spacer: M5-5 and M6) is not loaded into it. Loading it would drop those blocks on the next save. The page says so, and nothing is saved.
+- **Saving.**
+  - Autosave calls the M5-3 action `saveDraftAction` with `version` and `{ title, content }`. Before sending, the editor dedupes ids (gap 3) and runs `parseDocument`; the server checks again.
+  - A save is shown as saved only when the server answers with the new version. A conflict, refused content, or a failed request is shown as not saved; a failed request is retried.
+  - A successful save does not re-render the page (`FormOutcome.refresh: false`): autosave runs every few seconds, and the editor holds the draft.
+- **Conflicts.**
+  - The dialog offers **Load the latest version** (this tab's unsaved changes are given up) and **Copy my changes** (to the clipboard).
+  - Plan §6.3's third choice, overwrite after keeping the other version as a revision, needs M7-3's `save` revisions and is left to it.
+  - While in conflict the editor is read-only: what is typed could not be saved.
+- **The local buffer** (per entry + draft version, `localStorage`) restores changes from a tab closed or crashed before its save. Only the same version is restored, so another tab's newer save is never overwritten by an old buffer.
+- **The slash menu** works in top-level paragraphs: `/` and a few letters. It offers Text, Heading 2–4, the two lists, Quote and Divider, and is keyboard-driven (↑/↓, Enter, Esc).
+- **Paste.** Only the text nodes and marks exist, so anything else pasted is dropped. `h1` becomes `h2`, and `h5`/`h6` become `h4` (gap 8). Unsafe links are not kept.
+- **Links** are typed addresses or the site's pages and posts, found by title through `GET /api/app/entries/search?org&site&q`. That route needs a session and membership, searches the named site only, and treats `%` and `_` as literal text. Entries are stored as `entry:{id}`.
+- **Publish** saves any pending change first, then calls `publishEntryAction` with the version just saved. "Already published" and conflicts are told as such.
+- **Who may.** The page opens for every member: reading is every role's. The services' policies decide `canEdit` and `canPublish`; the screen shows read-only when they are false, and the services refuse anyway.
+- **Reaching it.** The site overview has a Home page card linking to its editor. A site made before M5-3 has no Home page, and the card says so. Creating pages and making one the home page from the admin is M5-7's.

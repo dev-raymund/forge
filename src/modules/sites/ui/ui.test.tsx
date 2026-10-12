@@ -139,6 +139,7 @@ describe("the site overview (M4-2)", () => {
   const overview = (over: Partial<SiteOverview> = {}): SiteOverview => ({
     site: site("Bakery", "bakery", "acme-bakery"),
     publicUrl: "https://cms.forgelinetechnologies.com/s/acme-bakery",
+    home: { id: "0199a000-0000-7000-8000-00000000home", title: "Home", status: "draft" },
     theme: { key: "journal", name: "Journal" },
     tagline: "Fresh daily",
     reading: { blogPath: "news", postsPerPage: 12 },
@@ -186,6 +187,19 @@ describe("the site overview (M4-2)", () => {
     expect(markup).toContain("1 of 5 done.");
     expect(count(markup, /Not available yet\./g)).toBe(3);
     expect(markup).toContain("When you publish, visitors see your site instead of the Coming soon page.");
+  });
+
+  it("the Home page (M5-4): a link to its editor, and whether it is on the site; a site without one says so", () => {
+    const markup = render();
+    expect(markup).toMatch(/<a [^>]*data-testid="home-page-link"[^>]*>Home</);
+    expect(markup).toMatch(/<a [^>]*data-testid="home-page-link" href="\/acme-studio\/sites\/bakery\/pages\/0199a000-0000-7000-8000-00000000home"/);
+    expect(markup).toContain("Draft: not on the site yet");
+    const published = render({ overview: overview({ home: { id: "0199a000-0000-7000-8000-00000000home", title: "", status: "published" } }) });
+    expect(published).toMatch(/data-testid="home-page-link"[^>]*>Untitled</);
+    expect(published).toMatch(/data-testid="home-page-status"[^>]*>Published</);
+    const none = render({ overview: overview({ home: null }) });
+    expect(none).toContain("This site has no home page yet.");
+    expect(none).not.toContain('data-testid="home-page-link"');
   });
 
   it("publishing (M4-5): a Coming soon site offers Publish, a live one the way back and a link to it", () => {

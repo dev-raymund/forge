@@ -29,6 +29,6 @@ export function finish(outcome: FormOutcome): FormState {
   if (outcome.invalidate?.length) invalidate(outcome.invalidate, "action");
   for (const path of outcome.revalidate ?? []) revalidatePath(path);
   if (outcome.redirectTo) redirect(outcome.redirectTo);
-  if (outcome.state.status === "success") refresh();
+  if (outcome.state.status === "success" && outcome.refresh !== false) refresh();
   return outcome.state;
 }

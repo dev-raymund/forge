@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { languageLabel } from "../locale";
 import type { SiteOverview } from "../overview.service";
 import { STATUS_EXPLANATIONS } from "../overview";
+import { entryEditorPath } from "@/modules/content/shared";
 import { siteAppearancePath, siteSettingsPath } from "../paths";
 import { SiteStatusControl } from "./site-publishing";
 import { SiteStatusBadge } from "./sites-view";
@@ -80,6 +81,22 @@ export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, 
             </a>
           ) : (
             <p>None</p>
+          )}
+        </Card>
+        <Card title="Home page">
+          {overview.home ? (
+            <>
+              <Link href={entryEditorPath(orgSlug, site.slug, "page", overview.home.id)} className={cn(LINK, "wrap-anywhere")} data-testid="home-page-link">
+                {overview.home.title || "Untitled"}
+              </Link>
+              <p className="text-muted-foreground" data-testid="home-page-status">
+                {overview.home.status === "published" ? "Published" : "Draft: not on the site yet"}
+              </p>
+            </>
+          ) : (
+            <p className="text-muted-foreground" data-testid="home-page-missing">
+              This site has no home page yet.
+            </p>
           )}
         </Card>
         <Card title="Theme" action={edit(siteAppearancePath(orgSlug, site.slug), "Change the theme")}>

@@ -6,7 +6,7 @@ import { activeThemeDefinition } from "@/themes/registry";
 import { launchChecklist, type ChecklistItem } from "./overview";
 import { canManageSiteSettings } from "./policies";
 import { publicSitePath, siteSettingsPath } from "./paths";
-import { findSiteRow, launchCounts, readSettingsRow } from "./repository";
+import { findSiteRow, homePage, launchCounts, readSettingsRow } from "./repository";
 import { readAnalytics, readGeneral, readReading, type ReadingSettings } from "./settings";
 import type { SiteSummary } from "./shared";
 
@@ -25,6 +25,8 @@ export type SiteOverview = {
   analytics: { ga4: boolean; plausible: boolean };
   socialLinks: number;
   checklist: ChecklistItem[];
+  /** The site's Home page (M5-4: its editor is linked from here), or null for a site made before Home pages existed (M5-3). */
+  home: { id: string; title: string; status: string } | null;
 };
 
 /** The one origin of V1 (ADR 0006) and the site's path on it. Never the admin slug. */
@@ -36,6 +38,7 @@ export async function getSiteOverview(ctx: SiteContext): Promise<SiteOverview> {
     const settings = site ? await readSettingsRow(tx, ctx.org.id, site.id) : null;
     if (!site || !settings) throw notFound();
     const counts = await launchCounts(tx, ctx.org.id, site.id);
+    const home = await homePage(tx, ctx.org.id, site.id);
     const general = readGeneral(settings.general);
     const analytics = readAnalytics(settings.analytics);
     const seo = settings.seo;
@@ -49,6 +52,7 @@ export async function getSiteOverview(ctx: SiteContext): Promise<SiteOverview> {
       reading: readReading(settings.reading),
       analytics: { ga4: Boolean(analytics.ga4MeasurementId), plausible: Boolean(analytics.plausibleDomain) },
       socialLinks: Object.keys(general.social).length,
+      home,
       checklist: launchChecklist(
         { ...counts, seoConfigured, hasAddress: Boolean(site.address), status: site.status },
         {

@@ -76,7 +76,8 @@ export async function submitSaveDraft(actor: Actor, orgSlug: string, siteSlug: s
     const expected = versionFrom(version);
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
     const saved = await saveDraft(ctx, id, expected, draft as Parameters<typeof saveDraft>[3]);
-    return { state: { status: "success", values: { version: String(saved.version) } } };
+    // Autosave runs every few seconds: the editor holds the draft, so the page is not rendered again for it.
+    return { state: { status: "success", values: { version: String(saved.version) } }, refresh: false };
   } catch (error) {
     return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
   }

@@ -19,3 +19,6 @@ export {
   createEntrySchema, draftSchema, ENTRY_EXCERPT_MAX, ENTRY_TERMS_MAX, ENTRY_TITLE_MAX, typedSlug, versionSchema,
 } from "./validation";
 export type { CreateEntryInput, DraftInput } from "./validation";
+// M5-4: what the editor recognises, and where it lives.
+export { DRAFT_CHANGED, NEWER_SAVE } from "./messages";
+export { ENTRY_SEARCH_PATH, entryEditorPath } from "./admin-paths";

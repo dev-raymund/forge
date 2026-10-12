@@ -7,6 +7,7 @@ import { pgErrorOf, type TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound, validationError } from "@/platform/errors";
 import { canonicalJson, documentProblem, emptyDocument, parseDocument } from "./document/parse";
 import type { StoredDocument } from "./document/schema";
+import { DRAFT_CHANGED } from "./messages";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "./paths";
 import { canAssignTerms, canCreateEntry, canCreditOthers, canUpdateEntry, type EntryRef } from "./policies";
 import { findEntry, insertDraft, insertEntry, isMember, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, type EntryRow } from "./repository";
@@ -136,8 +137,6 @@ export async function createHomePage(tx: TenantTx, ctx: OrgContext, site: { id: 
   await setHomepageEntry(tx, ctx.org.id, site.id, entry.id);
   return entry.id;
 }
-
-export const DRAFT_CHANGED = "This draft was changed somewhere else (another tab, or someone else). Reload it to see the latest version.";
 
 /**
  * Saves the draft (plan §6.3 autosave; cms-architecture §9.1): only the fields

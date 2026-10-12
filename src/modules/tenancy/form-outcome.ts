@@ -19,6 +19,11 @@ export type FormOutcome = {
   revalidate?: string[];
   /** Public pages that now show something out of date: their cache tags are flushed (D-27). */
   invalidate?: CacheEvent[];
+  /**
+   * False when a success changes nothing the current page shows from the server (an autosave, M5-4):
+   * the page is not re-rendered after it. Default: it is.
+   */
+  refresh?: boolean;
   /** An email was queued: the action starts the email job once the response is sent. */
   emailQueued?: boolean;
 };

@@ -6,6 +6,7 @@ import type { TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound, validationError } from "@/platform/errors";
 import { documentProblem, parseDocument } from "./document/parse";
 import { assertTermsOfSite, contentHashOf, definitionOf, refOf, summaryOf, titleForLog, type EntrySummary } from "./entry.service";
+import { NEWER_SAVE } from "./messages";
 import { HOME_PATH, ParentChainError, parentChain, pathUnder, postPath, reservedPathReason, type PageNode } from "./paths";
 import { canPublishEntry } from "./policies";
 import { ancestorsOf, findDraft, findEntry, insertRevision, nextRevisionNumber, replaceEntryTerms, revisionById, siteFacts, updateEntry } from "./repository";
@@ -36,8 +37,6 @@ import { versionSchema, parseInput } from "./validation";
  * it is published again (posts are listed by it); `first_published_at` never
  * changes once set.
  */
-
-export const NEWER_SAVE = "The draft has changed since this was opened. Reload it, check the latest version, and publish again.";
 
 export type Published = { entry: EntrySummary; revision: number; changed: boolean; moved: MovedEntry[]; events: CacheEvent[] };
 

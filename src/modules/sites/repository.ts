@@ -161,6 +161,19 @@ export async function launchCounts(tx: TenantTx, organizationId: string, siteId:
 }
 
 /**
+ * The page `site_settings.homepage_entry_id` names, unless it is in the trash (M5-4: the overview's Home page card).
+ * Sites made before M5-3 have none.
+ */
+export async function homePage(tx: TenantTx, organizationId: string, siteId: string): Promise<{ id: string; title: string; status: string } | null> {
+  const [row] = await tx
+    .select({ id: entries.id, title: entries.title, status: entries.status })
+    .from(siteSettings)
+    .innerJoin(entries, and(eq(entries.organizationId, siteSettings.organizationId), eq(entries.siteId, siteSettings.siteId), eq(entries.id, siteSettings.homepageEntryId)))
+    .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId), isNull(entries.deletedAt)));
+  return row ?? null;
+}
+
+/**
  * The site's status, with its row locked until the transaction ends (M4-5):
  * two status changes of one site take turns, and the second sees the first.
  */
