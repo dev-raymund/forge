@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
-import { changeAuthor, createEntry, movePage, placePage, publishEntry, setHomepage } from "@/modules/content";
+import { changeAuthor, createEntry, createTerm, deleteTerm, movePage, placePage, publishEntry, setHomepage, updateTerm } from "@/modules/content";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
@@ -222,7 +222,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -257,6 +257,10 @@ describe("every change writes its line, in the same transaction", () => {
     await movePage(siteCtx, below.id, null); // last at the top level again
     await placePage(siteCtx, below.id, beside.id);
     await changeAuthor(siteCtx, entry.id, one.user.id);
+    // M5-8: terms (their own tests are tests/integration/content-terms.test.ts).
+    const { term } = await createTerm(siteCtx, { taxonomy: "tag", name: "Covered" });
+    await updateTerm(siteCtx, term.id, { name: "Covered again" });
+    await deleteTerm(siteCtx, term.id);
     await deleteSite(await resolveSiteContext(a.actor, a.org.slug, site.slug));
     await transferOwnership(ctx, { memberId: one.memberId });
     expect(new Set(await actionsOf(a.org.id))).toEqual(new Set(AUDIT_ACTIONS));
@@ -731,6 +735,10 @@ describe("pages of activity", () => {
   it("the query reads the log through its index: newest-first for one organization, without sorting the table", async () => {
     const a = await newTenant();
     await seed(a.ctx, 5);
+    // The plan depends on the table's statistics, which autovacuum refreshes whenever it likes while the suite writes
+    // audit rows (M5-8's term tests write many). The plan once came out differently in a full run (not reproduced
+    // since; the assertions now print it). Fresh statistics make the question this test asks the same on every run.
+    await asOwner((owner) => owner.query("analyze audit_logs"));
     const plan = await withTenant({ orgId: a.org.id, userId: a.user.id }, async (tx) => {
       // A small table would be scanned whole whatever its indexes are. What is asked here is whether the index CAN serve the order.
       await tx.execute(sql`set local enable_seqscan = off`);
@@ -740,9 +748,9 @@ describe("pages of activity", () => {
       );
       return JSON.stringify(result.rows[0]!["QUERY PLAN"]);
     });
-    expect(plan).toContain("audit_logs_org_created_idx");
+    expect(plan, plan).toContain("audit_logs_org_created_idx");
     // Ordered by the index; at most the ids of one instant are sorted among themselves.
-    expect(plan).not.toMatch(/"Node Type":"Sort"/);
+    expect(plan, plan).not.toMatch(/"Node Type":"Sort"/);
   });
 });
 

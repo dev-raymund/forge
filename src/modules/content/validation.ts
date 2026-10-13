@@ -72,3 +72,32 @@ export function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.ou
   if (!result.success) throw validationError(fieldErrorsFrom(result.error));
   return result.data;
 }
+
+// ── M5-8: categories and tags ────────────────────────────────────────────────
+
+export const TERM_NAME_MAX = 100;
+export const TERM_DESCRIPTION_MAX = 500;
+
+const termName = z.string().trim().min(1, "Enter a name.").max(TERM_NAME_MAX, `Use at most ${TERM_NAME_MAX} characters.`);
+const termDescription = z.string().trim().max(TERM_DESCRIPTION_MAX, `Use at most ${TERM_DESCRIPTION_MAX} characters.`);
+/** A slug someone typed, or nothing (one is made from the name). Typed: used as typed or refused, never suffixed (as entries'). */
+const optionalSlug = z.union([z.literal("").transform(() => null), typedSlug]).nullable();
+
+/** createTerm (plan §5): the taxonomy is checked against the content types first; a parent only for a category. */
+export const createTermSchema = z.strictObject({
+  taxonomy: z.string(),
+  name: termName,
+  slug: optionalSlug.default(null),
+  description: termDescription.default(""),
+  parentId: uuid.nullable().default(null),
+});
+export type CreateTermInput = z.input<typeof createTermSchema>;
+
+/** updateTerm: only what is sent changes. `parentId: null` takes a category to the top level. */
+export const updateTermSchema = z.strictObject({
+  name: termName.optional(),
+  slug: typedSlug.optional(),
+  description: termDescription.optional(),
+  parentId: uuid.nullable().optional(),
+});
+export type UpdateTermInput = z.input<typeof updateTermSchema>;

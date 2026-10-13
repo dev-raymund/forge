@@ -130,6 +130,8 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
   // The sidebar (M5-7): draft fields changed here, and what its immediate actions changed.
   const [fields, setFields] = useState<DraftFields>(restored?.fields ?? {});
   const fieldsRef = useRef(fields);
+  // The site's terms, with those added from the sidebar since the page loaded (M5-8).
+  const [terms, setTerms] = useState(choices.terms);
   const [place, setPlace] = useState<EntryPlace>({
     path: entry.path, parentId: entry.settings.parentId, isHome: entry.isHome, authorId: entry.settings.authorId, authorName: entry.settings.authorName,
   });
@@ -279,6 +281,13 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
     selector: ({ editor: current }) => (current ? currentBlock(current) : null),
     equalityFn: (a: CurrentBlock | null, b: CurrentBlock | null) => JSON.stringify(a) === JSON.stringify(b),
   });
+
+  /** The sidebar's draft fields changed (M5-7): kept for the next autosave, which they join. */
+  function updateFields(next: DraftFields) {
+    fieldsRef.current = next;
+    setFields(next);
+    if (editor) changed(editor);
+  }
 
   function blockAction(index: number | null, action: BlockAction) {
     if (editor && index !== null) runBlockAction(editor, index, action);
@@ -500,12 +509,15 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
             place={place}
             fields={fields}
             editable={editable && !unsupported.length}
-            choices={choices}
-            onFields={(next) => {
-              fieldsRef.current = next;
-              setFields(next);
-              if (editor) changed(editor);
+            choices={{ ...choices, terms }}
+            onTermCreated={(term) => {
+              setTerms((current) => [...current, term].sort((a, b) => a.name.localeCompare(b.name)));
+              setNotice({ tone: "success", text: `${term.taxonomy === "category" ? "Category" : "Tag"} ${term.name} added.` });
+              // Ticked from the draft fields as they are now: anything typed in the sidebar while the term was being made stays.
+              const current = fieldsRef.current;
+              updateFields({ ...current, termIds: [...(current.termIds ?? entry.settings.termIds), term.id] });
             }}
+            onFields={updateFields}
             onPlace={(next, message) => {
               setPlace((current) => ({ ...current, ...next }));
               if (next.path) setLive((current) => ({ ...current, path: next.path! }));

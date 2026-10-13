@@ -27,10 +27,13 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "entry.moved": { type: "page", title: "Team", parentTitle: "About us", from: "/team", to: "/about-us/team" },
   "entry.reordered": { type: "page", title: "Team", position: 2, of: 3 },
   "entry.author_changed": { type: "post", title: "Hello", authorName: "Jane Doe", previousAuthorName: "John Doe" },
+  "term.created": { taxonomy: "category", name: "Bread", slug: "bread" },
+  "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
+  "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3 and the three of M5-7, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7 and the three of M5-8, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -39,6 +42,7 @@ describe("the audit vocabulary", () => {
         "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed", "site.status_changed",
         "entry.created", "entry.published", "site.homepage_changed",
         "entry.moved", "entry.reordered", "entry.author_changed",
+        "term.created", "term.updated", "term.deleted",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
@@ -46,7 +50,7 @@ describe("the audit vocabulary", () => {
 
   it("every event is about an organization, a membership, an invitation, a site or an entry, and has a name for the filter list", () => {
     for (const action of AUDIT_ACTIONS) {
-      expect(["organization", "membership", "invitation", "site", "entry"], action).toContain(AUDIT_EVENTS[action].resourceType);
+      expect(["organization", "membership", "invitation", "site", "entry", "term"], action).toContain(AUDIT_EVENTS[action].resourceType);
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
@@ -125,6 +129,11 @@ describe("what is stored with an event", () => {
       ["entry.moved", { type: "page", title: "X", from: "/x" }],
       ["entry.reordered", { type: "page", title: "X", position: 0, of: 1 }],
       ["entry.author_changed", { type: "post", title: "X" }],
+      ["term.created", { taxonomy: "section", name: "X", slug: "x" }],
+      ["term.created", { taxonomy: "tag", name: "X", slug: "X Y" }],
+      ["term.updated", { taxonomy: "tag", name: "X", slug: "x", fields: [] }],
+      ["term.updated", { taxonomy: "tag", name: "X", slug: "x", fields: ["colour"] }],
+      ["term.deleted", { taxonomy: "tag", name: "X", slug: "x", posts: -1, drafts: 0 }],
     ];
     for (const [action, metadata] of invalid) expect(() => sanitizeMetadata(action, metadata), `${action} ${JSON.stringify(metadata)}`).toThrow(AuditEventError);
   });
@@ -191,6 +200,12 @@ describe("an event as a sentence", () => {
     expect(say("entry.moved", { type: "page", title: "Home", parentTitle: "About us", from: "/", to: "/" })).toBe("Raymund moved the page Home under About us.");
     expect(say("entry.reordered", { type: "page", title: "Team", position: 1, of: 4 })).toBe("Raymund moved the page Team to position 1 of 4.");
     expect(say("entry.author_changed", { type: "post", title: "Hello", authorName: "Jane Doe" })).toBe("Raymund made Jane Doe the author of the post Hello.");
+    expect(say("term.created", { taxonomy: "category", name: "Bread", slug: "bread" })).toBe("Raymund created the category Bread.");
+    expect(say("term.updated", { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" })).toBe(
+      "Raymund renamed the tag Rye to Sourdough, with the slug sourdough instead of rye.",
+    );
+    expect(say("term.updated", { taxonomy: "category", name: "Bread", slug: "bread", fields: ["description", "parent"] })).toBe("Raymund changed the category Bread: description, parent.");
+    expect(say("term.deleted", { taxonomy: "category", name: "Bread", slug: "bread", posts: 1, drafts: 0 })).toBe("Raymund deleted the category Bread, which was on 1 published post and 0 drafts.");
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {

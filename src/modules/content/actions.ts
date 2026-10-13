@@ -4,6 +4,7 @@ import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
 import { submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "./entry-forms";
+import { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 
 /**
  * The entry Server Actions (M5-3): session → ./entry-forms.ts → flush the
@@ -46,4 +47,18 @@ export async function placePageAction(orgSlug: string, siteSlug: string, entryId
 
 export async function changeAuthorAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitChangeAuthor(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+// M5-8: categories and tags.
+
+export async function createTermAction(orgSlug: string, siteSlug: string, taxonomy: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitCreateTerm(await getCurrentActor(), orgSlug, siteSlug, taxonomy, formData, await currentRequestMeta()));
+}
+
+export async function updateTermAction(orgSlug: string, siteSlug: string, termId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitUpdateTerm(await getCurrentActor(), orgSlug, siteSlug, termId, formData, await currentRequestMeta()));
+}
+
+export async function deleteTermAction(orgSlug: string, siteSlug: string, termId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitDeleteTerm(await getCurrentActor(), orgSlug, siteSlug, termId, formData, await currentRequestMeta()));
 }

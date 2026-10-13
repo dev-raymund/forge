@@ -1062,13 +1062,18 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M5-3
 
 **Acceptance criteria:**
-- [ ] `/…/posts/categories` (hierarchical, one level of nesting) and `/…/posts/tags`: create, rename (slug change → archive redirect in M8-5), delete (shows usage count)
-- [ ] Assignment in the editor sidebar writes `entry_drafts.term_ids`; `entry_terms` replaced on publish
-- [ ] Authors can assign existing terms and create tags
+- [x] `/…/posts/categories` (hierarchical, one level of nesting) and `/…/posts/tags`: create, rename (slug change → archive redirect in M8-5), delete (shows usage count) *(`term.service.ts`; the delete dialog names the published posts and drafts it takes the term off; renamed slugs get no redirect yet)*
+- [x] Assignment in the editor sidebar writes `entry_drafts.term_ids`; `entry_terms` replaced on publish *(since M5-7; a deleted term is now taken out of drafts in the delete's transaction)*
+- [x] Authors can assign existing terms and create tags *("Add a tag" in a post's settings: `terms.assign`; categories stay `terms.manage`)*
+
+**Decisions taken here (ADR 0019):**
+- **Deleting a term** locks the drafts that hold it, takes it out of them, removes its post links (CASCADE) and moves its subcategories to the top level, in one transaction with `term.deleted`. Save, publish and delete lock drafts before terms, so a race ends with the reference cleaned or the save refused, never stale. Draft versions are not moved.
+- **`term.changed`** (new in `platform/cache/events.ts`) flushes the routes and each post carrying the term at once (the site past 200 posts), and the post lists stale-while-revalidate.
+- **Slugs:** made from the name with a suffix when taken (retried under concurrency); a typed slug is used or refused, never suffixed.
 
 **Likely files/modules:** `src/modules/content/{term.service,term.repository}.ts`, term pages
 
-**Testing:** a draft term change doesn't alter the live archive until publish; isolation.
+**Testing:** a draft term change doesn't alter the live archive until publish; isolation. ✔ integration: `tests/integration/content-terms.test.ts` (both, and creating, renaming, nesting, deleting with its races and rollback, permissions, freshness by each operation); unit: `platform/cache/cache.test.ts`, `content/term-validation.test.ts`, `audit/events.test.ts`; E2E: `tests/e2e/content-terms.spec.ts`.
 
 ---
 
@@ -1217,6 +1222,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Snapshot history.
 
+*From M5-8 (ADR 0019): revisions keep the term ids they were published with, and a term may have been deleted since. Restoring a revision into the draft must drop the ids that are no longer terms of the site (and say so), or the restored draft cannot be saved or published.*
+
 *From M5-4 (ADR 0003 addendum): the editor's conflict dialog (`modules/content/editor/entry-editor.tsx`) offers "Load the latest version" and "Copy my changes". Add plan §6.3's third choice here: overwrite, after saving the other version as a `save` revision.*
 
 **Depends on:** M5-3
@@ -1316,6 +1323,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 
 **Description:** Search-ready output.
 
+*From M5-8 (ADR 0019): a term's published post count is its `entry_terms` rows (as `termsWithUsage` in `content/term.repository.ts` counts them, for the admin): the sitemap's "non-empty term archives" are those with any, read through a public cached function tagged like the archives (flushed by `term.changed` and publishing).*
+
 *From M5-6 (ADR 0017): public pages carry a title (`{title} · {site name}`; the site's name alone for its home; `· Page n` on later list pages) and the robots meta by status; nothing else. Canonical URLs, descriptions, Open Graph, JSON-LD and the sitemap are here; the lists' cached reads (`loadPostList`, tag `site:{id}:list:post`) are the sitemap's source for posts.*
 
 **Depends on:** M5-6, M6-4
@@ -1339,6 +1348,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Description:** URLs never break.
 
 *From M5-3 (ADR 0016): paths change in three places, each in one transaction that returns the moved entries: `publishEntry` (slug change, its `moved`), `setHomepage` (both Home pages and the pages below them), and `moveSubtree` (shared by both). Insert the auto 301s there, from each `MovedEntry`'s `from` to `to` for live entries. Saving the reading settings with a new blog path does not move posts yet (see M5-6).*
+
+*From M5-8 (ADR 0019): renaming a term's slug moves its archive at once and the old address answers 404. Each `term.updated` record holds `previousSlug`: add the 301 from `/{blogPath}/{category|tag}/{old}` there (in the same transaction as `updateTerm`), and decide what a deleted term's archive redirects to, if anything.*
 
 *From M5-6 (ADR 0017): decided there: a new blog path moves the index and the archives at once; each post stays at the path it was published at until it is published again. Add the redirects for both here (old index and archives → new; a post's old path → its new one when it moves). Public paths are exact (no case or trailing-segment normalization, `…/page/1` is a 404); if redirects should cover other spellings, that is this issue's decision.*
 

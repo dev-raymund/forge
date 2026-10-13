@@ -202,6 +202,8 @@ export async function saveDraft(ctx: SiteContext, entryId: string, expectedVersi
       values.slug = draft.slug;
     }
     if (draft.termIds !== undefined) {
+      // The draft first, then the terms: the order a term's deletion takes too (term.repository.ts), so neither waits on the other forever.
+      await findDraft(tx, ctx.org.id, ctx.site.id, entry.id, { lock: true });
       await assertTermsOfSite(tx, ctx, definition, draft.termIds);
       values.termIds = draft.termIds;
     }
@@ -225,7 +227,8 @@ export async function assertTermsOfSite(tx: TenantTx, ctx: SiteContext, definiti
   const found = await termsOfSite(tx, ctx.org.id, ctx.site.id, termIds);
   const allowed = new Set<string>(definition.supports.taxonomies);
   if (found.length !== new Set(termIds).size || found.some((term) => !allowed.has(term.taxonomy))) {
-    throw validationError({ termIds: ["Choose categories and tags of this site."] });
+    // A term deleted since the editor listed it is no longer there, and is refused like any other: it is not put back (M5-8).
+    throw validationError({ termIds: ["A category or tag chosen here no longer exists, or is not this site’s. Untick it, or reload the page."] });
   }
 }
 

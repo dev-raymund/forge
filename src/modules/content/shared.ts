@@ -24,7 +24,7 @@ export {
 export type { CreateEntryInput, DraftInput } from "./validation";
 // M5-4: what the editor recognises, and where it lives.
 export { DRAFT_CHANGED, NEWER_SAVE } from "./messages";
-export { ENTRY_SEARCH_PATH, entryEditorPath, entryListPath, newEntryPath } from "./admin-paths";
+export { ENTRY_SEARCH_PATH, entryEditorPath, entryListPath, newEntryPath, termListPath } from "./admin-paths";
 // M5-7: the lists' queries, read from their URLs.
 export {
   ENTRY_STATUS_FILTERS, hasListFilters, LIST_SEARCH_MAX, listHref, parsePageQuery, parsePostQuery, POST_SORTS, POSTS_PAGE_SIZE,

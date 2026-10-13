@@ -13,7 +13,13 @@ export type CacheEvent =
   | { type: "site.configChanged"; siteId: string } // settings, theme, menus, redirects
   | { type: "site.statusChanged"; siteId: string } // coming soon ↔ live ↔ suspended, theme switch
   | { type: "domain.changed"; siteId: string; hostnames: readonly string[] }
-  | { type: "media.updated"; mediaId: string };
+  | { type: "media.updated"; mediaId: string }
+  // A category or tag was created, renamed, re-slugged, moved or deleted (M5-8): where archives resolve (routes), the
+  // published posts that show it (their entries: names and links), and the lists.
+  | { type: "term.changed"; siteId: string; entryIds: readonly string[] };
+
+/** Past this many posts carrying a term, a term change flushes the whole site (`site:{id}`) instead of each post. */
+export const TERM_ENTRY_TAGS_MAX = 200;
 
 export type TagSet = { immediate: string[]; stale: string[] };
 
@@ -45,6 +51,15 @@ export function tagsFor(event: CacheEvent): TagSet {
       return { immediate: [...event.hostnames.map(tags.host), tags.site(event.siteId)], stale: [] };
     case "media.updated":
       return { immediate: [], stale: [tags.media(event.mediaId)] };
+    case "term.changed":
+      return {
+        immediate: [
+          tags.routes(event.siteId),
+          ...(event.entryIds.length > TERM_ENTRY_TAGS_MAX ? [tags.site(event.siteId)] : event.entryIds.map((entryId) => tags.entry(event.siteId, entryId))),
+        ],
+        // As a publish does (D-27): lists may be stale for one request.
+        stale: [tags.list(event.siteId, "post")],
+      };
   }
 }
 

@@ -6,7 +6,7 @@ import { forbidden, notFound } from "@/platform/errors";
 import { refOf } from "./entry.service";
 import { POSTS_PAGE_SIZE, type PageListQuery, type PostListQuery } from "./list-query";
 import { HOME_PATH } from "./paths";
-import { canArrangePage, canChangeAuthor, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage, canUpdateEntry, ownPostsOnly } from "./policies";
+import { canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage, canUpdateEntry, ownPostsOnly } from "./policies";
 import { findDraft, findEntry, memberName, revisionById, siteFacts } from "./repository";
 import { entries, entryDrafts, entryRevisions, terms } from "./schema";
 import type { ContentTypeKey } from "./types/definition";
@@ -48,6 +48,8 @@ export type EditorEntry = {
     canArrange: boolean;
     canChangeAuthor: boolean;
     canSetHomepage: boolean;
+    /** Add a category or a tag from the sidebar (M5-8): categories Owner–Editor, tags Owner–Author. */
+    canCreateTerms: { category: boolean; tag: boolean };
   };
 };
 
@@ -89,6 +91,7 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
         canArrange: canArrangePage(ctx, refOf(entry)),
         canChangeAuthor: canChangeAuthor(ctx, refOf(entry)),
         canSetHomepage: entry.type === "page" && canSetHomepage(ctx),
+        canCreateTerms: { category: entry.type === "post" && canCreateTerm(ctx, "category"), tag: entry.type === "post" && canCreateTerm(ctx, "tag") },
       },
     };
   });

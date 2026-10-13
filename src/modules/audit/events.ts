@@ -26,6 +26,9 @@ const themeKey = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 /** An entry's type, and its path on its site (`/` or `/segment/…`: the `entries_path_format` rule). */
 const entryType = z.enum(["page", "post"]);
 const entryPath = z.string().max(2048).regex(/^(\/|(\/[a-z0-9]+(-[a-z0-9]+)*)+)$/);
+/** A category or a tag, and its slug (the `terms_slug_format` rule). */
+const taxonomy = z.enum(["category", "tag"]);
+const termSlug = z.string().max(100).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/);
 
 export const AUDIT_EVENTS = {
   "organization.created": {
@@ -146,6 +149,27 @@ export const AUDIT_EVENTS = {
     label: "Author changed",
     metadata: z.object({ type: entryType, title: line(), authorName: line(), previousAuthorName: line().optional() }),
   },
+  // M5-8: categories and tags.
+  "term.created": {
+    resourceType: "term",
+    label: "Category or tag created",
+    metadata: z.object({ taxonomy, name: line(), slug: termSlug }),
+  },
+  "term.updated": {
+    resourceType: "term",
+    label: "Category or tag changed",
+    // Which details changed, by name; the old name and slug when they changed (a renamed archive, M8-5's redirect).
+    metadata: z.object({
+      taxonomy, name: line(), slug: termSlug, fields: z.array(z.enum(["name", "slug", "description", "parent"])).min(1).max(4),
+      previousName: line().optional(), previousSlug: termSlug.optional(),
+    }),
+  },
+  "term.deleted": {
+    resourceType: "term",
+    label: "Category or tag deleted",
+    // What it was on: published posts, and drafts it was taken out of.
+    metadata: z.object({ taxonomy, name: line(), slug: termSlug, posts: z.int().min(0), drafts: z.int().min(0) }),
+  },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
     resourceType: "site",
@@ -255,6 +279,12 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "entry.reordered": (actor, m) => `${actor} moved the ${m.type} ${m.title} to position ${m.position} of ${m.of}.`,
   "entry.author_changed": (actor, m) =>
     m.previousAuthorName ? `${actor} made ${m.authorName} the author of the ${m.type} ${m.title}, in place of ${m.previousAuthorName}.` : `${actor} made ${m.authorName} the author of the ${m.type} ${m.title}.`,
+  "term.created": (actor, m) => `${actor} created the ${m.taxonomy} ${m.name}.`,
+  "term.updated": (actor, m) =>
+    m.previousName && m.previousName !== m.name
+      ? `${actor} renamed the ${m.taxonomy} ${m.previousName} to ${m.name}${m.previousSlug ? `, with the slug ${m.slug} instead of ${m.previousSlug}` : ""}.`
+      : `${actor} changed the ${m.taxonomy} ${m.name}: ${m.fields.join(", ")}.`,
+  "term.deleted": (actor, m) => `${actor} deleted the ${m.taxonomy} ${m.name}, which was on ${m.posts} published ${m.posts === 1 ? "post" : "posts"} and ${m.drafts} ${m.drafts === 1 ? "draft" : "drafts"}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -281,6 +311,9 @@ const PLAIN: Record<AuditAction, string> = {
   "entry.moved": "moved a page",
   "entry.reordered": "reordered a page",
   "entry.author_changed": "changed an author",
+  "term.created": "created a category or tag",
+  "term.updated": "changed a category or tag",
+  "term.deleted": "deleted a category or tag",
 };
 
 /**

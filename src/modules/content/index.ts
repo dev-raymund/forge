@@ -17,9 +17,15 @@ export { publishEntry } from "./publishing.service";
 export type { Published } from "./publishing.service";
 export { setHomepage } from "./homepage.service";
 export { movePage, placePage } from "./tree.service";
+// Categories and tags (M5-8).
+export { createTerm, deleteTerm, listTermsWithUsage, updateTerm } from "./term.service";
+export type { TermSummary } from "./term.service";
+export type { TermWithUsage } from "./term.repository";
+export { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 export type { MovedEntry } from "./tree";
 export {
-  canArrangePage, canAssignTerms, canChangeAuthor, canCreateEntry, canCreditOthers, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage, canUpdateEntry, ownPostsOnly,
+  canArrangePage, canAssignTerms, canChangeAuthor, canCreateEntry, canCreateTerm, canCreditOthers, canManageTerms, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage,
+  canUpdateEntry, ownPostsOnly,
 } from "./policies";
 export type { EntryRef } from "./policies";
 export {
@@ -34,3 +40,4 @@ export { EntryEditorPage } from "./ui/entry-editor-page";
 export { NewEntryForm } from "./ui/new-entry-form";
 export { PagesView } from "./ui/pages-view";
 export { PostsView } from "./ui/posts-view";
+export { TermsView } from "./ui/terms-view";

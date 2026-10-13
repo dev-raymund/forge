@@ -28,13 +28,15 @@ export const canManageAppearance = (ctx: OrgContext): boolean => canManageSiteSe
  * caller, which asks the content module who may see them (null: not this member).
  */
 export function siteNavItems(
-  paths: { overview: string; appearance: string; settings: string; pages?: string | null; posts?: string | null },
+  paths: { overview: string; appearance: string; settings: string; pages?: string | null; posts?: string | null; categories?: string | null; tags?: string | null },
   ctx: OrgContext,
 ): { href: string; label: string }[] {
   return [
     { href: paths.overview, label: "Overview" },
     ...(paths.pages ? [{ href: paths.pages, label: "Pages" }] : []),
     ...(paths.posts ? [{ href: paths.posts, label: "Posts" }] : []),
+    ...(paths.categories ? [{ href: paths.categories, label: "Categories" }] : []),
+    ...(paths.tags ? [{ href: paths.tags, label: "Tags" }] : []),
     ...(canManageAppearance(ctx) ? [{ href: paths.appearance, label: "Appearance" }] : []),
     ...(canOpenSiteSettings(ctx) ? [{ href: paths.settings, label: "Settings" }] : []),
   ];

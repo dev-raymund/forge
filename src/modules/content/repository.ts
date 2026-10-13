@@ -71,13 +71,19 @@ export async function isMember(tx: TenantTx, organizationId: string, userId: str
   return Boolean(row);
 }
 
-/** The terms of the site among these ids (anything of another site, or that does not exist, is simply not returned). */
+/**
+ * The terms of the site among these ids (anything of another site, or that does not exist, is simply not returned),
+ * share-locked until the transaction ends (M5-8): a term being deleted is waited for, then not found, and a term
+ * found here cannot be deleted before the draft or the publish that names it has committed. The caller has locked
+ * the draft first (the order of term.repository.ts).
+ */
 export async function termsOfSite(tx: TenantTx, organizationId: string, siteId: string, ids: readonly string[]): Promise<{ id: string; taxonomy: string }[]> {
   if (ids.length === 0) return [];
   return tx
     .select({ id: terms.id, taxonomy: terms.taxonomy })
     .from(terms)
-    .where(and(eq(terms.organizationId, organizationId), eq(terms.siteId, siteId), inArray(terms.id, [...ids])));
+    .where(and(eq(terms.organizationId, organizationId), eq(terms.siteId, siteId), inArray(terms.id, [...ids])))
+    .for("share");
 }
 
 /** How deep a chain of pages is followed before it is called a loop. */

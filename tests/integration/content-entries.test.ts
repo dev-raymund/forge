@@ -15,6 +15,8 @@ import { whileFailing } from "../fixtures/db-failure";
 import { createMedia, createUser } from "../fixtures/factories";
 import { actorOf, addMember, newSlug, newTenant, refusalOf } from "../fixtures/tenants";
 
+
+const TERMS_REFUSED = "A category or tag chosen here no longer exists, or is not this site’s. Untick it, or reload the page.";
 /**
  * M5-3 against real Postgres, as forge_app through PgBouncer: the entry
  * services. Creating an entry and the Home page made with each site; saving a
@@ -320,7 +322,7 @@ describe("saveDraft (criterion 2)", () => {
     const strangers = [(await term(sibling.ctx, "tag")).id, (await term(other.ctx, "tag")).id, uuidv7()];
     for (const id of strangers) {
       expect(await refusalOf(() => saveDraft(ctx, post.id, 1, { termIds: [category.id, id] })), id).toMatchObject({
-        kind: "Validation", fieldErrors: { termIds: ["Choose categories and tags of this site."] },
+        kind: "Validation", fieldErrors: { termIds: [TERMS_REFUSED] },
       });
     }
     expect((await refusalOf(() => saveDraft(ctx, post.id, 1, { termIds: [tag.id, tag.id] }))).fieldErrors).toEqual({ termIds: ["A term is listed twice."] });
@@ -503,7 +505,7 @@ describe("publishEntry (criterion 3)", () => {
     const post = (await createEntry(ctx, { type: "post", title: "Post" })).entry;
     const foreignTerm = await term(sibling.ctx, "tag");
     await inTenant(ctx, (tx) => tx.update(t.entryDrafts).set({ termIds: [foreignTerm.id] }).where(eq(t.entryDrafts.entryId, post.id)));
-    expect((await refusalOf(() => publishEntry(ctx, post.id, 1))).fieldErrors).toEqual({ termIds: ["Choose categories and tags of this site."] });
+    expect((await refusalOf(() => publishEntry(ctx, post.id, 1))).fieldErrors).toEqual({ termIds: [TERMS_REFUSED] });
 
     const page = (await createEntry(ctx, { type: "page", title: "Broken" })).entry;
     await inTenant(ctx, (tx) => tx.update(t.entryDrafts).set({ content: { v: 1, doc: { type: "doc", content: [{ type: "script" }] } } }).where(eq(t.entryDrafts.entryId, page.id)));

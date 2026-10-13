@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { SectionNav } from "@/components/admin/section-nav";
-import { canSeePages, entryListPath } from "@/modules/content";
+import { canManageTerms, canSeePages, entryListPath, termListPath } from "@/modules/content";
 import { siteAppearancePath, siteNavItems, sitePath, siteSettingsPath } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
@@ -33,6 +33,9 @@ async function SiteLinks({ params }: Pick<LayoutProps<"/[orgSlug]/sites/[siteSlu
       // Pages for those who may see them (not an Author: M5-7); posts for every member (an Author's own).
       pages: canSeePages(ctx) ? entryListPath(org, site, "page") : null,
       posts: entryListPath(org, site, "post"),
+      // The term screens, for those who manage terms (M5-8); an Author adds tags from a post's settings.
+      categories: canManageTerms(ctx) ? termListPath(org, site, "category") : null,
+      tags: canManageTerms(ctx) ? termListPath(org, site, "tag") : null,
       appearance: siteAppearancePath(org, site),
       settings: siteSettingsPath(org, site),
     },

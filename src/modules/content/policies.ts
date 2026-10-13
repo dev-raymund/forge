@@ -17,6 +17,8 @@ import type { ContentTypeKey } from "./types/definition";
  *   see                pages: entries.page.read, posts: entries.post.read; an Author only their own posts and no pages (M5-7)
  *   arrange pages      entries.page.update                        move under another page, or among siblings (M5-7)
  *   change the author  the type's edit right and its "any" right  Owner–Editor (M5-7)
+ *   manage terms       terms.manage                               Owner–Editor: create, rename, move, delete (M5-8)
+ *   create a tag       terms.manage or terms.assign               Owner–Author (M5-8)
  *
  * Pages have plain keys; posts have own/any pairs, for which `canActOn` with the
  * post's author is the whole policy (ADR 0009 hand-off to M5-3).
@@ -78,3 +80,14 @@ export const canArrangePage = (ctx: OrgContext, entry: EntryRef): boolean => ent
 
 /** Credit an entry to another member: those who may edit it and may edit anyone's entries of its type (Editor+). */
 export const canChangeAuthor = (ctx: OrgContext, entry: EntryRef): boolean => canUpdateEntry(ctx, entry) && canCreditOthers(ctx, entry.type);
+
+// ── M5-8: categories and tags ────────────────────────────────────────────────
+
+/** The category and tag screens: create, rename, move and delete any term (`terms.manage`, Owner–Editor). */
+export const canManageTerms = (ctx: OrgContext): boolean => can(ctx, "terms.manage");
+
+/**
+ * Create a term: a category takes `terms.manage`; a tag also `terms.assign`, so an Author can add a tag while writing
+ * (plan §13, M5-8 criterion 3). Renaming and deleting stay `terms.manage`.
+ */
+export const canCreateTerm = (ctx: OrgContext, taxonomy: "category" | "tag"): boolean => canManageTerms(ctx) || (taxonomy === "tag" && canAssignTerms(ctx));

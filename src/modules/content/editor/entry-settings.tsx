@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { IDLE, type FormState } from "@/platform/forms";
-import { changeAuthorAction, setHomepageAction } from "../actions";
+import { changeAuthorAction, createTermAction, setHomepageAction } from "../actions";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "../paths";
 import type { EditorEntry, TermOption } from "../queries";
 import { MovePageDialog, pagesOutside, type MovablePage } from "../ui/move-page-dialog";
@@ -41,7 +41,7 @@ const TEMPLATES = [
 const messageOf = (state: FormState, fallback: string) => (state.fieldErrors ? Object.values(state.fieldErrors).flat()[0] : undefined) ?? state.message ?? fallback;
 
 export function EntrySettings({
-  orgSlug, siteSlug, entry, title, status, place, fields, onFields, editable, choices, onPlace,
+  orgSlug, siteSlug, entry, title, status, place, fields, onFields, editable, choices, onPlace, onTermCreated,
 }: {
   orgSlug: string;
   siteSlug: string;
@@ -56,6 +56,8 @@ export function EntrySettings({
   editable: boolean;
   choices: SidebarChoices;
   onPlace: (next: Partial<EntryPlace>, message: string) => void;
+  /** A term was created here (M5-8): the editor adds it to its list and ticks it, from its latest draft fields (not a copy taken before the request). */
+  onTermCreated: (term: TermOption) => void;
 }) {
   const { settings } = entry;
   const isPage = entry.type === "page";
@@ -196,6 +198,14 @@ export function EntrySettings({
               ) : (
                 <p className="text-sm text-muted-foreground">This site has no {taxonomy === "category" ? "categories" : "tags"} yet.</p>
               )}
+              {editable && settings.canCreateTerms[taxonomy] ? (
+                <AddTerm
+                  orgSlug={orgSlug}
+                  siteSlug={siteSlug}
+                  taxonomy={taxonomy}
+                  onCreated={onTermCreated}
+                />
+              ) : null}
             </fieldset>
           ))}
           <div className="grid gap-1.5" data-testid="featured-image">
@@ -299,5 +309,70 @@ export function EntrySettings({
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+/**
+ * "Add a tag" (M5-8 criterion 3): a new term of the site, made by `createTermAction` without re-rendering the editor
+ * (`context=editor`), then ticked here: the assignment is the draft's, saved by autosave like any other tick. What is
+ * being written is untouched; a refusal (a name already taken as a slug, no permission) is said under the field.
+ */
+function AddTerm({ orgSlug, siteSlug, taxonomy, onCreated }: { orgSlug: string; siteSlug: string; taxonomy: "category" | "tag"; onCreated: (term: TermOption) => void }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const id = useId();
+  const noun = taxonomy === "category" ? "category" : "tag";
+  function add() {
+    if (!name.trim()) return setError("Enter a name.");
+    const data = new FormData();
+    data.set("name", name);
+    data.set("context", "editor");
+    startTransition(async () => {
+      const state = await createTermAction(orgSlug, siteSlug, taxonomy, IDLE, data);
+      if (state.status === "error") return setError(messageOf(state, `The ${noun} could not be added.`));
+      const values = state.values ?? {};
+      onCreated({ id: values.termId!, taxonomy, name: values.name!, slug: values.slug! });
+      setName("");
+      setError(null);
+    });
+  }
+  return (
+    <div className="mt-1 grid gap-1.5">
+      <Label htmlFor={id} className="sr-only">
+        New {noun}
+      </Label>
+      <div className="flex gap-2">
+        <input
+          id={id}
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            setError(null);
+          }}
+          onKeyDown={(event) => {
+            // Enter adds the term; it never reaches the editor or a form.
+            if (event.key === "Enter") {
+              event.preventDefault();
+              add();
+            }
+          }}
+          placeholder={`New ${noun}`}
+          maxLength={100}
+          autoComplete="off"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={`h-9 ${CONTROL}`}
+        />
+        <Button type="button" variant="outline" className="h-9 shrink-0 px-3" onClick={add} disabled={pending} aria-busy={pending || undefined}>
+          {pending ? "Adding…" : "Add"}
+        </Button>
+      </div>
+      {error ? (
+        <p id={`${id}-error`} className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
