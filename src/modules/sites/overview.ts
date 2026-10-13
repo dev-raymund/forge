@@ -25,13 +25,18 @@ export type ChecklistItem = {
 
 const LATER = "Not available yet.";
 
-export function launchChecklist(facts: ChecklistFacts, paths: { settings: string; publicSite: string | null; publish?: string | null }): ChecklistItem[] {
+export function launchChecklist(
+  facts: ChecklistFacts,
+  paths: { settings: string; publicSite: string | null; publish?: string | null; pages?: string | null },
+): ChecklistItem[] {
   return [
     {
       key: "pages",
       label: "Add your pages",
       done: facts.publishedPages > 0,
-      note: facts.publishedPages > 0 ? `${facts.publishedPages} published ${facts.publishedPages === 1 ? "page" : "pages"}.` : LATER,
+      // M5-7: the pages screen, for those who may see it.
+      ...(paths.pages ? { href: paths.pages } : {}),
+      note: facts.publishedPages > 0 ? `${facts.publishedPages} published ${facts.publishedPages === 1 ? "page" : "pages"}.` : paths.pages ? "Create your pages and publish them." : LATER,
     },
     { key: "menu", label: "Set up your menu", done: facts.menusWithItems > 0, note: facts.menusWithItems > 0 ? "Your menu is set up." : LATER },
     { key: "seo", label: "Set up search engine details", done: facts.seoConfigured, note: facts.seoConfigured ? "Set." : LATER },

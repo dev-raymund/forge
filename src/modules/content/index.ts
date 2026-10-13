@@ -11,17 +11,26 @@ export { ENTRY_PATH_KEY, insertWithUniqueSlug, MAX_SLUG_ATTEMPTS, SLUG_RACE_LOST
 export type { SlugPlace } from "./unique-slug";
 
 // Entries (M5-3).
-export { createEntry, createHomePage, saveDraft } from "./entry.service";
+export { changeAuthor, createEntry, createHomePage, saveDraft } from "./entry.service";
 export type { EntrySummary } from "./entry.service";
 export { publishEntry } from "./publishing.service";
 export type { Published } from "./publishing.service";
 export { setHomepage } from "./homepage.service";
+export { movePage, placePage } from "./tree.service";
 export type { MovedEntry } from "./tree";
-export { canAssignTerms, canCreateEntry, canCreditOthers, canPublishEntry, canSetHomepage, canUpdateEntry } from "./policies";
+export {
+  canArrangePage, canAssignTerms, canChangeAuthor, canCreateEntry, canCreditOthers, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage, canUpdateEntry, ownPostsOnly,
+} from "./policies";
 export type { EntryRef } from "./policies";
-export { DRAFT_FIELD_MAX, submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "./entry-forms";
+export {
+  DRAFT_FIELD_MAX, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitSaveDraft, submitSetHomepage,
+} from "./entry-forms";
 
 // The editor and its link picker (M5-4).
-export { ENTRY_SEARCH_LIMIT, getEntryForEditor, searchEntries } from "./queries";
-export type { EditorEntry, EntryMatch } from "./queries";
+export { ENTRY_SEARCH_LIMIT, getEntryForEditor, listPages, listPosts, listTerms, PAGE_TREE_LIMIT, searchEntries } from "./queries";
+export type { EditorEntry, EntryMatch, PageListItem, PostList, PostListItem, TermOption } from "./queries";
 export { EntryEditorPage } from "./ui/entry-editor-page";
+// The lists and the new forms (M5-7).
+export { NewEntryForm } from "./ui/new-entry-form";
+export { PagesView } from "./ui/pages-view";
+export { PostsView } from "./ui/posts-view";

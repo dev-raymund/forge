@@ -43,7 +43,7 @@ describe("getEntryForEditor", () => {
     expect(await getEntryForEditor(ctx, home, "page")).toMatchObject({ status: "published", publishedDraftVersion: 2, draft: { title: "Welcome", version: 2 } });
   });
 
-  it("what each role may do is the policies' answer: Editors pages and posts, Authors their own posts, Viewers nothing", async () => {
+  it("what each role may do is the policies' answer: Editors pages and posts, Authors their own posts (and see no others, M5-7), Viewers nothing", async () => {
     const a = await newTenant();
     const { site, ctx } = await newSite(a);
     const editor = await addMember(a.org, "editor");
@@ -59,8 +59,9 @@ describe("getEntryForEditor", () => {
     expect(await flags(editor, page.id, "page")).toEqual([true, true]);
     expect(await flags(editor, others.id, "post")).toEqual([true, true]);
     expect(await flags(author, own.id, "post")).toEqual([true, true]);
-    expect(await flags(author, others.id, "post")).toEqual([false, false]);
-    expect(await flags(author, page.id, "page")).toEqual([false, false]);
+    for (const [id, type] of [[others.id, "post"], [page.id, "page"]] as const) {
+      expect((await refusalOf(async () => getEntryForEditor(await as(author, site), id, type))).kind, type).toBe("NotFound");
+    }
     expect(await flags(viewer, page.id, "page")).toEqual([false, false]);
     expect(await flags(viewer, own.id, "post")).toEqual([false, false]);
   });

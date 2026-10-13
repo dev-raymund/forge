@@ -15,6 +15,12 @@ describe("the launch checklist (M4-2)", () => {
     expect(done[0]!.note).toBe("3 published pages.");
   });
 
+  it("M5-7: \"Add your pages\" links to the pages screen for those who may see it", () => {
+    const item = launchChecklist(facts, { ...paths, pages: "/acme/sites/bakery/pages" })[0]!;
+    expect(item).toMatchObject({ key: "pages", href: "/acme/sites/bakery/pages", note: "Create your pages and publish them." });
+    expect(launchChecklist(facts, { ...paths, pages: null })[0]).not.toHaveProperty("href");
+  });
+
   it("links only to screens that exist (the address, in settings); the rest say they are not available yet", () => {
     const items = launchChecklist(facts, paths);
     expect(items.filter((item) => item.href).map((item) => [item.key, item.href])).toEqual([["domain", paths.settings]]);

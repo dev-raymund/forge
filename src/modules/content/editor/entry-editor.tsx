@@ -19,6 +19,7 @@ import type { EditorEntry } from "../queries";
 import { clearBuffer, createAutosave, readBuffer, type AutosaveStatus, type SaveResult } from "./autosave";
 import { dedupeIds } from "./dedupe-ids";
 import { EmbedDialog } from "./embed-dialog";
+import { EntrySettings, type DraftFields, type EntryPlace, type SidebarChoices } from "./entry-settings";
 import { EDITOR_NODE_TYPES, editorExtensions } from "./extensions";
 import { LinkDialog } from "./link-dialog";
 import { currentBlock, PropertiesPanel, type CurrentBlock } from "./panel/properties-panel";
@@ -39,7 +40,8 @@ import { commandsAt, filterCommands, slashMatch, type SlashCommand, type SlashRa
  * new version; a refused or failed save is shown as not saved.
  */
 
-export type DraftPayload = { title: string; doc: JSONContent };
+/** What autosave saves: the title, the document, and the sidebar's draft fields that have been changed (M5-7). */
+export type DraftPayload = { title: string; doc: JSONContent; fields?: DraftFields };
 
 export type EntryEditorProps = {
   orgSlug: string;
@@ -47,6 +49,8 @@ export type EntryEditorProps = {
   entry: EditorEntry;
   /** `/s/{address}`: where the entry's path is on the public site. */
   publicPrefix: string | null;
+  /** What the sidebar offers (M5-7): pages to go under, members to credit, the site's terms. */
+  choices?: SidebarChoices;
 };
 
 const ENTRY_TITLE_MAX = 200;
@@ -80,7 +84,7 @@ export function nodeTypesOf(content: unknown): Set<string> {
 export function draftShape(draft: DraftPayload): string {
   const content = [...(draft.doc.content ?? [])];
   while (content.length > 1 && content.at(-1)!.type === "paragraph" && !content.at(-1)!.content?.length) content.pop();
-  return JSON.stringify([draft.title, content]);
+  return JSON.stringify([draft.title, content, draft.fields ?? {}]);
 }
 
 const docOf = (content: unknown): JSONContent =>
@@ -107,7 +111,7 @@ export function statusText(status: AutosaveStatus): string {
 
 type SlashState = { query: string; range: SlashRange; inColumn: boolean; active: number; top: number; left: number };
 
-export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEditorProps) {
+export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = { pages: [], members: [], terms: [] } }: EntryEditorProps) {
   const unsupported = useMemo(() => [...nodeTypesOf(entry.draft.content)].filter((type) => !EDITOR_NODE_TYPES.has(type)), [entry.draft.content]);
   const canEdit = entry.canEdit && unsupported.length === 0;
   const [storage] = useState(storageOrNull);
@@ -123,6 +127,12 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
   const [copied, setCopied] = useState<string | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [live, setLive] = useState({ status: entry.status, version: entry.publishedDraftVersion, path: entry.path });
+  // The sidebar (M5-7): draft fields changed here, and what its immediate actions changed.
+  const [fields, setFields] = useState<DraftFields>(restored?.fields ?? {});
+  const fieldsRef = useRef(fields);
+  const [place, setPlace] = useState<EntryPlace>({
+    path: entry.path, parentId: entry.settings.parentId, isHome: entry.isHome, authorId: entry.settings.authorId, authorName: entry.settings.authorName,
+  });
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(
     restored ? { tone: "success", text: "Changes that had not been saved were restored. They are being saved now." } : null,
@@ -160,7 +170,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
         if (!parsed.ok) return { ok: false, reason: "invalid", issues: [documentProblem(parsed)] };
         const data = new FormData();
         data.set("version", String(expected));
-        data.set("draft", JSON.stringify({ title: draft.title, content: parsed.document }));
+        data.set("draft", JSON.stringify({ title: draft.title, content: parsed.document, ...draft.fields }));
         return saveResultOf(await saveDraftAction(orgSlug, siteSlug, entry.id, IDLE, data));
       },
     });
@@ -168,7 +178,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
     return () => controller.dispose();
   }, [entry.id, entry.draft.version, storage, orgSlug, siteSlug]);
 
-  const payload = (editor: Editor): DraftPayload => ({ title: titleRef.current, doc: editor.getJSON() });
+  const payload = (editor: Editor): DraftPayload => ({ title: titleRef.current, doc: editor.getJSON(), fields: fieldsRef.current });
   // The draft as last handed to autosave (or as opened). A transaction that leaves it as it is (the trailing paragraph
   // after a final block, a click) is no edit: saving it would make a new version for nothing, and another open tab's
   // next save a conflict. Compared with what was last handed over, not with what was last saved, so undoing an edit
@@ -345,7 +355,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
         >
           {isLive ? (upToDate ? "Published" : "Published, with unpublished changes") : "Draft"}
         </span>
-        {entry.isHome ? <span className="text-sm text-muted-foreground">Home page</span> : null}
+        {place.isHome ? <span className="text-sm text-muted-foreground">Home page</span> : null}
         {canEdit ? (
           <span role="status" aria-live="polite" data-testid="autosave-status" className={cn("text-sm", conflict || status.state === "invalid" ? "text-destructive" : "text-muted-foreground")}>
             {statusText(status)}
@@ -429,8 +439,8 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
         </div>
       ) : null}
 
-      <div className={cn("grid gap-4", panel && "lg:grid-cols-[minmax(0,1fr)_18rem]")}>
-        <div ref={surface} className="relative">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div ref={surface} className="relative lg:row-span-2">
           {editor && editable && !unsupported.length ? (
             <DragHandle editor={editor} onNodeChange={({ pos }) => setHandlePos(pos)}>
               <div className="forge-drag-handle" data-testid="drag-handle">
@@ -479,6 +489,30 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix }: EntryEdi
         {panel ? (
           <div className="max-lg:sticky max-lg:bottom-0 max-lg:z-20 max-lg:max-h-[45vh] max-lg:overflow-y-auto max-lg:bg-background lg:sticky lg:top-14 lg:self-start">{panel}</div>
         ) : null}
+        {/* The entry's own settings (M5-7): beside the text on a wide screen, after it on a phone. */}
+        <div className="lg:col-start-2 lg:self-start">
+          <EntrySettings
+            orgSlug={orgSlug}
+            siteSlug={siteSlug}
+            entry={entry}
+            title={title}
+            status={live.status}
+            place={place}
+            fields={fields}
+            editable={editable && !unsupported.length}
+            choices={choices}
+            onFields={(next) => {
+              fieldsRef.current = next;
+              setFields(next);
+              if (editor) changed(editor);
+            }}
+            onPlace={(next, message) => {
+              setPlace((current) => ({ ...current, ...next }));
+              if (next.path) setLive((current) => ({ ...current, path: next.path! }));
+              setNotice({ tone: "success", text: message });
+            }}
+          />
+        </div>
       </div>
 
       {editor && editable ? <LinkDialog editor={editor} open={linkOpen} onOpenChange={setLinkOpen} orgSlug={orgSlug} siteSlug={siteSlug} /> : null}

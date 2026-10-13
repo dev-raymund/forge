@@ -28,6 +28,11 @@ export type SiteOverviewProps = {
   /** The site's latest events, for those who may read the activity log; null for everyone else. */
   activity: { id: string; sentence: string; occurredAt: string }[] | null;
   activityHref: string;
+  /**
+   * The Home page card's links (M5-7): its editor, for those who may see pages; and, while the site has none, the new
+   * page form that makes one, for those who may create pages and set the homepage. Null: no link.
+   */
+  homeLinks?: { edit: boolean; create: string | null };
 };
 
 function Card({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
@@ -42,7 +47,7 @@ function Card({ title, children, action }: { title: string; children: React.Reac
   );
 }
 
-export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, activity, activityHref }: SiteOverviewProps) {
+export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, activity, activityHref, homeLinks = { edit: true, create: null } }: SiteOverviewProps) {
   const { site, publicUrl, theme, reading, analytics, checklist } = overview;
   const settings = siteSettingsPath(orgSlug, site.slug);
   const edit = (href: string, label: string) => (canManage ? <Link href={href} className={cn(LINK, "text-sm")} aria-label={label}>Change</Link> : null);
@@ -86,17 +91,28 @@ export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, 
         <Card title="Home page">
           {overview.home ? (
             <>
-              <Link href={entryEditorPath(orgSlug, site.slug, "page", overview.home.id)} className={cn(LINK, "wrap-anywhere")} data-testid="home-page-link">
-                {overview.home.title || "Untitled"}
-              </Link>
+              {homeLinks.edit ? (
+                <Link href={entryEditorPath(orgSlug, site.slug, "page", overview.home.id)} className={cn(LINK, "wrap-anywhere")} data-testid="home-page-link">
+                  {overview.home.title || "Untitled"}
+                </Link>
+              ) : (
+                <p className="wrap-anywhere">{overview.home.title || "Untitled"}</p>
+              )}
               <p className="text-muted-foreground" data-testid="home-page-status">
                 {overview.home.status === "published" ? "Published" : "Draft: not on the site yet"}
               </p>
             </>
           ) : (
-            <p className="text-muted-foreground" data-testid="home-page-missing">
-              This site has no home page yet.
-            </p>
+            <>
+              <p className="text-muted-foreground" data-testid="home-page-missing">
+                This site has no home page yet.
+              </p>
+              {homeLinks.create ? (
+                <Link href={homeLinks.create} className={LINK} data-testid="create-home-page">
+                  Create the home page
+                </Link>
+              ) : null}
+            </>
           )}
         </Card>
         <Card title="Theme" action={edit(siteAppearancePath(orgSlug, site.slug), "Change the theme")}>

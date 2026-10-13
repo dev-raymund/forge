@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
-import { createEntry, publishEntry, setHomepage } from "@/modules/content";
+import { changeAuthor, createEntry, movePage, placePage, publishEntry, setHomepage } from "@/modules/content";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
@@ -222,7 +222,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -250,6 +250,13 @@ describe("every change writes its line, in the same transaction", () => {
     const { entry } = await createEntry(siteCtx, { type: "page", title: "Covered" });
     await publishEntry(siteCtx, entry.id, 1);
     await setHomepage(siteCtx, entry.id);
+    // M5-7: the tree and the author (their own tests are tests/integration/content-admin.test.ts).
+    const { entry: below } = await createEntry(siteCtx, { type: "page", title: "Below" });
+    const { entry: beside } = await createEntry(siteCtx, { type: "page", title: "Beside" });
+    await movePage(siteCtx, below.id, entry.id);
+    await movePage(siteCtx, below.id, null); // last at the top level again
+    await placePage(siteCtx, below.id, beside.id);
+    await changeAuthor(siteCtx, entry.id, one.user.id);
     await deleteSite(await resolveSiteContext(a.actor, a.org.slug, site.slug));
     await transferOwnership(ctx, { memberId: one.memberId });
     expect(new Set(await actionsOf(a.org.id))).toEqual(new Set(AUDIT_ACTIONS));

@@ -129,6 +129,23 @@ export const AUDIT_EVENTS = {
     label: "Home page changed",
     metadata: z.object({ name: line(), title: line(), previousTitle: line().optional() }),
   },
+  // M5-7: the page tree and authorship.
+  "entry.moved": {
+    resourceType: "entry",
+    label: "Page moved",
+    // Under which page now (none: the top level), and the address it had and has (the same when only its parent changed, like the Home page's).
+    metadata: z.object({ type: entryType, title: line(), parentTitle: line().optional(), from: entryPath, to: entryPath }),
+  },
+  "entry.reordered": {
+    resourceType: "entry",
+    label: "Page reordered",
+    metadata: z.object({ type: entryType, title: line(), position: z.int().min(1), of: z.int().min(1) }),
+  },
+  "entry.author_changed": {
+    resourceType: "entry",
+    label: "Author changed",
+    metadata: z.object({ type: entryType, title: line(), authorName: line(), previousAuthorName: line().optional() }),
+  },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
     resourceType: "site",
@@ -233,6 +250,11 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "entry.published": (actor, m) => `${actor} published the ${m.type} ${m.title} at ${m.path}.`,
   "site.homepage_changed": (actor, m) =>
     m.previousTitle ? `${actor} made ${m.title} the home page of ${m.name}, in place of ${m.previousTitle}.` : `${actor} made ${m.title} the home page of ${m.name}.`,
+  "entry.moved": (actor, m) =>
+    `${actor} moved the ${m.type} ${m.title} ${m.parentTitle ? `under ${m.parentTitle}` : "to the top level"}${m.from === m.to ? "" : `, from ${m.from} to ${m.to}`}.`,
+  "entry.reordered": (actor, m) => `${actor} moved the ${m.type} ${m.title} to position ${m.position} of ${m.of}.`,
+  "entry.author_changed": (actor, m) =>
+    m.previousAuthorName ? `${actor} made ${m.authorName} the author of the ${m.type} ${m.title}, in place of ${m.previousAuthorName}.` : `${actor} made ${m.authorName} the author of the ${m.type} ${m.title}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -256,6 +278,9 @@ const PLAIN: Record<AuditAction, string> = {
   "entry.created": "created a page or post",
   "entry.published": "published a page or post",
   "site.homepage_changed": "changed a site’s home page",
+  "entry.moved": "moved a page",
+  "entry.reordered": "reordered a page",
+  "entry.author_changed": "changed an author",
 };
 
 /**

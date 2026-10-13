@@ -1030,20 +1030,30 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M5-4
 
 **Acceptance criteria:**
-- [ ] `/…/pages`: tree list (drag to reorder siblings; set parent), search, status filter
-- [ ] `/…/posts`: list with filters (status, category, author), search, sort
-- [ ] `/…/pages/new`, `/…/posts/new` forms (title + parent/template) → action → redirect to the editor
-- [ ] Editor sidebar: slug, parent, template, excerpt, author (Editor+), categories/tags, featured image slot (wired in M6-4); "Set as homepage"
-- [ ] Authors see and edit only their own posts; pages hidden from Authors
+- [x] `/…/pages`: tree list (drag to reorder siblings; set parent), search, status filter *(`placePage` and `movePage` in `tree.service.ts`; Move up/down and Move under… for the keyboard)*
+- [x] `/…/posts`: list with filters (status, category, author), search, sort *(25 a page, by page number)*
+- [x] `/…/pages/new`, `/…/posts/new` forms (title + parent/template) → action → redirect to the editor *(and the author for Owner–Editor; "Make it the home page" for Owner and Admin)*
+- [x] Editor sidebar: slug, parent, template, excerpt, author (Editor+), categories/tags, featured image slot (wired in M6-4); "Set as homepage" *(categories and tags: the site's existing terms; creating them is M5-8's)*
+- [x] Authors see and edit only their own posts; pages hidden from Authors *(`ownPostsOnly`: lists, editor, link picker; the permission catalog is unchanged)*
+
+**Decisions taken here (ADR 0018):**
+- **What an Author sees** is decided from permissions (`ownPostsOnly`), not from a role: their own posts, no pages, the link picker limited to public entries and their own.
+- **Moving a page is immediate**, with the pages below, in one transaction, serialized per site with homepage changes; `entry.moved` and `entry.reordered` are recorded. Redirects stay M8-5's.
+- **Changing the author** is Owner–Editor, members only, immediate (`entry.author_changed`).
+- **The sidebar's draft fields** are saved by autosave, only once changed, and a slug only once valid; its immediate actions do not re-render the editor's page.
+- **Sites without a Home page** get a "Create the home page" path for Owners and Admins; no backfill ran. A pre-launch backfill is M12-2's (below).
+- **Overlap with M5-8:** assigning existing terms in the sidebar is built here; creating and managing terms remain M5-8's.
 
 **Likely files/modules:** page/post routes, `src/modules/content/queries.ts`, `ui/*`
 
-**Testing:** E2E Author permissions; list filters.
+**Testing:** E2E Author permissions; list filters. ✔ integration: `tests/integration/content-admin.test.ts` (lists, scoping, an Author's view, forms, moves with their refusals and concurrency, ordering, authors, role matrix); unit: `content/list-query.test.ts`, `sites/overview.test.ts`, `audit/events.test.ts`; E2E: `tests/e2e/content-admin.spec.ts`.
 
 ### M5-8 · Categories and tags
 **Labels:** `area:content` `type:feature`
 
 **Description:** Taxonomy management and assignment.
+
+*From M5-7 (ADR 0018): the editor's sidebar already lists the site's existing categories and tags as checkboxes and saves them with the draft (`entry-settings.tsx`), and the posts list filters by a draft's category. What is left of assignment: creating a tag (or a category) from the sidebar, for Authors too (criterion 3). Add the term screens to the site's nav next to Posts (`siteNavItems`).*
 
 *From M5-6 (ADR 0017): the public site reads terms in three cached places: `resolveRoute` (an archive's term, tag `site:{id}:routes`), `loadPostList` (an archive's posts, `site:{id}:list:post`), and `loadEntry` (a post's term names and slugs, `site:{id}:entry:{eid}`). Creating, renaming, re-slugging or deleting a term must return a cache event that flushes the routes and `list:post` at once, and either the entries of the posts that carry it or, more simply, the site umbrella; add that event to `platform/cache/events.ts`.*
 
@@ -1139,6 +1149,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 - *Inserting one: a slash-menu entry that `asks` for a media item (like the embed's `asks: "address"`) and opens the picker, so an image is never inserted without a `mediaId`. Its alt, caption, size and link come from the properties panel, which already generates fields from the schema.*
 - *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists.*
 - *No upload path was added in M5-5. Images reach a document only through the picker and the existing upload protocol (M6-1).*
+- *From M5-7 (ADR 0018): the post sidebar has a featured-image slot (`data-testid="featured-image"` in `modules/content/editor/entry-settings.tsx`) that says it arrives with the media library. Wire the picker there, sending `featuredMediaId` with the draft fields (saveDraft already checks it against the site).*
 - *From M5-6 (ADR 0017): the public renderer skips `image` and reports it (`NOT_RENDERED_YET` in `modules/rendering/document.tsx`). Add the image's renderer to `BLOCK_RENDERERS` (its media resolved through the render context, never a stored URL), remove it from `NOT_RENDERED_YET`, tag `loadEntry` with each media item's `media:{mid}` it draws (plan §20, capped), and add `figure`/`img` cases to the XSS corpus. `RENDERED_ELEMENTS` already lists `figure` and `figcaption`.*
 
 **Depends on:** M6-3, M5-5
@@ -1161,6 +1172,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M5-7 (ADR 0018): the lists' status filter is `ENTRY_STATUS_FILTERS` (`content/list-query.ts`); add the trash there and to `listPages`/`listPosts` (they leave trashed entries out today). Moving a page whose parent is later trashed: `movePage` already refuses a parent in the trash.*
 
 *From M5-6 (ADR 0017): the public reads show only `status = 'published'` and `deleted_at is null`, so an unpublished or trashed entry disappears from its path, the lists and every link to it as soon as `entry.unpublished` / `entry.trashed` (already in `platform/cache/events.ts`) are returned and invalidated. Tests for that belong with the services.*
 
@@ -1504,6 +1517,12 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:ops` `type:test`
 
 **Description:** Prove the V1 Definition of Done (plan §23) and go live.
+
+*From M5-7 (ADR 0018): **pre-launch dependency, the Home page backfill.** Sites created before M5-3 have no Home page (no entry at `/`, `site_settings.homepage_entry_id` null); their public `/` shows the name and tagline, and their owners are offered "Create the home page". Before public launch, decide and, if wanted, run a one-off backfill as a separate maintenance command (never in a request):*
+- *Scope: sites not deleted with no live entry at `/` in their default locale **and** a null `homepage_entry_id`; one explicit target (`--org` / `--site` / `--all`).*
+- *Each site gets what `createHomePage` makes (a draft page titled "Home", slug `home`, at `/`, and `homepage_entry_id`), in its own transaction, under the site's settings lock, as the site's Owner (audited). A site that has a Home page, or gets one meanwhile, is skipped: running it twice changes nothing.*
+- *A dry run first, with counts (sites found, made, skipped, failed), and the same counts after.*
+- *Verification: afterwards no site has zero or two entries at `/`; every `homepage_entry_id` names the entry at `/`; public pages are unchanged (the new Home pages are drafts, so `/` still shows the name and tagline until published).*
 
 **Depends on:** M12-1
 

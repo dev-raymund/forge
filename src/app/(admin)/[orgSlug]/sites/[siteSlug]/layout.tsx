@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { SectionNav } from "@/components/admin/section-nav";
+import { canSeePages, entryListPath } from "@/modules/content";
 import { siteAppearancePath, siteNavItems, sitePath, siteSettingsPath } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
@@ -26,6 +27,16 @@ async function SiteLinks({ params }: Pick<LayoutProps<"/[orgSlug]/sites/[siteSlu
   if (access.status !== "ok") return null;
   const { ctx } = access;
   const [org, site] = [ctx.org.slug, ctx.site.slug];
-  const items = siteNavItems({ overview: sitePath(org, site), appearance: siteAppearancePath(org, site), settings: siteSettingsPath(org, site) }, ctx);
+  const items = siteNavItems(
+    {
+      overview: sitePath(org, site),
+      // Pages for those who may see them (not an Author: M5-7); posts for every member (an Author's own).
+      pages: canSeePages(ctx) ? entryListPath(org, site, "page") : null,
+      posts: entryListPath(org, site, "post"),
+      appearance: siteAppearancePath(org, site),
+      settings: siteSettingsPath(org, site),
+    },
+    ctx,
+  );
   return <SectionNav label={`Site: ${ctx.site.name}`} items={items} />;
 }

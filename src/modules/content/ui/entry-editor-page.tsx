@@ -2,10 +2,10 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { getSite, publicSitePath } from "@/modules/sites";
-import type { SiteContext } from "@/modules/tenancy";
+import { listMembers, type SiteContext } from "@/modules/tenancy";
 import { isAppError } from "@/platform/errors";
 import { EntryEditorLazy } from "../editor/lazy";
-import { getEntryForEditor } from "../queries";
+import { getEntryForEditor, listPages, listTerms } from "../queries";
 import type { ContentTypeKey } from "../types/definition";
 
 /**
@@ -26,10 +26,28 @@ export async function EntryEditorPage({ ctx, entryId, type }: { ctx: SiteContext
     if (isAppError(error) && error.kind === "NotFound") notFound();
     throw error;
   }
-  const site = await getSite(ctx);
+  // What the sidebar offers (M5-7): the pages a page may go under, the members an entry may be credited to, the
+  // site's categories and tags. Only what the member may use is loaded; the actions check every choice again.
+  const { settings } = entry;
+  const [site, pages, members, terms] = await Promise.all([
+    getSite(ctx),
+    type === "page" ? listPages(ctx).then(({ items }) => items) : [],
+    settings.canChangeAuthor ? listMembers(ctx) : [],
+    type === "post" ? listTerms(ctx) : [],
+  ]);
   return (
     <main className="flex-1">
-      <EntryEditorLazy orgSlug={ctx.org.slug} siteSlug={ctx.site.slug} entry={entry} publicPrefix={site.address ? publicSitePath(site.address) : null} />
+      <EntryEditorLazy
+        orgSlug={ctx.org.slug}
+        siteSlug={ctx.site.slug}
+        entry={entry}
+        publicPrefix={site.address ? publicSitePath(site.address) : null}
+        choices={{
+          pages: pages.map((page) => ({ id: page.id, title: page.title, path: page.path, status: page.status, parentId: page.parentId })),
+          members: members.map((member) => ({ userId: member.userId, name: member.name })),
+          terms,
+        }}
+      />
     </main>
   );
 }

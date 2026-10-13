@@ -222,3 +222,34 @@ export async function setHomepageEntry(tx: TenantTx, organizationId: string, sit
     .set({ homepageEntryId: entryId })
     .where(and(eq(t.siteSettings.organizationId, organizationId), eq(t.siteSettings.siteId, siteId)));
 }
+
+// ── M5-7: the page tree's order, and authors ─────────────────────────────────
+
+/** The name of a member of the organization, or null when the user is not one (V1 memberships are organization-wide). */
+export async function memberName(tx: TenantTx, organizationId: string, userId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ name: t.users.name })
+    .from(t.organizationMembers)
+    .innerJoin(t.users, eq(t.users.id, t.organizationMembers.userId))
+    .where(and(eq(t.organizationMembers.organizationId, organizationId), eq(t.organizationMembers.userId, userId)));
+  return row ? row.name : null;
+}
+
+/** The pages under one parent (null: the top level), not in the trash, in their order. */
+export async function siblingsOf(tx: TenantTx, organizationId: string, siteId: string, parentId: string | null): Promise<{ id: string; sortOrder: number }[]> {
+  return tx
+    .select({ id: entries.id, sortOrder: entries.sortOrder })
+    .from(entries)
+    .where(
+      and(ofSite(organizationId, siteId), eq(entries.type, "page"), isNull(entries.deletedAt), parentId ? eq(entries.parentId, parentId) : isNull(entries.parentId)),
+    )
+    .orderBy(entries.sortOrder, entries.title, entries.id);
+}
+
+/** Puts pages in this order under their parent: 0, 1, 2, … Only the rows whose place changes are written. */
+export async function setSortOrders(tx: TenantTx, organizationId: string, siteId: string, ordered: readonly { id: string; sortOrder: number }[]): Promise<void> {
+  for (const [index, page] of ordered.entries()) {
+    if (page.sortOrder === index) continue;
+    await tx.update(entries).set({ sortOrder: index }).where(and(ofSite(organizationId, siteId), eq(entries.id, page.id)));
+  }
+}

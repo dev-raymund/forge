@@ -24,10 +24,13 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "entry.created": { type: "page", title: "About us", path: "/about-us" },
   "entry.published": { type: "post", title: "Hello", path: "/blog/hello", revision: 1 },
   "site.homepage_changed": { name: "Acme Bakery", title: "Welcome", previousTitle: "Home" },
+  "entry.moved": { type: "page", title: "Team", parentTitle: "About us", from: "/team", to: "/about-us/team" },
+  "entry.reordered": { type: "page", title: "Team", position: 2, of: 3 },
+  "entry.author_changed": { type: "post", title: "Hello", authorName: "Jane Doe", previousAuthorName: "John Doe" },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5 and the three of M5-3, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3 and the three of M5-7, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -35,6 +38,7 @@ describe("the audit vocabulary", () => {
         "member.role_changed", "member.removed", "member.left",
         "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed", "site.status_changed",
         "entry.created", "entry.published", "site.homepage_changed",
+        "entry.moved", "entry.reordered", "entry.author_changed",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
@@ -117,6 +121,10 @@ describe("what is stored with an event", () => {
       ["entry.published", { type: "post", title: "X", path: "/blog/x", revision: 0 }],
       ["entry.published", { type: "post", title: "X", path: "/blog/x" }],
       ["site.homepage_changed", { name: "Acme" }],
+      ["entry.moved", { type: "page", title: "X", from: "/x", to: "../x" }],
+      ["entry.moved", { type: "page", title: "X", from: "/x" }],
+      ["entry.reordered", { type: "page", title: "X", position: 0, of: 1 }],
+      ["entry.author_changed", { type: "post", title: "X" }],
     ];
     for (const [action, metadata] of invalid) expect(() => sanitizeMetadata(action, metadata), `${action} ${JSON.stringify(metadata)}`).toThrow(AuditEventError);
   });
@@ -176,6 +184,13 @@ describe("an event as a sentence", () => {
       "Raymund made Welcome the home page of Acme Bakery, in place of Home.",
     );
     expect(say("site.homepage_changed", { name: "Acme Bakery", title: "Welcome" })).toBe("Raymund made Welcome the home page of Acme Bakery.");
+    expect(say("entry.moved", { type: "page", title: "Team", parentTitle: "About us", from: "/team", to: "/about-us/team" })).toBe(
+      "Raymund moved the page Team under About us, from /team to /about-us/team.",
+    );
+    expect(say("entry.moved", { type: "page", title: "Team", from: "/about-us/team", to: "/team" })).toBe("Raymund moved the page Team to the top level, from /about-us/team to /team.");
+    expect(say("entry.moved", { type: "page", title: "Home", parentTitle: "About us", from: "/", to: "/" })).toBe("Raymund moved the page Home under About us.");
+    expect(say("entry.reordered", { type: "page", title: "Team", position: 1, of: 4 })).toBe("Raymund moved the page Team to position 1 of 4.");
+    expect(say("entry.author_changed", { type: "post", title: "Hello", authorName: "Jane Doe" })).toBe("Raymund made Jane Doe the author of the post Hello.");
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {

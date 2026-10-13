@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { record } from "@/modules/audit";
 import { inTenant, type OrgContext, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
@@ -9,9 +10,11 @@ import { canonicalJson, documentProblem, emptyDocument, parseDocument } from "./
 import type { StoredDocument } from "./document/schema";
 import { DRAFT_CHANGED } from "./messages";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "./paths";
-import { canAssignTerms, canCreateEntry, canCreditOthers, canUpdateEntry, type EntryRef } from "./policies";
+import { canAssignTerms, canChangeAuthor, canCreateEntry, canCreditOthers, canUpdateEntry, type EntryRef } from "./policies";
 import { assertNewReferences } from "./references";
-import { findDraft, findEntry, insertDraft, insertEntry, isMember, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, type EntryRow } from "./repository";
+import {
+  findDraft, findEntry, insertDraft, insertEntry, isMember, memberName, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, updateEntry, type EntryRow,
+} from "./repository";
 import { slugFromTitle } from "./slugs";
 import type { ContentTypeDefinition, ContentTypeKey } from "./types/definition";
 import { contentType } from "./types/registry";
@@ -224,4 +227,36 @@ export async function assertTermsOfSite(tx: TenantTx, ctx: SiteContext, definiti
   if (found.length !== new Set(termIds).size || found.some((term) => !allowed.has(term.taxonomy))) {
     throw validationError({ termIds: ["Choose categories and tags of this site."] });
   }
+}
+
+/**
+ * Credits the entry to another member (M5-7; ADR 0016 hand-off): those who may edit it and may edit anyone's entries
+ * of its type (Owner–Editor), and only to a member of the organization, as `createEntry` checks. The author is the
+ * entry's, not the draft's: it changes at once, with an `entry.author_changed` record. Nothing public shows it, so
+ * nothing is flushed.
+ */
+export async function changeAuthor(ctx: SiteContext, entryId: string, authorId: string): Promise<{ entry: EntrySummary; changed: boolean; events: CacheEvent[] }> {
+  if (!z.uuid().safeParse(authorId).success) throw validationError({ authorId: ["Choose a member of this organization."] });
+  return inTenant(ctx, async (tx) => {
+    const entry = await findEntry(tx, ctx.org.id, ctx.site.id, entryId, { lock: true });
+    if (!entry) throw notFound();
+    if (!canChangeAuthor(ctx, refOf(entry))) throw forbidden();
+    if (entry.authorId === authorId) return { entry: summaryOf(entry), changed: false, events: [] };
+    const authorName = await memberName(tx, ctx.org.id, authorId);
+    if (authorName === null) throw validationError({ authorId: ["Choose a member of this organization."] });
+    const previousAuthorName = entry.authorId ? await memberName(tx, ctx.org.id, entry.authorId) : null;
+    await updateEntry(tx, ctx.org.id, ctx.site.id, entry.id, { authorId, updatedBy: ctx.actor.userId });
+    await record(
+      tx,
+      {
+        action: "entry.author_changed", resourceType: "entry", resourceId: entry.id, siteId: ctx.site.id,
+        metadata: {
+          type: entry.type, title: titleForLog(entry.title), authorName: titleForLog(authorName),
+          ...(previousAuthorName ? { previousAuthorName: titleForLog(previousAuthorName) } : {}),
+        },
+      },
+      ctx,
+    );
+    return { entry: { ...summaryOf(entry), authorId }, changed: true, events: [] };
+  });
 }

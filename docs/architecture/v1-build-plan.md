@@ -740,6 +740,7 @@ The table uses shorthand. The exact keys (29, one per row), the same matrix chec
 - **Invariants:** at least one Owner; only an Owner can grant Owner; only Owner/Admin see settings.
 - Resources outside the tenant → **404**; inside without permission → **403**.
 - Tested as a generated matrix (catalog × roles).
+- *As built (M5-7, ADR 0018): in the admin, a member whose only writing right is over their own posts (the Author) sees their own posts and no pages (lists, editor, link picker), as §21's acceptance says; decided from permissions (`ownPostsOnly`), the catalog unchanged.*
 
 ---
 

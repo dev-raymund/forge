@@ -32,7 +32,8 @@ export type SiteOverview = {
 /** The one origin of V1 (ADR 0006) and the site's path on it. Never the admin slug. */
 export const publicSiteUrl = (address: string): string => `${env("core").APP_ORIGIN.replace(/\/$/, "")}${publicSitePath(address)}`;
 
-export async function getSiteOverview(ctx: SiteContext): Promise<SiteOverview> {
+/** `links.pages`: the pages screen, for a member who may see it (the content module decides; the page passes it, M5-7). */
+export async function getSiteOverview(ctx: SiteContext, links: { pages?: string | null } = {}): Promise<SiteOverview> {
   return inTenant(ctx, async (tx) => {
     const site = await findSiteRow(tx, ctx.org.id, ctx.site.id);
     const settings = site ? await readSettingsRow(tx, ctx.org.id, site.id) : null;
@@ -60,6 +61,7 @@ export async function getSiteOverview(ctx: SiteContext): Promise<SiteOverview> {
           publicSite: site.address ? publicSitePath(site.address) : null,
           // The overview's own Publish button (M4-5), for those who have it.
           publish: canManageSiteSettings(ctx) ? "#publish" : null,
+          pages: links.pages ?? null,
         },
       ),
     };

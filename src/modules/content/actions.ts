@@ -3,7 +3,7 @@
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
-import { submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "./entry-forms";
+import { submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "./entry-forms";
 
 /**
  * The entry Server Actions (M5-3): session → ./entry-forms.ts → flush the
@@ -32,4 +32,18 @@ export async function publishEntryAction(orgSlug: string, siteSlug: string, entr
 
 export async function setHomepageAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitSetHomepage(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+// M5-7: the page tree and the author.
+
+export async function movePageAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitMovePage(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function placePageAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitPlacePage(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function changeAuthorAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitChangeAuthor(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
 }

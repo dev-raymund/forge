@@ -98,6 +98,9 @@ test("a link to another page of the site, picked by title; an unsafe address is 
   await editor(page).click();
   await page.keyboard.type("Read about us");
   await page.keyboard.press("Shift+Home");
+  // ProseMirror takes a selection made by the keyboard from the browser's selectionchange, which a click sent at once
+  // can overtake (as in the M5-5 tests): wait until the selection is there before asking for a link.
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toBe("Read about us");
   await page.getByRole("button", { name: "Link" }).click();
   const dialog = page.getByRole("dialog", { name: "Link" });
 

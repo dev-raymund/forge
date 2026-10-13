@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { OrganizationSuspended } from "@/components/admin/page-notice";
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { activityHref, describeEvent } from "@/modules/audit";
+import { canCreateEntry, canSeePages, canSetHomepage, entryListPath, newEntryPath } from "@/modules/content";
 import { canManageSiteSettings, getSiteOverview, sitePath, SiteOverviewView } from "@/modules/sites";
 import { canReadActivity, listActivity, orgActivityPath, requireSitePage } from "@/modules/tenancy";
 
@@ -29,7 +30,11 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
 
   const { ctx } = access;
   const readsActivity = canReadActivity(ctx);
-  const [overview, page] = await Promise.all([getSiteOverview(ctx), readsActivity ? listActivity(ctx, { site: ctx.site.id }) : null]);
+  const pages = canSeePages(ctx);
+  const [overview, page] = await Promise.all([
+    getSiteOverview(ctx, { pages: pages ? entryListPath(ctx.org.slug, ctx.site.slug, "page") : null }),
+    readsActivity ? listActivity(ctx, { site: ctx.site.id }) : null,
+  ]);
   const activity = page
     ? page.items.slice(0, 5).map((item) => ({ id: item.id, sentence: describeEvent(item), occurredAt: item.occurredAt.toISOString() }))
     : null;
@@ -42,6 +47,10 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
       emailVerified={ctx.actor.emailVerified}
       activity={activity}
       activityHref={activityHref(orgActivityPath(ctx.org.slug), { site: ctx.site.id })}
+      homeLinks={{
+        edit: pages,
+        create: canCreateEntry(ctx, "page") && canSetHomepage(ctx) ? `${newEntryPath(ctx.org.slug, ctx.site.slug, "page")}?home=1` : null,
+      }}
     />
   );
 }
