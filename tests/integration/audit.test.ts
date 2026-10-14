@@ -272,10 +272,11 @@ describe("every change writes its line, in the same transaction", () => {
     const storageRoot = mkdtempSync(path.join(os.tmpdir(), "forge-audit-"));
     setStorageDriverForTests(new LocalStorageDriver({ root: storageRoot, appOrigin: () => "http://localhost:3000", publicBaseUrl: () => "" }));
     try {
-      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-      const { uploads } = await requestUploads(siteCtx, [{ name: "covered.png", size: png.byteLength, type: "image/png" }]);
+      // A document: nothing to decode (an image's own tests are media-processing.test.ts).
+      const pdf = new TextEncoder().encode("%PDF-1.7\n%covered\n");
+      const { uploads } = await requestUploads(siteCtx, [{ name: "covered.pdf", size: pdf.byteLength, type: "application/pdf" }]);
       const [row] = await withTenant({ orgId: a.org.id }, (tx) => tx.select({ key: t.mediaAssets.storageKey }).from(t.mediaAssets).where(eq(t.mediaAssets.id, uploads[0]!.mediaId)));
-      await platformStorage().put(row!.key, png, { contentType: "image/png" });
+      await platformStorage().put(row!.key, pdf, { contentType: "application/pdf" });
       expect((await completeUpload(siteCtx, uploads[0]!.mediaId)).status).toBe("ready");
     } finally {
       setStorageDriverForTests(null);

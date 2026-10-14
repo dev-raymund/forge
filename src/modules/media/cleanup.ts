@@ -5,7 +5,7 @@ import { defineJob } from "@/platform/jobs";
 import { logger, type Logger } from "@/platform/observability";
 import { storageFor } from "@/platform/storage";
 import { UNFINISHED_UPLOAD_HOURS } from "./policy";
-import { deleteFailedUploads, expirePendingUploads, failedUploads, organizationsWithUnfinishedUploads, type FailedUpload } from "./repository";
+import { deleteFailedUploads, expirePendingUploads, failedUploads, objectKeysOf, organizationsWithUnfinishedUploads, type FailedUpload } from "./repository";
 
 /**
  * `uploads.cleanup` (daily; plan §8, §16): uploads requested more than 24 hours ago that were never completed, and
@@ -16,12 +16,12 @@ import { deleteFailedUploads, expirePendingUploads, failedUploads, organizations
  * tenant context:
  *   1. its `pending` uploads past the cutoff become `failed`, in one statement. From then on no `completeUpload` can
  *      make them `ready` (it only settles `pending` rows), so an object is never deleted from under a ready row;
- *   2. the objects of its `failed` uploads past the cutoff are deleted, each through the storage scoped to the row's
- *      own organization and site;
+ *   2. the objects of its `failed` uploads past the cutoff are deleted (the original and each variant on the row,
+ *      M6-2), each through the storage scoped to the row's own organization and site;
  *   3. the rows whose objects are gone are deleted. A row whose object could not be deleted is kept for the next run.
  *
  * Idempotent: deleting a missing object is not an error, and a second run finds nothing. A `ready` upload is never
- * touched. Bounded: it stops starting organizations when its time is up, and the next run carries on.
+ * touched, nor one a completion is processing now (it holds it, M6-2): the next run sees it settled. Bounded: it stops starting organizations when its time is up, and the next run carries on.
  */
 
 const ORGANIZATIONS_PER_RUN = 500;
@@ -37,7 +37,9 @@ async function deleteObjects(uploads: FailedUpload[], log: Logger): Promise<stri
     await Promise.all(
       uploads.slice(i, i + PARALLEL_DELETES).map(async (upload) => {
         try {
-          await storageFor({ organizationId: upload.organizationId, siteId: upload.siteId }).delete(upload.storageKey);
+          const storage = storageFor({ organizationId: upload.organizationId, siteId: upload.siteId });
+          // The original and every variant the row names (a completion records each before writing it, M6-2).
+          for (const key of objectKeysOf(upload)) await storage.delete(key);
           deleted.push(upload.id);
         } catch (error) {
           log.warn("uploads.cleanup could not delete an object; its row is kept for the next run", { mediaId: upload.id, err: error });

@@ -57,6 +57,20 @@
       "when": 1791933765140,
       "tag": "0007_uploads_cleanup_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792019088209,
+      "tag": "0008_media_variants_processing",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792019100206,
+      "tag": "0009_public_media_lookup",
+      "breakpoints": true
     }
   ]
 }

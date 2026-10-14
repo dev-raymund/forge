@@ -33,6 +33,8 @@ export { VerifyEmailBanner } from "./ui/verify-email-banner";
 export { listSessions } from "./sessions.service";
 export type { SessionSummary } from "./sessions.service";
 export { signInMethods } from "./account.service";
+// The account's picture (M6-2): set from an avatar the media module processed, never from a URL the browser sends.
+export { accountImageOf, isCurrentAvatar, ownAvatarUrl, switchAccountImage } from "./account-image";
 export type { SignInMethods } from "./account.service";
 export { AccountSection, EmailStatus, SignInMethodList } from "./ui/account-section";
 export { ChangePasswordForm, ProfileForm, SessionList, SetPasswordPrompt } from "./ui/account-forms";

@@ -153,3 +153,11 @@ The GA4 and Plausible settings are emitted as §5 allows, on live sites only, th
 ## Addendum (M4-5, 2026-10-10): §5's snippets are not emitted for now
 
 Following the M4-5 instructions, no site page carries the GA4 or Plausible code, live or not, until consent behaviour is decided and built (ADR 0015 §6). No third-party or tenant script reaches a site page at all. M12-1's `script-src` needs the two origins only once that is turned on.
+
+## Addendum (M6-2, 2026-10-15): `/media` is its own surface
+
+- **Routing:** `decideRoute` sends `/media/…` to a `media` surface. The proxy strips cookies and `Authorization` from those requests, as it does for sites, and never renews a session on them, so a public, cacheable object never carries `Set-Cookie`.
+- **Headers:** the proxy sets `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`. The route sets them too, with `Cache-Control: public, max-age=31536000, immutable`, and `CDN-Cache-Control` for CDNs that cache only on their own header.
+- **Not verified:** whether Vercel's CDN caches these responses (no deployment yet).
+
+See ADR 0021 §5.

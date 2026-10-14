@@ -2,7 +2,7 @@ import "server-only";
 import type { CreateUploadInput, PutOptions, StorageDriver } from "./driver";
 import { StorageError } from "./errors";
 import { getStorageDriver } from "./get-driver";
-import { assertStorageKey, organizationPrefix, sitePrefix } from "./keys";
+import { assertStorageKey, organizationPrefix, sitePrefix, userPrefix } from "./keys";
 
 /**
  * Tenant-scoped storage: the storage counterpart of `withTenant()` (ADR 0008).
@@ -41,6 +41,14 @@ export function storageFor(scope: StorageScope): StorageDriver {
   const prefix = scope.siteId ? sitePrefix(scope.organizationId, scope.siteId) : organizationPrefix(scope.organizationId);
   return guard(getStorageDriver, (key) => {
     if (!key.startsWith(prefix)) throw new StorageError("PermissionDenied", "Storage key is outside this tenant");
+  });
+}
+
+/** A user's own storage (`u/{userId}/`, the account avatar): keys outside it are refused, as `storageFor` refuses another tenant's. */
+export function storageForUser(userId: string): StorageDriver {
+  const prefix = userPrefix(userId);
+  return guard(getStorageDriver, (key) => {
+    if (!key.startsWith(prefix)) throw new StorageError("PermissionDenied", "Storage key is outside this user");
   });
 }
 

@@ -44,6 +44,8 @@ function routingConfig() {
 const SURFACE_HEADERS = {
   app: { "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
   site: { "x-frame-options": "SAMEORIGIN", "content-security-policy": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" },
+  // Uploaded files (M6-2): never sniffed into another type, never scripted, never a document that can act (sandbox).
+  media: { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" },
 } as const;
 
 export function proxy(request: NextRequest) {
@@ -88,6 +90,11 @@ export function proxy(request: NextRequest) {
     case "site":
       response = NextResponse.rewrite(new URL(decision.rewrite, request.url), { request: { headers } });
       for (const [k, v] of Object.entries(SURFACE_HEADERS.site)) response.headers.set(k, v);
+      break;
+    case "media":
+      // No session cookie in, none out: a cached public object must never carry one (no renewal here).
+      response = NextResponse.next({ request: { headers } });
+      for (const [k, v] of Object.entries(SURFACE_HEADERS.media)) response.headers.set(k, v);
       break;
     case "not-found":
       response = new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain" } });

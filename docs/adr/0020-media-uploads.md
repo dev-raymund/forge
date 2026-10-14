@@ -230,3 +230,18 @@ The job (`modules/media/cleanup.ts`, registered in `DAILY_JOBS`) works in four s
   - `src/modules/audit/events.test.ts`;
   - `tests/unit/audit-writer.test.ts`.
 - `tests/e2e/storage.spec.ts` and `cron.spec.ts`: the development route is gone; the local upload route refuses unsigned PUTs and malformed keys; the daily cron enqueues `uploads.cleanup`.
+
+## Addendum (M6-2, 2026-10-15)
+
+ADR 0021 extends `completeUpload`; the protocol, its checks and its guarantees here are unchanged.
+
+- **What completion does now:**
+  - It takes a hold on the upload (one completion processes it at a time).
+  - It processes an image into WebP variants, after the checks and outside any transaction, and names them on the row before writing them.
+  - It checks their real bytes against the storage limit in the transaction that makes the upload `ready`.
+- **Variants count towards storage:** usage is `size_bytes + variant_bytes`. The limit can now refuse at completion; the answer is `LimitExceeded`, and the upload gives everything back.
+- **`uploads.cleanup`:**
+  - deletes every variant a row names, with its original;
+  - never touches an upload a completion holds now.
+- **`UploadedMedia`** gains `width`, `height` (null for a document) and `storedBytes`.
+- **M6-1's tests** now complete real images; a byte string that only carries a signature is refused by the decoder.

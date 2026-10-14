@@ -60,7 +60,11 @@ test("shows the signed-in user's own account, and lets them change their name", 
   await expect(page.getByTestId("account-email")).toHaveText(email);
   await expect(page.getByTestId("account-email-status")).toContainText("Not verified");
   await expect(profile.getByRole("link", { name: "Verify email" })).toBeVisible();
-  await expect(page.locator('input[type="email"], input[name="email"], input[type="file"]')).toHaveCount(0);
+  await expect(page.locator('input[type="email"], input[name="email"]')).toHaveCount(0);
+  await expect(profile.locator('input[type="file"]')).toHaveCount(0);
+  // The one file input is the picture's (M6-2), and it takes images only.
+  await expect(page.locator('input[type="file"]')).toHaveCount(1);
+  await expect(section(page, "Picture").locator('input[type="file"]')).toHaveAttribute("accept", "image/jpeg,image/png,image/webp,image/gif");
 
   // Sign-in methods are read-only.
   const methods = page.getByTestId("sign-in-methods");

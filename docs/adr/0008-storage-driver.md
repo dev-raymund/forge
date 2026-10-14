@@ -113,3 +113,12 @@ The upload protocol (ADR 0020) uses `createUpload`, `head` and `readRange` as de
 - **E2E:** `tests/e2e/storage.spec.ts` checks what a browser can reach without a session:
   - the development route answers 404;
   - the local upload route refuses an unsigned or forged PUT (403) and malformed keys (422).
+
+## Addendum (M6-2, 2026-10-15): a user's own storage
+
+The account avatar belongs to a user, not an organization. `storageForUser(userId)` is the user's scope:
+- it allows only `u/{userId}/` and refuses another user's keys and every organization's, before any provider is asked;
+- avatar keys are built by `avatarObjectKey({ userId, avatarId, variant, ext })` (`u/{user}/a/{avatar}/{variant}/avatar.{ext}`);
+- the driver interface is unchanged.
+
+`/media/{key}` reads an object only through the scope of the record that makes it public (ADR 0021).

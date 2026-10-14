@@ -1132,20 +1132,41 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M6-1
 
 **Acceptance criteria:**
-- [ ] `processImage(mediaId)` inside `completeUpload`: `sharp` with `limitInputPixels`, auto-rotate, metadata stripped; widths 400 (square thumb), 800, 1600, 2400 (≤ original) as WebP → `variants` JSONB
-- [ ] Route `maxDuration`/memory configured; p95 processing time logged
-- [ ] Account avatar on `/account`: upload via the storage driver, processed and served like other media *(moved from M2-4)*
-- [ ] V1 delivery at `/media/{key}` (ADR 0006): a route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types (never HTML/JS/SVG); unknown keys → 404. A CDN domain is post-V1 via `MEDIA_PUBLIC_BASE_URL`
-- [ ] A `<ResponsiveImage>` kit component produces `srcset`/`sizes`/`width`/`height`
+- [x] `processImage(mediaId)` inside `completeUpload`: `sharp` with `limitInputPixels`, auto-rotate, metadata stripped; widths 400 (square thumb), 800, 1600, 2400 (≤ original) as WebP → `variants` JSONB *(`modules/media/processing.ts`; 50 MP checked from the header; animations stay animated; under 800 wide: its own width; variants named on the row before they are written; their bytes in `variant_bytes`)*
+- [x] Route `maxDuration`/memory configured; p95 processing time logged *(`/account` exports `maxDuration = 60`; Hobby's memory is fixed at 2 GB, so one decode is bounded by the pixel limit and sharp's cache is off; each duration is logged with the instance's p95 of its last 50)*
+- [x] Account avatar on `/account`: upload via the storage driver, processed and served like other media *(moved from M2-4)* *(a presigned PUT under `u/{user}/`, checked, a 400 square, `users.image` set by the server; every object tracked by `avatars.collect`)*
+- [x] V1 delivery at `/media/{key}` (ADR 0006): a route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types (never HTML/JS/SVG); unknown keys → 404. A CDN domain is post-V1 via `MEDIA_PUBLIC_BASE_URL` *(only through a record: ready, untrashed variants and documents, current avatars; image originals never; 404s `no-store`; the proxy's own `media` surface strips credentials)*
+- [x] A `<ResponsiveImage>` kit component produces `srcset`/`sizes`/`width`/`height` *(`src/themes/_kit/components/responsive-image.tsx`, with `responsiveSources` in `@/modules/media/shared`)*
+
+**Decisions taken here (ADR 0021):**
+- **Variants count towards the storage limit:** their real bytes are checked in the transaction that makes the upload ready. Over the limit: refused, and everything given back.
+- **One completion processes an upload at a time:** a 15-minute hold (longer than any function's run). A second completion waits, or takes over a dead one's leftovers. Nothing is ever `ready` until every variant is stored.
+- **An image's original is never served** (its EXIF and GPS are still in it).
+- **The account avatar** has no media row and no quota. Delayed `avatars.collect` jobs delete every object that is not the user's picture.
 
 **Likely files/modules:** `src/modules/media/processing.ts`, `src/app/media/[...key]/route.ts`, `src/themes/_kit/components/ResponsiveImage.tsx`
 
-**Testing:** integration: EXIF GPS absent in variants; a 60 MP image rejected; srcset output snapshot.
+**Testing:** integration: EXIF GPS absent in variants; a 60 MP image rejected; srcset output snapshot. ✔ The three:
+- integration with both drivers (local and RustFS): `media-processing.test.ts` (21), `media-delivery.test.ts` (12), `avatar-upload.test.ts` (12), plus RLS (the delivery lookup) and isolation;
+- unit: `media/processing.test.ts`, `_kit/components/responsive-image.test.tsx` (the exact srcset output);
+- E2E: `media.spec.ts` (the avatar in a browser; `/media` headers and 404s).
+
+Real Cloudflare R2, Vercel's CDN, and function limits on Vercel: not verified (no deployment).
 
 ### M6-3 · Media library UI
 **Labels:** `area:media` `type:feature`
 
 **Description:** Manage media.
+
+*From M6-2 (ADR 0021):*
+- *Completing an image now processes it, typically in 1–3 s. Export `maxDuration = 60` from every page whose actions complete uploads (as `/account` does).*
+- *`completeUploadAction` answers:*
+  - *a ready item with `width`, `height` and `storedBytes`;*
+  - *`LimitExceeded` when its variants do not fit (the file is gone);*
+  - *`Conflict` "still being finished" when another completion of it is running.*
+- *The library's thumbnails: the `thumb` variant's URL (`publicUrl(variant.storageKey)`), never the original (`/media` does not serve an image's original).*
+- *Showing storage used: `allowanceOf(tx, org, "storage")` counts originals and variants.*
+- *A trashed item's URLs stop working at once (`/media` checks the record). A CDN may still hold a copy it cached before, as it was immutable.*
 
 *From M6-1 (ADR 0020): the dropzone calls `requestUploadsAction(orgSlug, siteSlug, files)` with up to 20 `{ name, size, type }`. It then PUTs each file to its `upload.url` with exactly `upload.headers` (they include `if-none-match: *`). Use XHR for progress (fetch has no upload progress). Then it calls `completeUploadAction(orgSlug, siteSlug, mediaId)` per file.*
 - *Answers:*
@@ -1181,6 +1202,12 @@ The suite can run against real R2 with `TEST_S3_*`.
 - *Inserting one: a slash-menu entry that `asks` for a media item (like the embed's `asks: "address"`) and opens the picker, so an image is never inserted without a `mediaId`. Its alt, caption, size and link come from the properties panel, which already generates fields from the schema.*
 - *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists. From M6-1: it is `assertUsableImages` now (this site, `ready`, not trashed, `kind = 'image'`), used for images in documents and for a new featured image in `saveDraft`. A PDF is a media item but never an image.*
 - *No upload path was added in M5-5. Images reach a document only through the picker and the existing upload protocol (M6-1).*
+- *From M6-2 (ADR 0021):*
+  - *`<ResponsiveImage>` is `src/themes/_kit/components/responsive-image.tsx`. Feed it `responsiveSources(item.variants, publicUrl)` (`@/modules/media/shared`) and the item's `width`, `height` and alt text.*
+  - *An image's original is never served, so a link to the "full size" is the largest variant.*
+  - *GIF and WebP animations stay animated in their variants.*
+  - *Logo and favicon sizes need presets of their own: `planVariants` has `media` and `avatar` today.*
+  - *PDFs are served inline under `Content-Security-Policy: sandbox`. Check in a real browser that its PDF viewer displays them; Chrome's may refuse a sandboxed document, and then the PDF downloads.*
 - *From M5-7 (ADR 0018): the post sidebar has a featured-image slot (`data-testid="featured-image"` in `modules/content/editor/entry-settings.tsx`) that says it arrives with the media library. Wire the picker there, sending `featuredMediaId` with the draft fields (saveDraft already checks it against the site).*
 - *From M5-6 (ADR 0017): the public renderer skips `image` and reports it (`NOT_RENDERED_YET` in `modules/rendering/document.tsx`). Add the image's renderer to `BLOCK_RENDERERS` (its media resolved through the render context, never a stored URL), remove it from `NOT_RENDERED_YET`, tag `loadEntry` with each media item's `media:{mid}` it draws (plan §20, capped), and add `figure`/`img` cases to the XSS corpus. `RENDERED_ELEMENTS` already lists `figure` and `figcaption`.*
 
@@ -1204,6 +1231,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M6-2 (ADR 0021): purging media deletes `objectKeysOf(row)` (the original and every variant on the row), then the row. Its bytes are `size_bytes + variant_bytes`. `/media` stops serving a trashed item at once, but objects already cached (immutable) may remain in a CDN until it evicts them.*
 
 *From M6-1 (ADR 0020): trashed media still counts towards the storage limit until purged (`billing/limits.ts`). Purging media deletes its objects through `storageFor` the row's own organization and site, then the row. `uploads.cleanup` (`modules/media/cleanup.ts`) does the same for refused uploads. It finds organizations with work through a SECURITY DEFINER lookup that returns ids only (migration 0007), and works in each one's own tenant context; `trash.purge` needs the same across organizations.*
 
@@ -1496,6 +1525,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-4: `inviteMember` does not check a seat limit. Plan §14 counts members plus pending invitations; add `assertLimit(tx, org, "members")` there, under the organization lock it already takes, after the permission and verified-email checks. Re-sending does not add a seat. Accepting an invitation was already counted when it was sent.*
 
 *From M4-1 (ADR 0011): `modules/billing/plans.ts` holds the plans with only the sites limit (Free 1, Pro 5), and `assertLimit(tx, orgId, key)` (`modules/billing/limits.ts`) locks the organization's row and counts. The plan is read from `subscriptions.plan_key`; no row means Free. Add the other limits as keys of `LimitKey` with their counts, and decide here how `status`, `trial_ends_at` and `grace_until` change the plan (one function, `planOf`). The sites page already shows "n of N sites on the X plan" to those who may create sites.*
+
+*From M6-2 (ADR 0021): storage usage includes image variants (`variant_bytes`), checked when an upload becomes ready. Avatars count towards no organization.*
 
 *From M6-1 (ADR 0020): the storage limit is wired. `LimitKey` has `"storage"` (Free 1 GB, Pro 20 GB, binary). `assertLimit(tx, org, key, amount)` takes the bytes being added, and `requestUploads` calls it. Usage is the sum of non-failed uploads' declared sizes, trashed included. Over the limit after a downgrade: nothing is deleted, and new uploads are refused.*
 

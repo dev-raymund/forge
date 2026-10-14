@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AccountMenu } from "@/modules/auth";
+import { AccountMenu, ownAvatarUrl } from "@/modules/auth";
 import { OrgSwitcher, orgSitesPath } from "@/modules/tenancy";
 import { linkPrefetch, SIGNED_IN_HOME } from "@/platform/routing/admin-access";
 
@@ -13,7 +13,7 @@ import { linkPrefetch, SIGNED_IN_HOME } from "@/platform/routing/admin-access";
 export function AppHeader({
   user, organizations = [], currentSlug,
 }: {
-  user: { name: string; email: string };
+  user: { id: string; name: string; email: string; image: string | null };
   organizations?: { slug: string; name: string; status: "active" | "suspended" }[];
   currentSlug?: string;
 }) {
@@ -40,7 +40,7 @@ export function AppHeader({
           </>
         ) : null}
         <div className="ml-auto shrink-0">
-          <AccountMenu name={user.name} email={user.email} />
+          <AccountMenu name={user.name} email={user.email} avatarUrl={ownAvatarUrl(user)} />
         </div>
       </div>
     </header>

@@ -15,6 +15,7 @@
 
 export const RENDER_PREFIX = "/render";
 export const SITE_PATH_PREFIX = "/s";
+export const MEDIA_PREFIX = "/media";
 /** The one `[site]` value generateStaticParams returns (Cache Components needs one at build). */
 export const BUILD_PLACEHOLDER_SITE = "__placeholder";
 export const HOST_OVERRIDE_PARAM = "__host";
@@ -96,6 +97,8 @@ export type RouteInput = {
 
 export type RouteDecision =
   | { kind: "app" }
+  /** `/media/{key}` (M6-2): public objects, the same for everyone; credentials never reach it, and none are set. */
+  | { kind: "media" }
   | { kind: "site"; locator: SiteLocator; rewrite: string }
   | { kind: "not-found"; reason: "render-path" | "action-on-site" | "bad-host" | "bad-address" }
   | { kind: "unavailable"; reason: "app-host-not-configured" };
@@ -147,6 +150,8 @@ export function decideRoute(input: RouteInput): RouteDecision {
     return site({ kind: "address", address }, `/${rest.join("/")}`, input.search, input.nextAction);
   }
 
+  if (input.pathname === MEDIA_PREFIX || input.pathname.startsWith(`${MEDIA_PREFIX}/`)) return { kind: "media" };
+
   return { kind: "app" };
 }
 
@@ -157,13 +162,15 @@ export function decideRoute(input: RouteInput): RouteDecision {
  * origin in V1, so the browser sends the admin session cookie with `/s/…`
  * requests too; the proxy removes it (and any Authorization header) before
  * the renderer runs. Site pages therefore cannot act as, or vary by, the
- * signed-in admin, whatever the rendering code does (ADR 0006).
+ * signed-in admin, whatever the rendering code does (ADR 0006). Media
+ * (`/media/…`, M6-2) is served the same way: public, cached, the same for
+ * every visitor.
  */
 export const SITE_STRIPPED_HEADERS = ["cookie", "authorization"] as const;
 
 export function forwardedHeaders(incoming: Headers, decision: RouteDecision, requestId: string, requestIdHeader: string): Headers {
   const headers = new Headers(incoming);
   headers.set(requestIdHeader, requestId);
-  if (decision.kind === "site") for (const name of SITE_STRIPPED_HEADERS) headers.delete(name);
+  if (decision.kind === "site" || decision.kind === "media") for (const name of SITE_STRIPPED_HEADERS) headers.delete(name);
   return headers;
 }

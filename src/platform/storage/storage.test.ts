@@ -3,8 +3,8 @@ import { storageConfig } from "./config";
 import type { StorageDriver } from "./driver";
 import { StorageError, STORAGE_ERROR_CODES, storageErrorToAppError } from "./errors";
 import { setStorageDriverForTests } from "./get-driver";
-import { assertStorageKey, isStorageKey, mediaObjectKey, organizationPrefix, sitePrefix } from "./keys";
-import { platformStorage, storageFor } from "./scoped";
+import { assertStorageKey, avatarObjectKey, isStorageKey, mediaObjectKey, organizationPrefix, sitePrefix, userPrefix } from "./keys";
+import { platformStorage, storageFor, storageForUser } from "./scoped";
 
 const ORG_A = "0192f000-0000-7000-8000-00000000000a";
 const ORG_B = "0192f000-0000-7000-8000-00000000000b";
@@ -141,6 +141,39 @@ describe("storageFor (tenant scope)", () => {
       await expect(platformStorage().head("../../etc/passwd")).rejects.toMatchObject({ code: "InvalidKey" });
       await expect(platformStorage().head(bKey)).resolves.toBeNull(); // platform scope crosses tenants by design
       expect(calls).toEqual([`head ${bKey}`]);
+    } finally {
+      setStorageDriverForTests(null);
+    }
+  });
+});
+
+describe("a user's own storage (the account avatar, M6-2)", () => {
+  const USER_A = "0192f000-0000-7000-8000-0000000000c1";
+  const USER_B = "0192f000-0000-7000-8000-0000000000c2";
+  const AVATAR = "0192f000-0000-7000-8000-0000000000d1";
+  const denied = expect.objectContaining({ code: "PermissionDenied" });
+
+  it("keys: u/{user}/a/{avatar}/{variant}/avatar.{ext}, ids checked", () => {
+    expect(avatarObjectKey({ userId: USER_A, avatarId: AVATAR, variant: "thumb", ext: "webp" })).toBe(`u/${USER_A}/a/${AVATAR}/thumb/avatar.webp`);
+    expect(userPrefix(USER_A)).toBe(`u/${USER_A}/`);
+    for (const parts of [{ userId: "../x" }, { avatarId: "nope" }, { variant: "../thumb" }, { ext: "webp/../x" }]) {
+      expect(() => avatarObjectKey({ userId: USER_A, avatarId: AVATAR, variant: "thumb", ext: "webp", ...parts })).toThrow(StorageError);
+    }
+  });
+
+  it("refuses another user's keys, and every organization's, before the provider is asked", async () => {
+    const { driver, calls } = fakeDriver();
+    setStorageDriverForTests(driver);
+    try {
+      const mine = storageForUser(USER_A);
+      const own = avatarObjectKey({ userId: USER_A, avatarId: AVATAR, variant: "thumb", ext: "webp" });
+      await mine.head(own);
+      for (const key of [avatarObjectKey({ userId: USER_B, avatarId: AVATAR, variant: "thumb", ext: "webp" }), `o/${ORG_A}/s/${SITE_A}/m/${MEDIA}/v1/original/photo.jpg`, `u/${USER_A}x/a/b`]) {
+        await expect(mine.get(key)).rejects.toEqual(denied);
+        await expect(mine.delete(key)).rejects.toEqual(denied);
+      }
+      expect(calls).toEqual([`head ${own}`]);
+      expect(() => storageForUser("../" + USER_B)).toThrow(expect.objectContaining({ code: "InvalidKey" }));
     } finally {
       setStorageDriverForTests(null);
     }

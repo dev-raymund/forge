@@ -97,10 +97,15 @@ test("a link to another page of the site, picked by title; an unsafe address is 
   await openEditor(page, editorUrl);
   await editor(page).click();
   await page.keyboard.type("Read about us");
-  await page.keyboard.press("Shift+Home");
   // ProseMirror takes a selection made by the keyboard from the browser's selectionchange, which a click sent at once
-  // can overtake (as in the M5-5 tests): wait until the selection is there before asking for a link.
-  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toBe("Read about us");
+  // can overtake (as in the M5-5 tests): wait until the selection is there before asking for a link. And it may still
+  // be applying the last keystrokes when Shift+Home lands, and then put its own caret back over that selection (once
+  // in 70 runs on M6-1, the trace showing it empty from the first look on): select again until the selection holds.
+  await expect(async () => {
+    await page.keyboard.press("End");
+    await page.keyboard.press("Shift+Home");
+    await expect.poll(() => page.evaluate(() => document.getSelection()?.toString()), { timeout: 1_000 }).toBe("Read about us");
+  }).toPass({ timeout: 10_000 });
   await page.getByRole("button", { name: "Link" }).click();
   const dialog = page.getByRole("dialog", { name: "Link" });
 

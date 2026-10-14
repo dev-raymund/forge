@@ -1,6 +1,6 @@
 import type { Actor } from "@/modules/auth/shared";
 import { canPublishEntry, canUpdateEntry, submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "@/modules/content";
-import { completeUpload, requestUploads, submitCompleteUpload, submitRequestUploads } from "@/modules/media";
+import { completeUpload, requestUploads, submitCompleteUpload, submitRequestAvatarUpload, submitRequestUploads } from "@/modules/media";
 import {
   listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
 } from "@/modules/sites";
@@ -153,6 +153,17 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
         throw new Error(`expected an upload of A's own: ${JSON.stringify(uploads)}`);
       }
       return uploads;
+    },
+  },
+  // The account avatar (M6-2): the caller's own, under the caller's own prefix, whatever user or organization the file names.
+  {
+    name: "media.submitRequestAvatarUpload(file fields naming B's user and organization)",
+    run: async ({ actor, ctx }, b) => {
+      const result = await submitRequestAvatarUpload(actor, { ...UPLOAD, userId: b.userId, organizationId: b.orgId, key: `u/${b.userId}/a/x/original/avatar.upload` });
+      if (!result.ok || !result.data.upload.url.includes(`/u/${ctx.actor.userId}/a/${result.data.avatarId}/`) || result.data.upload.url.includes(b.userId)) {
+        throw new Error(`expected an avatar upload of the caller's own: ${JSON.stringify(result)}`);
+      }
+      return result;
     },
   },
   // Members and invitations (M3-4).

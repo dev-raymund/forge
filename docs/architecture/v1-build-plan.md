@@ -620,6 +620,12 @@ src/themes/
   - **Completion** checks the size, the stored type and the first 4 KB against the declared type, and only the uploader may complete.
   - **`uploads.cleanup`** expires never-completed uploads after 24 h and removes them and refused ones with their objects.
   - **Content** may point only at a ready image of its own site.
+- **As built (M6-2, ADR 0021):**
+  - **Variants:** WebP q75, `thumb` (a 400 square) and `w800`/`w1600`/`w2400` up to the image's width (or its own width under 800). Animations stay animated. 50 MP is checked from the header.
+  - **Storage:** their real bytes count towards the limit, checked when the upload becomes ready.
+  - **Processing:** one completion processes an upload at a time (a 15-minute hold), and variants are named on the row before they are written.
+  - **Delivery:** `/media` serves only a ready, untrashed item's variants or document file, or a user's current avatar, never an image's original. The proxy gives it its own credential-free surface.
+  - **Avatar:** uploaded the same way, under `u/{user}/`, as a 400 square.
 | Picker | The same library in a modal, used by the image block, featured image, OG image, logo and favicon |
 
 ---

@@ -4,6 +4,7 @@ import path from "node:path";
 import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
+import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DAILY_JOBS, jobRegistry } from "@/app/api/internal/cron/jobs";
 import { createEntry, saveDraft } from "@/modules/content";
@@ -75,19 +76,24 @@ afterAll(async () => {
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-// ── Files, as their first bytes make them ─────────────────────────────────────
+// ── Files ─────────────────────────────────────────────────────────────────────
 
+/** Bytes that start with a signature and are nothing after it: a document, or a fake that no decoder accepts. */
 const fileOf = (signature: number[] | string, size: number, fill = 0x20) => {
   const bytes = new Uint8Array(size).fill(fill);
   bytes.set(typeof signature === "string" ? [...signature].map((c) => c.charCodeAt(0)) : signature);
   return bytes;
 };
-const png = (size = 2_048) => fileOf([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], size);
-const jpeg = (size = 2_048) => fileOf([0xff, 0xd8, 0xff, 0xe0], size);
-const gif = (size = 2_048) => fileOf("GIF89a", size);
-const webp = (size = 2_048) => fileOf("RIFF\u0000\u0000\u0000\u0000WEBPVP8 ", size);
 const pdf = (size = 2_048) => fileOf("%PDF-1.7\n", size);
 const html = (size = 2_048) => fileOf("<!doctype html><script>alert(document.cookie)</script>", size);
+/** Real images (M6-2: an image is decoded and processed when completed), made once. */
+const imageOf = async (format: "png" | "jpeg" | "webp" | "gif", width = 96, height = 64) =>
+  new Uint8Array(await sharp({ create: { width, height, channels: 3, background: { r: 40, g: 120, b: 90 } } })[format]().toBuffer());
+const IMAGES = { png: await imageOf("png"), jpeg: await imageOf("jpeg"), webp: await imageOf("webp"), gif: await imageOf("gif") };
+const png = () => IMAGES.png;
+const jpeg = () => IMAGES.jpeg;
+const gif = () => IMAGES.gif;
+const webp = () => IMAGES.webp;
 const describeFile = (name: string, bytes: Uint8Array, type: string) => ({ name, size: bytes.byteLength, type });
 
 // ── Tenants, sites, rows ──────────────────────────────────────────────────────
@@ -165,7 +171,7 @@ describe.each([
     working();
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const files = { photo: png(4_000), menu: pdf(9_000), still: jpeg(3_000), loop: gif(2_500), modern: webp(2_200) };
+    const files = { photo: png(), menu: pdf(9_000), still: jpeg(), loop: gif(), modern: webp() };
     const before = Date.now();
     const { uploads } = await requestUploads(ctx, [
       describeFile("Team photo.PNG", files.photo, "image/png"),
@@ -190,7 +196,7 @@ describe.each([
     const photo = rows.find((row) => row.id === uploads[0]!.mediaId)!;
     expect(photo).toMatchObject({
       organizationId: ctx.org.id, siteId: ctx.site.id, kind: "image", status: "pending", storageDriver: driver.name, version: 1,
-      originalFilename: "Team photo.PNG", mimeType: "image/png", sizeBytes: 4_000, uploadedBy: a.user.id, deletedAt: null,
+      originalFilename: "Team photo.PNG", mimeType: "image/png", sizeBytes: files.photo.byteLength, uploadedBy: a.user.id, deletedAt: null,
       storageKey: `o/${ctx.org.id}/s/${ctx.site.id}/m/${photo.id}/v1/original/team-photo.png`,
     });
     expect(rows.find((row) => row.id === uploads[1]!.mediaId)!.storageKey).toMatch(/\/m\/[0-9a-f-]{36}\/v1\/original\/menu-autumn\.pdf$/);
@@ -201,16 +207,22 @@ describe.each([
     for (const [i, u] of uploads.entries()) expect(await send(u.upload, bytes[i]!)).toBe(200);
     const outcomes = await Promise.all(uploads.map((u) => completeUpload(ctx, u.mediaId)));
     expect(outcomes.map((o) => o.status)).toEqual(["ready", "ready", "ready", "ready", "ready"]);
-    expect(outcomes[0]).toEqual({ status: "ready", media: { id: photo.id, kind: "image", filename: "Team photo.PNG", mimeType: "image/png", sizeBytes: 4_000 } });
+    const variantBytes = (await rowOf(ctx, photo.id))!.variantBytes;
+    expect(variantBytes).toBeGreaterThan(0); // M6-2: its variants (their own tests: media-processing.test.ts)
+    expect(outcomes[0]).toEqual({
+      status: "ready",
+      media: { id: photo.id, kind: "image", filename: "Team photo.PNG", mimeType: "image/png", sizeBytes: files.photo.byteLength, width: 96, height: 64, storedBytes: files.photo.byteLength + variantBytes },
+    });
+    expect(outcomes[1]).toMatchObject({ status: "ready", media: { kind: "document", width: null, height: null, sizeBytes: 9_000, storedBytes: 9_000 } });
     expect((await rowsOfSite(ctx)).map((row) => row.status)).toEqual(["ready", "ready", "ready", "ready", "ready"]);
-    expect(await platformStorage().head(photo.storageKey)).toEqual({ size: 4_000, contentType: "image/png" });
+    expect(await platformStorage().head(photo.storageKey)).toEqual({ size: files.photo.byteLength, contentType: "image/png" });
 
     // Completing again (a retry) answers the same and records nothing more.
     expect(await completeUpload(ctx, photo.id)).toEqual(outcomes[0]);
     const events = await uploadEvents(ctx);
     expect(events).toHaveLength(5);
     expect(events.find((e) => e.resourceId === photo.id)).toMatchObject({
-      resourceType: "media", siteId: ctx.site.id, actorId: a.user.id, metadata: { kind: "image", filename: "Team photo.PNG", sizeBytes: 4_000 },
+      resourceType: "media", siteId: ctx.site.id, actorId: a.user.id, metadata: { kind: "image", filename: "Team photo.PNG", sizeBytes: files.photo.byteLength },
     });
   });
 
@@ -233,11 +245,11 @@ describe.each([
     working();
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const { outcome } = await upload(ctx, "photo.png", jpeg(2_000), "image/png");
+    const { outcome } = await upload(ctx, "photo.png", jpeg(), "image/png");
     expect(outcome).toMatchObject({ status: "failed", message: "photo.png is a JPEG file, but was sent as PNG. Give it the right extension and upload it again." });
     // A PDF sent as an image, and an image sent as a PDF.
     expect((await upload(ctx, "doc.jpg", pdf(2_000), "image/jpeg")).outcome).toMatchObject({ status: "failed", message: expect.stringMatching(/is a PDF file, but was sent as JPEG/) });
-    expect((await upload(ctx, "scan.pdf", png(2_000), "application/pdf")).outcome).toMatchObject({ status: "failed", message: expect.stringMatching(/is a PNG file, but was sent as PDF/) });
+    expect((await upload(ctx, "scan.pdf", png(), "application/pdf")).outcome).toMatchObject({ status: "failed", message: expect.stringMatching(/is a PNG file, but was sent as PDF/) });
     // Too short to carry any signature.
     expect((await upload(ctx, "tiny.png", new Uint8Array([0x89, 0x50]), "image/png")).outcome).toMatchObject({ status: "failed" });
   });
@@ -246,10 +258,10 @@ describe.each([
     working();
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const body = png(2_000);
+    const body = png();
     const { uploads } = await requestUploads(ctx, [describeFile("a.png", body, "image/png")]);
     const target = uploads[0]!.upload;
-    expect([400, 403]).toContain(await send(target, png(2_001)));
+    expect([400, 403]).toContain(await send(target, new Uint8Array(body.byteLength + 1)));
     expect([400, 403]).toContain(await send(target, body, { ...target.headers, "content-type": "text/html" }));
     const row = (await rowOf(ctx, uploads[0]!.mediaId))!;
     expect(await platformStorage().head(row.storageKey)).toBeNull();
@@ -257,7 +269,7 @@ describe.each([
     expect(await send(target, body)).toBe(200);
     expect((await completeUpload(ctx, row.id)).status).toBe("ready");
     // The link is still within its 10 minutes: sending other bytes of the same size and type changes nothing.
-    expect(await send(target, html(2_000))).toBe(412);
+    expect(await send(target, html(body.byteLength))).toBe(412);
     expect(await send(target, body)).toBe(412); // a retry of the same PUT: refused, and harmless
     expect(await platformStorage().readRange(row.storageKey, 0, 7)).toEqual(body.subarray(0, 8));
   });
@@ -279,9 +291,9 @@ describe.each([
     working();
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const { uploads } = await requestUploads(ctx, [describeFile("short.png", png(4_000), "image/png")]);
+    const { uploads } = await requestUploads(ctx, [describeFile("short.png", await imageOf("png", 400, 300), "image/png")]);
     const row = (await rowOf(ctx, uploads[0]!.mediaId))!;
-    await platformStorage().put(row.storageKey, png(1_000), { contentType: "image/png" });
+    await platformStorage().put(row.storageKey, png(), { contentType: "image/png" }); // a smaller real PNG
     expect(await completeUpload(ctx, row.id)).toMatchObject({ status: "failed", message: "short.png did not arrive as it was sent (its size differs). Upload it again." });
     expect(await platformStorage().head(row.storageKey)).toBeNull();
     expect((await rowOf(ctx, row.id))!.status).toBe("failed");
@@ -292,7 +304,7 @@ describe.each([
     const a = await newTenant();
     const { ctx } = await siteOf(a);
     for (let round = 0; round < 3; round++) {
-      const body = png(3_000 + round);
+      const body = png();
       const { uploads } = await requestUploads(ctx, [describeFile(`race-${round}.png`, body, "image/png")]);
       expect(await send(uploads[0]!.upload, body)).toBe(200);
       const both = await Promise.all([completeUpload(ctx, uploads[0]!.mediaId), completeUpload(ctx, uploads[0]!.mediaId), completeUpload(ctx, uploads[0]!.mediaId)]);
@@ -304,7 +316,7 @@ describe.each([
   it("storage unavailable: no target, no row; no completion, the row stays pending; then it works", async () => {
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const body = png(2_000);
+    const body = png();
 
     setStorageDriverForTests(failing(driver, ["createUpload"]));
     expect(await refusalOf(() => requestUploads(ctx, [describeFile("x.png", body, "image/png")]))).toMatchObject({ kind: "Unavailable" });
@@ -341,7 +353,7 @@ describe.each([
     working();
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const body = gif(2_000);
+    const body = gif();
     const { uploads } = await requestUploads(ctx, [describeFile("anim.gif", body, "image/gif")]);
     expect(await send(uploads[0]!.upload, body)).toBe(200);
     await whileFailing("audit_logs", "insert", () => expect(completeUpload(ctx, uploads[0]!.mediaId)).rejects.toThrow());
@@ -359,12 +371,12 @@ describe.each([
     const b = await newTenant("Other");
     const { ctx: other } = await siteOf(b);
 
-    const done = await upload(ctx, "kept.png", png(2_000), "image/png");
+    const done = await upload(ctx, "kept.png", png(), "image/png");
     const refused = await upload(ctx, "spoof.png", html(2_000), "image/png");
     const abandoned = await requestUploads(ctx, [describeFile("abandoned.pdf", pdf(3_000), "application/pdf")]);
     expect(await send(abandoned.uploads[0]!.upload, pdf(3_000))).toBe(200); // sent, never completed
-    const neverSent = await requestUploads(other, [describeFile("never.jpg", jpeg(2_000), "image/jpeg")]);
-    const recent = await requestUploads(ctx, [describeFile("recent.webp", webp(2_000), "image/webp")]);
+    const neverSent = await requestUploads(other, [describeFile("never.jpg", jpeg(), "image/jpeg")]);
+    const recent = await requestUploads(ctx, [describeFile("recent.webp", webp(), "image/webp")]);
     const ids = { done: done.issued.mediaId, refused: refused.issued.mediaId, abandoned: abandoned.uploads[0]!.mediaId, neverSent: neverSent.uploads[0]!.mediaId, recent: recent.uploads[0]!.mediaId };
     for (const id of [ids.done, ids.refused, ids.abandoned]) await age(ctx, id);
     await age(other, ids.neverSent);
@@ -394,7 +406,7 @@ describe.each([
     const a = await newTenant();
     const { ctx } = await siteOf(a);
     for (let round = 0; round < 4; round++) {
-      const body = png(2_000 + round);
+      const body = png();
       const { uploads } = await requestUploads(ctx, [describeFile(`r${round}.png`, body, "image/png")]);
       expect(await send(uploads[0]!.upload, body)).toBe(200);
       await age(ctx, uploads[0]!.mediaId);
@@ -489,7 +501,7 @@ describe("what may be uploaded, and by whom (with the local driver)", () => {
     const { site, ctx } = await siteOf(a);
     const author = await addMember(a.org, "author");
     const authorCtx = await asMember(author, a, site);
-    const body = png(1_500);
+    const body = png();
     const { uploads } = await requestUploads(authorCtx, [describeFile("mine.png", body, "image/png")]);
     expect(await send(uploads[0]!.upload, body)).toBe(200);
     const editorCtx = await asMember(await addMember(a.org, "editor"), a, site);
@@ -507,7 +519,7 @@ describe("what may be uploaded, and by whom (with the local driver)", () => {
     const { ctx: second } = await siteOf(a, "Second");
     const b = await newTenant("Other");
     const { ctx: elsewhere } = await siteOf(b);
-    const body = png(1_000);
+    const body = png();
     const { uploads } = await requestUploads(first, [describeFile("first.png", body, "image/png")]);
     expect(await send(uploads[0]!.upload, body)).toBe(200);
     expect(await refusalOf(() => completeUpload(second, uploads[0]!.mediaId))).toMatchObject({ kind: "NotFound" });
@@ -609,10 +621,10 @@ describe("attaching media to content: only a ready image of the same site", () =
     const pending = (await requestUploads(ctx, [{ name: "p.png", size: 10, type: "image/png" }])).uploads[0]!.mediaId;
     const refused = (await upload(ctx, "f.png", html(500), "image/png")).issued.mediaId;
     const document = (await upload(ctx, "menu.pdf", pdf(500), "application/pdf")).issued.mediaId;
-    const trashed = (await upload(ctx, "old.png", png(500), "image/png")).issued.mediaId;
+    const trashed = (await upload(ctx, "old.png", png(), "image/png")).issued.mediaId;
     await withTenant({ orgId: a.org.id }, (tx) => tx.update(t.mediaAssets).set({ deletedAt: new Date() }).where(eq(t.mediaAssets.id, trashed)));
-    const theirs = (await upload(sibling, "theirs.png", png(500), "image/png")).issued.mediaId;
-    const ready = (await upload(ctx, "ok.png", png(500), "image/png")).issued.mediaId;
+    const theirs = (await upload(sibling, "theirs.png", png(), "image/png")).issued.mediaId;
+    const ready = (await upload(ctx, "ok.png", png(), "image/png")).issued.mediaId;
 
     const { entry } = await createEntry(ctx, { type: "post", title: "With media" });
     let version = 1;
@@ -645,13 +657,16 @@ describe("the Server Actions' answers, the daily job, and the cache", () => {
     cacheCalls.calls.length = 0;
     const a = await newTenant();
     const { site, ctx } = await siteOf(a);
-    const requested = await submitRequestUploads(a.actor, a.org.slug, site.slug, [{ name: "a.png", size: 1_000, type: "image/png" }, { name: "b.png", size: 1_000, type: "image/png" }]);
+    const size = png().byteLength;
+    const requested = await submitRequestUploads(a.actor, a.org.slug, site.slug, [{ name: "a.png", size, type: "image/png" }, { name: "b.png", size, type: "image/png" }]);
     if (!requested.ok) throw new Error(JSON.stringify(requested));
     const [good, bad] = requested.data.uploads;
-    expect(await send(good!.upload, png(1_000))).toBe(200);
-    expect(await send(bad!.upload, html(1_000))).toBe(200);
-    expect(await submitCompleteUpload(a.actor, a.org.slug, site.slug, good!.mediaId)).toEqual({
-      ok: true, data: { id: good!.mediaId, kind: "image", filename: "a.png", mimeType: "image/png", sizeBytes: 1_000 },
+    expect(await send(good!.upload, png())).toBe(200);
+    expect(await send(bad!.upload, html(size))).toBe(200);
+    const completed = await submitCompleteUpload(a.actor, a.org.slug, site.slug, good!.mediaId);
+    const stored = size + (await rowOf(ctx, good!.mediaId))!.variantBytes;
+    expect(completed).toEqual({
+      ok: true, data: { id: good!.mediaId, kind: "image", filename: "a.png", mimeType: "image/png", sizeBytes: size, width: 96, height: 64, storedBytes: stored },
     });
     expect(await submitCompleteUpload(a.actor, a.org.slug, site.slug, bad!.mediaId)).toEqual({
       ok: false, code: "Validation", error: "b.png is not a PNG file. Upload JPEG, PNG, WebP, GIF or PDF files.", fieldErrors: { file: ["b.png is not a PNG file. Upload JPEG, PNG, WebP, GIF or PDF files."] },
@@ -665,7 +680,7 @@ describe("the Server Actions' answers, the daily job, and the cache", () => {
       setStorageDriverForTests(driver);
     }
     await setPlan(a.org.id, "free");
-    await fill(ctx, GB - 1_000); // with a.png's 1,000 bytes: full (b.png, refused, counts for nothing)
+    await fill(ctx, GB - stored); // with a.png and its variants: full (b.png, refused, counts for nothing)
     expect(await submitRequestUploads(a.actor, a.org.slug, site.slug, [{ name: "x.pdf", size: 1, type: "application/pdf" }])).toMatchObject({
       ok: false, code: "LimitExceeded", error: expect.stringContaining("The Free plan includes 1 GB of storage"),
     });
@@ -679,8 +694,8 @@ describe("the Server Actions' answers, the daily job, and the cache", () => {
     expect(DAILY_JOBS.map((job) => job.type)).toContain("uploads.cleanup");
     const a = await newTenant();
     const { ctx } = await siteOf(a);
-    const { uploads } = await requestUploads(ctx, [describeFile("gone.png", png(1_000), "image/png")]);
-    expect(await send(uploads[0]!.upload, png(1_000))).toBe(200);
+    const { uploads } = await requestUploads(ctx, [describeFile("gone.png", png(), "image/png")]);
+    expect(await send(uploads[0]!.upload, png())).toBe(200);
     await age(ctx, uploads[0]!.mediaId);
     const key = (await rowOf(ctx, uploads[0]!.mediaId))!.storageKey;
     const jobContext = {

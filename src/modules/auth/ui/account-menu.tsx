@@ -17,10 +17,11 @@ const initials = (name: string) =>
     .join("") || "?";
 
 /**
- * The signed-in user's menu in the admin header. Logging out runs a Server
- * Action: the session row is deleted, the cookie cleared, then the login page.
+ * The signed-in user's menu in the admin header, with their avatar (or their
+ * initials). Logging out runs a Server Action: the session row is deleted, the
+ * cookie cleared, then the login page.
  */
-export function AccountMenu({ name, email }: { name: string; email: string }) {
+export function AccountMenu({ name, email, avatarUrl = null }: { name: string; email: string; avatarUrl?: string | null }) {
   const [leaving, startLeaving] = useTransition();
   return (
     <DropdownMenu>
@@ -28,9 +29,15 @@ export function AccountMenu({ name, email }: { name: string; email: string }) {
         aria-label="Account menu"
         className="flex h-10 items-center gap-2 rounded-lg px-2 text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-foreground/25 aria-expanded:bg-muted"
       >
-        <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
-          {initials(name)}
-        </span>
+        {avatarUrl ? (
+          // The user's own avatar (M6-2), served by /media; decorative here, the name says who it is.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" width={28} height={28} data-testid="account-avatar" className="size-7 rounded-full object-cover" />
+        ) : (
+          <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+            {initials(name)}
+          </span>
+        )}
         <span className="hidden max-w-40 truncate sm:inline">{name}</span>
         <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground" />
       </DropdownMenuTrigger>

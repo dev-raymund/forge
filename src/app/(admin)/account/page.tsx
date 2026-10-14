@@ -2,14 +2,22 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AppHeader } from "@/components/admin/app-header";
 import {
-  AccountSection, ChangePasswordForm, EmailStatus, listSessions, ProfileForm, requireAuthOrLogin, SessionList, SetPasswordPrompt,
+  AccountSection, ChangePasswordForm, EmailStatus, listSessions, ownAvatarUrl, ProfileForm, requireAuthOrLogin, SessionList, SetPasswordPrompt,
   SignInMethodList, signInMethods, toActor, VerifyEmailBanner,
 } from "@/modules/auth";
+import { AvatarForm } from "@/modules/media";
 import { listOrganizations } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Account" };
 
-/** The signed-in user's own account (plan §19): profile, password, sessions. */
+/**
+ * The picture's Server Actions run in this page's function, and completing one processes the image (M6-2): one
+ * decode at a time, at most 50 megapixels, typically 1–3 s. A minute leaves room; the processing hold (15 min) outlasts
+ * any function's run.
+ */
+export const maxDuration = 60;
+
+/** The signed-in user's own account (plan §19): picture, profile, password, sessions. */
 export default function AccountPage() {
   return (
     <Suspense fallback={<AccountSkeleton />}>
@@ -31,6 +39,10 @@ async function Account() {
       {user.emailVerified ? null : <VerifyEmailBanner />}
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
         <h1 className="mb-8 text-2xl font-semibold tracking-tight">Account</h1>
+
+        <AccountSection title="Picture" description="Shown next to your name in Forge.">
+          <AvatarForm name={user.name} avatarUrl={ownAvatarUrl(user)} />
+        </AccountSection>
 
         <AccountSection title="Profile" description="Your name is shown to people you work with in Forge.">
           <ProfileForm name={user.name} />

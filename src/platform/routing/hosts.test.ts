@@ -68,7 +68,9 @@ describe("decideRoute — V1 path mode (one host)", () => {
     ["admin root", {}, { kind: "app" }],
     ["admin org route", { pathname: "/acme-org/sites/main/pages" }, { kind: "app" }],
     ["REST API", { pathname: "/api/v1/sites" }, { kind: "app" }],
-    ["media", { pathname: "/media/o/1/s/2/m/3/v1/w800.webp" }, { kind: "app" }],
+    ["media (M6-2: its own surface)", { pathname: "/media/o/1/s/2/m/3/v1/w800.webp" }, { kind: "media" }],
+    ["/media alone is the media surface too", { pathname: "/media" }, { kind: "media" }],
+    ["/mediakit is an ordinary admin path", { pathname: "/mediakit" }, { kind: "app" }],
     ["admin Server Action", { pathname: "/acme-org/sites", nextAction: true }, { kind: "app" }],
     ["site home", { pathname: "/s/acme" }, { kind: "site", locator: acme, rewrite: "/render/address~acme" }],
     ["site page + query", { pathname: "/s/acme/blog/hello-world", search: "?page=2" },
@@ -131,6 +133,14 @@ describe("forwardedHeaders", () => {
     expect(headers.get("authorization")).toBeNull();
     expect(headers.get("user-agent")).toBe("UA");
     expect(headers.get("x-request-id")).toBe("req-1");
+  });
+
+  it("removes them from media requests too (M6-2): a public object is the same for everyone", () => {
+    const media = decideRoute({ ...pathMode, pathname: "/media/u/x/a/y/thumb/avatar.webp" });
+    const headers = forwardedHeaders(incoming, media, "req-3", "x-request-id");
+    expect(headers.get("cookie")).toBeNull();
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("x-request-id")).toBe("req-3");
   });
 
   it("keeps them for the admin and the API", () => {

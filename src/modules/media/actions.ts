@@ -3,7 +3,9 @@
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta } from "@/modules/tenancy";
 import type { ActionResult } from "@/platform/errors";
-import { submitCompleteUpload, submitRequestUploads } from "./upload-requests";
+import { kickJobs } from "@/platform/jobs";
+import { avatarsCollect, type IssuedAvatarUpload } from "./avatar.service";
+import { submitCompleteAvatarUpload, submitCompleteUpload, submitRequestAvatarUpload, submitRequestUploads } from "./upload-requests";
 import type { IssuedUpload, UploadedMedia } from "./upload.service";
 
 /**
@@ -22,4 +24,16 @@ export async function requestUploadsAction(orgSlug: string, siteSlug: string, fi
 
 export async function completeUploadAction(orgSlug: string, siteSlug: string, mediaId: unknown): Promise<ActionResult<UploadedMedia>> {
   return submitCompleteUpload(await getCurrentActor(), orgSlug, siteSlug, mediaId, await currentRequestMeta());
+}
+
+// The account avatar (M6-2), on /account. A replaced avatar is collected as soon as the response is sent.
+
+export async function requestAvatarUploadAction(file: unknown): Promise<ActionResult<IssuedAvatarUpload>> {
+  return submitRequestAvatarUpload(await getCurrentActor(), file, await currentRequestMeta());
+}
+
+export async function completeAvatarUploadAction(avatarId: unknown): Promise<ActionResult<{ url: string }>> {
+  const result = await submitCompleteAvatarUpload(await getCurrentActor(), avatarId, await currentRequestMeta());
+  if (result.ok) kickJobs([avatarsCollect]);
+  return result;
 }

@@ -148,9 +148,13 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
    ```sh
    TEST_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com TEST_S3_BUCKET=forge-media-preview \
    TEST_S3_ACCESS_KEY_ID=<id> TEST_S3_SECRET_ACCESS_KEY=<secret> \
-   npm run test:integration -- tests/integration/storage.test.ts tests/integration/media-uploads.test.ts
+   npm run test:integration -- tests/integration/storage.test.ts tests/integration/media-uploads.test.ts \
+     tests/integration/media-processing.test.ts tests/integration/media-delivery.test.ts tests/integration/avatar-upload.test.ts
    ```
    Until this has passed, R2's handling of the signed `If-None-Match` and of the signed size on a presigned PUT is assumed, not verified (only RustFS has been exercised).
+6. After the first deployment, check media delivery on Vercel (M6-2, ADR 0021):
+   - upload an image in a site's media library and open one of its `/media/…/w800/….webp` URLs twice: the second response should come from Vercel's cache (`x-vercel-cache: HIT`);
+   - in the function logs, `media image processed` lines carry each image's `durationMs` and the instance's `p95Ms`. A completion should stay well under the 60 s `maxDuration`.
 
 Local development needs none of this: the local driver stores files in `.storage/`.
 

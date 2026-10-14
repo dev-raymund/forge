@@ -262,6 +262,38 @@ describe("the uploads.cleanup lookup (SECURITY DEFINER, owned by forge_lookup; M
   });
 });
 
+describe("the /media lookup (SECURITY DEFINER, owned by forge_lookup; M6-2)", () => {
+  const lookup = (mediaId: string, key: string) =>
+    withPlatform(async (tx) => (await tx.execute(sql`select * from public_media_object(${mediaId}::uuid, ${key})`)).rows);
+
+  it("answers for a ready, untrashed item's variant or document file only, with its organization, site and type", async () => {
+    const insert = (values: Partial<typeof t.mediaAssets.$inferInsert>) =>
+      withTenant({ orgId: B.org.id }, async (tx) => {
+        const id = uuidv7();
+        const storageKey = `o/${B.org.id}/s/${B.site.id}/m/${id}/v1/original/x.${values.kind === "document" ? "pdf" : "jpg"}`;
+        const variantKey = `o/${B.org.id}/s/${B.site.id}/m/${id}/v1/w800/x.webp`;
+        await tx.insert(t.mediaAssets).values({
+          id, organizationId: B.org.id, siteId: B.site.id, kind: "image", status: "ready", storageKey, originalFilename: "x", mimeType: values.kind === "document" ? "application/pdf" : "image/jpeg",
+          sizeBytes: 10, uploadedBy: B.user.id, variants: [{ key: "w800", format: "webp", width: 800, height: 600, sizeBytes: 5, storageKey: variantKey }], ...values,
+        });
+        return { id, storageKey, variantKey };
+      });
+    const image = await insert({});
+    expect(await lookup(image.id, image.variantKey)).toEqual([{ organization_id: B.org.id, site_id: B.site.id, content_type: "image/webp" }]);
+    expect(await lookup(image.id, image.storageKey)).toEqual([]); // an image's original is never public
+    expect(await lookup(image.id, image.variantKey.replace("w800", "w1600"))).toEqual([]);
+    expect(await lookup(uuidv7(), image.variantKey)).toEqual([]); // the key must be this item's
+    const document = await insert({ kind: "document", variants: [] });
+    expect(await lookup(document.id, document.storageKey)).toEqual([{ organization_id: B.org.id, site_id: B.site.id, content_type: "application/pdf" }]);
+    for (const hidden of [{ status: "pending" as const }, { status: "failed" as const }, { deletedAt: new Date() }]) {
+      const row = await insert(hidden);
+      expect(await lookup(row.id, row.variantKey), JSON.stringify(hidden)).toEqual([]);
+    }
+    // Without the function, a context with no organization still sees no media rows.
+    expect(await orgIdsVisible("media_assets")).toEqual([]);
+  });
+});
+
 describe("append-only tables", () => {
   it("audit_logs rejects UPDATE and DELETE for the runtime role", async () => {
     const asA = (statement: ReturnType<typeof sql>) =>

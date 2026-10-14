@@ -122,3 +122,19 @@ export function checkFile(input: unknown): { ok: true; file: AcceptedFile } | { 
   }
   return { ok: true, file: { name, size, mimeType: mimeType as UploadMimeType, type } };
 }
+
+// ── Drawing an image ─────────────────────────────────────────────────────────
+
+/**
+ * The widths an image can be drawn at (M6-2): its variants other than the square thumbnail, as URLs and sizes, for
+ * `<ResponsiveImage>`. `urlOf` turns a storage key into its public URL (`/media/{key}`).
+ */
+export function responsiveSources(
+  variants: readonly { key: string; width: number; height: number; storageKey: string }[],
+  urlOf: (key: string) => string,
+): { url: string; width: number; height: number }[] {
+  return variants
+    .filter((variant) => variant.key !== "thumb")
+    .map((variant) => ({ url: urlOf(variant.storageKey), width: variant.width, height: variant.height }))
+    .sort((a, b) => a.width - b.width);
+}

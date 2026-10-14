@@ -68,3 +68,24 @@ export function mediaObjectKey(parts: MediaKeyParts): string {
   assertStorageKey(key);
   return key;
 }
+
+/** `u/{userId}/` — what belongs to a user rather than to an organization (the account avatar, M6-2). */
+export function userPrefix(userId: string): string {
+  assertUuid(userId, "user id");
+  return `u/${userId}/`;
+}
+
+export type AvatarKeyParts = { userId: string; avatarId: string; variant: string; ext: string };
+
+/**
+ * `u/{user}/a/{avatar}/{variant}/avatar.{ext}`: an account avatar (M6-2). A new avatar gets a new id, so keys stay
+ * immutable. The ids come from the session and the server, never from the request.
+ */
+export function avatarObjectKey(parts: AvatarKeyParts): string {
+  assertUuid(parts.avatarId, "avatar id");
+  if (!/^[a-z0-9]{1,32}$/.test(parts.variant)) throw new StorageError("InvalidKey", "Invalid variant in storage key");
+  if (!/^[a-z0-9]{1,8}$/.test(parts.ext)) throw new StorageError("InvalidKey", "Invalid extension in storage key");
+  const key = `${userPrefix(parts.userId)}a/${parts.avatarId}/${parts.variant}/avatar.${parts.ext}`;
+  assertStorageKey(key);
+  return key;
+}

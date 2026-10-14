@@ -28,9 +28,11 @@ async function planOf(tx: TenantTx, organizationId: string): Promise<PlanKey> {
 /**
  * What counts towards each limit.
  *  - sites: a deleted site no longer does.
- *  - storage: the declared size of every upload that is not `failed`. A `pending` one counts from the moment it is
- *    requested (a reservation: `completeUpload` only accepts an object of exactly that size), a trashed one until the
- *    purge removes its object. A failed upload, and one the cleanup has expired, gives its bytes back.
+ *  - storage: every upload that is not `failed`, its original and its variants (M6-2). A `pending` one counts its
+ *    declared size from the moment it is requested (a reservation: `completeUpload` only accepts an object of exactly
+ *    that size); its variants count from the moment it becomes `ready`, when their real sizes are checked here. A
+ *    trashed one counts until the purge removes its objects. A failed upload, and one the cleanup has expired, gives
+ *    its bytes back.
  */
 async function usage(tx: TenantTx, organizationId: string, key: LimitKey): Promise<number> {
   switch (key) {
@@ -40,7 +42,7 @@ async function usage(tx: TenantTx, organizationId: string, key: LimitKey): Promi
     }
     case "storage": {
       const [row] = await tx
-        .select({ bytes: sql<string>`coalesce(sum(${mediaAssets.sizeBytes}), 0)::bigint` })
+        .select({ bytes: sql<string>`coalesce(sum(${mediaAssets.sizeBytes} + ${mediaAssets.variantBytes}), 0)::bigint` })
         .from(mediaAssets)
         .where(and(eq(mediaAssets.organizationId, organizationId), ne(mediaAssets.status, "failed")));
       return Number(row?.bytes ?? 0);

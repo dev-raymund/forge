@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, index, integer, jsonb, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { id, oneOf, siteColumns, softDelete, tenantPolicy, textEnum, timestamps } from "@/platform/db/columns";
 import { users } from "@/modules/auth/schema";
 import { siteForeignKey } from "@/modules/sites/schema";
@@ -25,6 +25,11 @@ export const mediaFolders = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * One stored derivative of an image (M6-2): `key` is its name (`thumb`, `w800`, …). While the upload is being
+ * processed the list holds the planned objects (`sizeBytes` 0), so every key ever written is on the row before it
+ * is written; when the upload is `ready`, their real sizes.
+ */
 export type MediaVariant = {
   key: string;
   format: "webp";
@@ -59,6 +64,14 @@ export const mediaAssets = pgTable(
     altText: text("alt_text").notNull().default(""),
     caption: text("caption").notNull().default(""),
     variants: jsonb("variants").$type<MediaVariant[]>().notNull().default([]),
+    /** The stored variants' bytes (M6-2): they count towards the storage limit with `size_bytes`. */
+    variantBytes: bigint("variant_bytes", { mode: "number" }).notNull().default(0),
+    /**
+     * A completion processing this upload holds it (M6-2): one at a time. The hold outlasts any function's run, so a
+     * live completion never loses it; a crashed one's runs out and the next completion takes over.
+     */
+    processingToken: uuid("processing_token"),
+    processingUntil: timestamp("processing_until", { withTimezone: true }),
     uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps(),
     ...softDelete(),
