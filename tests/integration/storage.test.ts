@@ -175,7 +175,7 @@ describe.each(makers)("StorageDriver contract: %s", (_name, make) => {
       const key = keyFor(ORG_A, "png");
       const target = await driver.createUpload({ key, contentType: "image/png", contentLength: png.byteLength, expiresInSeconds: 300 });
       expect(target.kind).toBe("presigned-put");
-      expect(target.headers).toEqual({ "content-type": "image/png" });
+      expect(target.headers).toEqual({ "content-type": "image/png", "if-none-match": "*" });
       expect(target.expiresAt.getTime()).toBeGreaterThan(Date.now());
       expect(await driver.head(key)).toBeNull(); // nothing exists until the client uploads
 
@@ -183,6 +183,19 @@ describe.each(makers)("StorageDriver contract: %s", (_name, make) => {
       expect(res.status).toBe(200);
       expect(await driver.head(key)).toEqual({ size: png.byteLength, contentType: "image/png" });
       expect(await driver.readRange(key, 0, 7)).toEqual(png.subarray(0, 8)); // the PNG signature
+    });
+
+    it("creates the object once: the same target again (a retry, a reused link) is refused and changes nothing (M6-1)", async () => {
+      const key = keyFor(ORG_A, "png");
+      const target = await driver.createUpload({ key, contentType: "image/png", contentLength: png.byteLength, expiresInSeconds: 300 });
+      expect((await upload(target, png)).status).toBe(200);
+      const other = new Uint8Array(png.byteLength).fill(0x3c); // same size and type, other bytes
+      expect((await upload(target, other)).status).toBe(412);
+      expect(await driver.readRange(key, 0, png.byteLength - 1)).toEqual(png);
+      // Leaving out the header does not get round it: on S3 it is signed, and the local route never overwrites.
+      const withoutCondition = Object.fromEntries(Object.entries(target.headers).filter(([name]) => name !== "if-none-match"));
+      expect([403, 412]).toContain((await upload(target, other, withoutCondition)).status);
+      expect(await driver.readRange(key, 0, png.byteLength - 1)).toEqual(png);
     });
 
     it("rejects a body of a different length, and stores nothing", async () => {

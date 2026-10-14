@@ -148,14 +148,15 @@ export class S3StorageDriver implements StorageDriver {
           Key: input.key,
           ContentType: input.contentType,
           ContentLength: input.contentLength,
+          IfNoneMatch: "*", // create only, as `put`: a retried or reused target never replaces the object
         }),
-        // Both headers are part of the signature: another type or size is rejected by the store.
-        { expiresIn: input.expiresInSeconds, signableHeaders: new Set(["content-type", "content-length"]) },
+        // These headers are part of the signature: another type, size, or an overwrite is rejected by the store.
+        { expiresIn: input.expiresInSeconds, signableHeaders: new Set(["content-type", "content-length", "if-none-match"]) },
       );
       return {
         kind: "presigned-put",
         url,
-        headers: { "content-type": input.contentType },
+        headers: { "content-type": input.contentType, "if-none-match": "*" },
         expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
       };
     } catch (err) {

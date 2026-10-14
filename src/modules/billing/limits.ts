@@ -1,7 +1,7 @@
 import "server-only";
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, isNull, ne, sql } from "drizzle-orm";
 import type { TenantTx } from "@/platform/db";
-import { organizations, sites } from "@/platform/db/schema";
+import { mediaAssets, organizations, sites } from "@/platform/db/schema";
 import { limitExceeded } from "@/platform/errors";
 import { hasRoomFor, limitMessage, PLANS, type Allowance, type LimitKey, type PlanKey } from "./plans";
 import { subscriptions } from "./schema";
@@ -25,12 +25,25 @@ async function planOf(tx: TenantTx, organizationId: string): Promise<PlanKey> {
   return row?.plan ?? "free";
 }
 
-/** What counts towards each limit. A deleted site no longer does. */
+/**
+ * What counts towards each limit.
+ *  - sites: a deleted site no longer does.
+ *  - storage: the declared size of every upload that is not `failed`. A `pending` one counts from the moment it is
+ *    requested (a reservation: `completeUpload` only accepts an object of exactly that size), a trashed one until the
+ *    purge removes its object. A failed upload, and one the cleanup has expired, gives its bytes back.
+ */
 async function usage(tx: TenantTx, organizationId: string, key: LimitKey): Promise<number> {
   switch (key) {
     case "sites": {
       const [row] = await tx.select({ n: count() }).from(sites).where(and(eq(sites.organizationId, organizationId), isNull(sites.deletedAt)));
       return row?.n ?? 0;
+    }
+    case "storage": {
+      const [row] = await tx
+        .select({ bytes: sql<string>`coalesce(sum(${mediaAssets.sizeBytes}), 0)::bigint` })
+        .from(mediaAssets)
+        .where(and(eq(mediaAssets.organizationId, organizationId), ne(mediaAssets.status, "failed")));
+      return Number(row?.bytes ?? 0);
     }
   }
 }
@@ -42,16 +55,17 @@ export async function allowanceOf(tx: TenantTx, organizationId: string, key: Lim
 }
 
 /**
- * Throws `LimitExceeded` when the organization has no room for one more.
+ * Throws `LimitExceeded` when the organization has no room for `amount` more:
+ * one more site, or this many more bytes of storage.
  *
  * Call it in the transaction that creates the thing, before creating it. It
  * locks the organization's row first, so two creations in one organization
  * take turns: the second counts what the first committed, and two requests
- * can never both take the last place.
+ * can never both take the last place (or the last bytes).
  */
-export async function assertLimit(tx: TenantTx, organizationId: string, key: LimitKey): Promise<Allowance> {
+export async function assertLimit(tx: TenantTx, organizationId: string, key: LimitKey, amount = 1): Promise<Allowance> {
   await tx.execute(sql`select 1 from ${organizations} where ${organizations.id} = ${organizationId} for update`);
   const allowance = await allowanceOf(tx, organizationId, key);
-  if (!hasRoomFor(allowance)) throw limitExceeded(key, limitMessage(allowance));
+  if (!hasRoomFor(allowance, amount)) throw limitExceeded(key, limitMessage(allowance));
   return allowance;
 }

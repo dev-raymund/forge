@@ -30,6 +30,8 @@ export async function handleLocalUpload(request: Request, key: string): Promise<
       return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { "content-type": "application/json" } });
     }
     if (isStorageError(err, "PermissionDenied")) return new Response(null, { status: 403 });
+    // The object exists already: S3 answers a create-only PUT this way.
+    if (isStorageError(err, "AlreadyExists")) return new Response(null, { status: 412 });
     return problemResponse(isStorageError(err) ? storageErrorToAppError(err) : err, requestId);
   }
 }

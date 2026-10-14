@@ -30,10 +30,11 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "term.created": { taxonomy: "category", name: "Bread", slug: "bread" },
   "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
   "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
+  "media.uploaded": { kind: "image", filename: "Team photo.jpg", sizeBytes: 482_113 },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7 and the three of M5-8, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8 and the one of M6-1, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -43,14 +44,15 @@ describe("the audit vocabulary", () => {
         "entry.created", "entry.published", "site.homepage_changed",
         "entry.moved", "entry.reordered", "entry.author_changed",
         "term.created", "term.updated", "term.deleted",
+        "media.uploaded",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
   });
 
-  it("every event is about an organization, a membership, an invitation, a site or an entry, and has a name for the filter list", () => {
+  it("every event is about an organization, a membership, an invitation, a site, an entry, a term or a media item, and has a name for the filter list", () => {
     for (const action of AUDIT_ACTIONS) {
-      expect(["organization", "membership", "invitation", "site", "entry", "term"], action).toContain(AUDIT_EVENTS[action].resourceType);
+      expect(["organization", "membership", "invitation", "site", "entry", "term", "media"], action).toContain(AUDIT_EVENTS[action].resourceType);
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
@@ -134,6 +136,9 @@ describe("what is stored with an event", () => {
       ["term.updated", { taxonomy: "tag", name: "X", slug: "x", fields: [] }],
       ["term.updated", { taxonomy: "tag", name: "X", slug: "x", fields: ["colour"] }],
       ["term.deleted", { taxonomy: "tag", name: "X", slug: "x", posts: -1, drafts: 0 }],
+      ["media.uploaded", { kind: "video", filename: "x.mp4", sizeBytes: 1 }],
+      ["media.uploaded", { kind: "image", filename: "", sizeBytes: 1 }],
+      ["media.uploaded", { kind: "image", filename: "x.png", sizeBytes: 0 }],
     ];
     for (const [action, metadata] of invalid) expect(() => sanitizeMetadata(action, metadata), `${action} ${JSON.stringify(metadata)}`).toThrow(AuditEventError);
   });
@@ -206,6 +211,8 @@ describe("an event as a sentence", () => {
     );
     expect(say("term.updated", { taxonomy: "category", name: "Bread", slug: "bread", fields: ["description", "parent"] })).toBe("Raymund changed the category Bread: description, parent.");
     expect(say("term.deleted", { taxonomy: "category", name: "Bread", slug: "bread", posts: 1, drafts: 0 })).toBe("Raymund deleted the category Bread, which was on 1 published post and 0 drafts.");
+    expect(say("media.uploaded", { kind: "image", filename: "Team photo.jpg", sizeBytes: 1 })).toBe("Raymund uploaded the image Team photo.jpg.");
+    expect(say("media.uploaded", { kind: "document", filename: "Menu.pdf", sizeBytes: 1 })).toBe("Raymund uploaded the PDF Menu.pdf.");
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {

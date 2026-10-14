@@ -119,10 +119,10 @@ describe("migration 0005 on a database that already has content", () => {
     const folder = await mkdtemp(path.join(tmpdir(), "forge-migrations-"));
     try {
       await admin.query(`create database "${database}"`);
-      // The migrations as they were before M5-2 (0000–0004): the journal without its last entry.
+      // The migrations as they were before M5-2 (0000–0004): the journal up to 0005, without it or anything after it.
       const journal = JSON.parse(await readFile(path.join(MIGRATIONS, "meta/_journal.json"), "utf8")) as { entries: { tag: string }[] };
-      const before = { ...journal, entries: journal.entries.filter((entry) => entry.tag !== "0005_entries_root_path") };
-      expect(before.entries).toHaveLength(journal.entries.length - 1);
+      const before = { ...journal, entries: journal.entries.slice(0, journal.entries.findIndex((entry) => entry.tag === "0005_entries_root_path")) };
+      expect(before.entries.map((entry) => entry.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004"]);
       await mkdir(path.join(folder, "meta"));
       await writeFile(path.join(folder, "meta/_journal.json"), JSON.stringify(before));
       for (const entry of before.entries) await copyFile(path.join(MIGRATIONS, `${entry.tag}.sql`), path.join(folder, `${entry.tag}.sql`));

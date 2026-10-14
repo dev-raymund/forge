@@ -1,8 +1,12 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
 import { changeAuthor, createEntry, createTerm, deleteTerm, movePage, placePage, publishEntry, setHomepage, updateTerm } from "@/modules/content";
+import { completeUpload, requestUploads } from "@/modules/media";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
@@ -13,6 +17,9 @@ import {
 import * as t from "@/platform/db/schema";
 import { withPlatform, withTenant, withUser, type TenantTx } from "@/platform/db/tenant";
 import { jobs } from "@/platform/jobs/schema";
+import { platformStorage } from "@/platform/storage";
+import { setStorageDriverForTests } from "@/platform/storage/get-driver";
+import { LocalStorageDriver } from "@/platform/storage/providers/local";
 import { dbError, PG } from "../fixtures/db-error";
 import { asOwner, whileFailing } from "../fixtures/db-failure";
 import { createSite, createUser } from "../fixtures/factories";
@@ -222,7 +229,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -261,6 +268,19 @@ describe("every change writes its line, in the same transaction", () => {
     const { term } = await createTerm(siteCtx, { taxonomy: "tag", name: "Covered" });
     await updateTerm(siteCtx, term.id, { name: "Covered again" });
     await deleteTerm(siteCtx, term.id);
+    // M6-1: an upload, the browser's PUT played by a direct write (its own tests are tests/integration/media-uploads.test.ts).
+    const storageRoot = mkdtempSync(path.join(os.tmpdir(), "forge-audit-"));
+    setStorageDriverForTests(new LocalStorageDriver({ root: storageRoot, appOrigin: () => "http://localhost:3000", publicBaseUrl: () => "" }));
+    try {
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const { uploads } = await requestUploads(siteCtx, [{ name: "covered.png", size: png.byteLength, type: "image/png" }]);
+      const [row] = await withTenant({ orgId: a.org.id }, (tx) => tx.select({ key: t.mediaAssets.storageKey }).from(t.mediaAssets).where(eq(t.mediaAssets.id, uploads[0]!.mediaId)));
+      await platformStorage().put(row!.key, png, { contentType: "image/png" });
+      expect((await completeUpload(siteCtx, uploads[0]!.mediaId)).status).toBe("ready");
+    } finally {
+      setStorageDriverForTests(null);
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
     await deleteSite(await resolveSiteContext(a.actor, a.org.slug, site.slug));
     await transferOwnership(ctx, { memberId: one.memberId });
     expect(new Set(await actionsOf(a.org.id))).toEqual(new Set(AUDIT_ACTIONS));
@@ -734,10 +754,12 @@ describe("pages of activity", () => {
 
   it("the query reads the log through its index: newest-first for one organization, without sorting the table", async () => {
     const a = await newTenant();
-    await seed(a.ctx, 5);
-    // The plan depends on the table's statistics, which autovacuum refreshes whenever it likes while the suite writes
-    // audit rows (M5-8's term tests write many). The plan once came out differently in a full run (not reproduced
-    // since; the assertions now print it). Fresh statistics make the question this test asks the same on every run.
+    // More events than a page: the case the index is for. With only a few (this test seeded 5 until M6-1), the plan was a
+    // near tie, measured at 15.74 against 15.58 for the other index on `organization_id` plus a sort of five rows, and
+    // statistics decided it: the test failed now and then in full runs (M5-8, M6-1). With a page's worth to skip, the
+    // ordered scan stops after 26 rows and wins clearly (measured 17.59 against 39.76).
+    await seed(a.ctx, 60);
+    // Fresh statistics: autovacuum refreshes them whenever it likes while the suite writes audit rows.
     await asOwner((owner) => owner.query("analyze audit_logs"));
     const plan = await withTenant({ orgId: a.org.id, userId: a.user.id }, async (tx) => {
       // A small table would be scanned whole whatever its indexes are. What is asked here is whether the index CAN serve the order.

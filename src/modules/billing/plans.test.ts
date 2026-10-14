@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { countOf, hasRoomFor, limitMessage, PLANS, type Allowance } from "./plans";
+import { countOf, formatBytes, hasRoomFor, limitMessage, PLANS, type Allowance } from "./plans";
 
-describe("the plans' site limits (plan §14)", () => {
-  it("Free: 1 site. Pro, and the Pro trial: 5", () => {
-    expect(PLANS.free).toEqual({ label: "Free", limits: { sites: 1 } });
-    expect(PLANS.pro).toEqual({ label: "Pro", limits: { sites: 5 } });
+const GB = 1024 ** 3;
+
+describe("the plans' limits (plan §14)", () => {
+  it("Free: 1 site and 1 GB. Pro, and the Pro trial: 5 sites and 20 GB", () => {
+    expect(PLANS.free).toEqual({ label: "Free", limits: { sites: 1, storage: GB } });
+    expect(PLANS.pro).toEqual({ label: "Pro", limits: { sites: 5, storage: 20 * GB } });
     expect(Object.isFrozen(PLANS)).toBe(true);
   });
 
@@ -15,10 +17,27 @@ describe("the plans' site limits (plan §14)", () => {
     expect([hasRoomFor(allowance(0, "free")), hasRoomFor(allowance(1, "free")), hasRoomFor(allowance(3, "free"))]).toEqual([true, false, false]);
   });
 
+  it("storage: room for these bytes only if they fit, up to the last byte", () => {
+    const allowance = (used: number): Allowance => ({ plan: "free", key: "storage", used, limit: GB });
+    expect(hasRoomFor(allowance(0), GB)).toBe(true);
+    expect(hasRoomFor(allowance(GB - 10), 10)).toBe(true);
+    expect(hasRoomFor(allowance(GB - 10), 11)).toBe(false);
+    expect(hasRoomFor(allowance(GB + 1), 1)).toBe(false); // over it after a downgrade: nothing more
+  });
+
   it("says which plan and how many, in words", () => {
     expect(countOf("sites", 1)).toBe("1 site");
     expect(countOf("sites", 5)).toBe("5 sites");
+    expect(countOf("storage", 20 * GB)).toBe("20 GB of storage");
     expect(limitMessage({ plan: "free", key: "sites", used: 1, limit: 1 })).toBe("The Free plan includes 1 site, and this organization has reached it.");
     expect(limitMessage({ plan: "pro", key: "sites", used: 5, limit: 5 })).toBe("The Pro plan includes 5 sites, and this organization has reached it.");
+    expect(limitMessage({ plan: "free", key: "storage", used: 900 * 1024 ** 2, limit: GB })).toBe(
+      "The Free plan includes 1 GB of storage, and these files would take this organization past it (900 MB used).",
+    );
+  });
+
+  it("formats bytes the way people read them", () => {
+    expect([0, 1, 1023].map(formatBytes)).toEqual(["0 bytes", "1 byte", "1023 bytes"]);
+    expect([1024, 1536, 20 * 1024 ** 2, 1.5 * GB, GB].map(formatBytes)).toEqual(["1 KB", "1.5 KB", "20 MB", "1.5 GB", "1 GB"]);
   });
 });

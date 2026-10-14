@@ -1,0 +1,2 @@
+CREATE INDEX "media_assets_org_usage_idx" ON "media_assets" USING btree ("organization_id") WHERE status <> 'failed';--> statement-breakpoint
+CREATE INDEX "media_assets_unfinished_idx" ON "media_assets" USING btree ("created_at") WHERE status <> 'ready';

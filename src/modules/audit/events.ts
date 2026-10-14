@@ -170,6 +170,12 @@ export const AUDIT_EVENTS = {
     // What it was on: published posts, and drafts it was taken out of.
     metadata: z.object({ taxonomy, name: line(), slug: termSlug, posts: z.int().min(0), drafts: z.int().min(0) }),
   },
+  // M6-1: an upload accepted (its file checked). Requested uploads are reservations, not activity; refused ones leave nothing.
+  "media.uploaded": {
+    resourceType: "media",
+    label: "File uploaded",
+    metadata: z.object({ kind: z.enum(["image", "document"]), filename: line(255), sizeBytes: z.int().min(1) }),
+  },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
     resourceType: "site",
@@ -285,6 +291,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
       ? `${actor} renamed the ${m.taxonomy} ${m.previousName} to ${m.name}${m.previousSlug ? `, with the slug ${m.slug} instead of ${m.previousSlug}` : ""}.`
       : `${actor} changed the ${m.taxonomy} ${m.name}: ${m.fields.join(", ")}.`,
   "term.deleted": (actor, m) => `${actor} deleted the ${m.taxonomy} ${m.name}, which was on ${m.posts} published ${m.posts === 1 ? "post" : "posts"} and ${m.drafts} ${m.drafts === 1 ? "draft" : "drafts"}.`,
+  "media.uploaded": (actor, m) => `${actor} uploaded the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -314,6 +321,7 @@ const PLAIN: Record<AuditAction, string> = {
   "term.created": "created a category or tag",
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",
+  "media.uploaded": "uploaded a file",
 };
 
 /**

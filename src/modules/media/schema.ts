@@ -70,6 +70,10 @@ export const mediaAssets = pgTable(
       .on(t.siteId, t.createdAt.desc())
       .where(sql`deleted_at is null`),
     index("media_assets_site_folder_idx").on(t.siteId, t.folderId),
+    // M6-1: the storage limit sums an organization's uploads that still count (billing `assertLimit`)…
+    index("media_assets_org_usage_idx").on(t.organizationId).where(sql`status <> 'failed'`),
+    // …and `uploads.cleanup` finds the ones never completed, or refused, in every organization.
+    index("media_assets_unfinished_idx").on(t.createdAt).where(sql`status <> 'ready'`),
     oneOf("media_assets_kind_check", t.kind, MEDIA_KINDS),
     oneOf("media_assets_status_check", t.status, MEDIA_STATUSES),
     tenantPolicy("media_assets"),

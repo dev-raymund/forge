@@ -43,6 +43,20 @@
       "when": 1791779357358,
       "tag": "0005_entries_root_path",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791933746203,
+      "tag": "0006_media_upload_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791933765140,
+      "tag": "0007_uploads_cleanup_lookup",
+      "breakpoints": true
     }
   ]
 }

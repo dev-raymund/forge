@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { link, mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { link, mkdir, open, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { CreateUploadInput, ObjectInfo, PutOptions, StorageDriver, UploadTarget } from "../driver";
@@ -47,7 +47,8 @@ export class LocalStorageDriver implements StorageDriver {
     throw new StorageError("Unavailable", `Local storage ${action} failed`, errno(err));
   }
 
-  private async write(key: string, body: Uint8Array, options: PutOptions, replace: boolean): Promise<void> {
+  /** Writes a new object. Create only: keys are immutable, and an upload target creates its object once. */
+  private async write(key: string, body: Uint8Array, options: PutOptions): Promise<void> {
     const objectPath = this.locate(key, "objects");
     const metaPath = this.locate(key, "meta");
     const meta: Meta = { contentType: options.contentType, size: body.byteLength, cacheControl: options.cacheControl, contentDisposition: options.contentDisposition };
@@ -56,12 +57,8 @@ export class LocalStorageDriver implements StorageDriver {
       await mkdir(path.dirname(objectPath), { recursive: true });
       await mkdir(path.dirname(metaPath), { recursive: true });
       await writeFile(temp, body);
-      if (replace) {
-        await rename(temp, objectPath);
-      } else {
-        // link() fails if the target exists: an atomic "create only".
-        await link(temp, objectPath).finally(() => unlink(temp).catch(() => undefined));
-      }
+      // link() fails if the target exists: an atomic "create only".
+      await link(temp, objectPath).finally(() => unlink(temp).catch(() => undefined));
       await writeFile(metaPath, JSON.stringify(meta));
     } catch (err) {
       await unlink(temp).catch(() => undefined);
@@ -71,7 +68,7 @@ export class LocalStorageDriver implements StorageDriver {
   }
 
   async put(key: string, body: Uint8Array, options: PutOptions): Promise<void> {
-    await this.write(key, body, options, false);
+    await this.write(key, body, options);
   }
 
   async head(key: string): Promise<ObjectInfo | null> {
@@ -175,7 +172,8 @@ export class LocalStorageDriver implements StorageDriver {
     return {
       kind: "presigned-put",
       url: `${this.config.appOrigin()}${LOCAL_UPLOAD_ROUTE}/${input.key}?${query}`,
-      headers: { "content-type": input.contentType },
+      // As the S3 driver's: the client sends the same headers to either.
+      headers: { "content-type": input.contentType, "if-none-match": "*" },
       expiresAt: new Date(expires * 1000),
     };
   }
@@ -183,8 +181,9 @@ export class LocalStorageDriver implements StorageDriver {
   /**
    * The receiving end of `createUpload`, called by the upload route. Accepts
    * the bytes only if the signature is valid and unexpired and the content
-   * type and length are exactly the signed ones. Overwrites, as a presigned
-   * PUT does.
+   * type and length are exactly the signed ones. Creates the object once, as
+   * the S3 driver's target does (`If-None-Match: *`): a second PUT, a retry
+   * included, is `AlreadyExists` and changes nothing.
    */
   async receiveUpload(key: string, query: URLSearchParams, contentType: string | null, body: Uint8Array): Promise<void> {
     assertStorageKey(key);
@@ -199,6 +198,6 @@ export class LocalStorageDriver implements StorageDriver {
     if (!Number.isFinite(expires) || expires * 1000 < Date.now()) throw new StorageError("PermissionDenied", "Upload link expired");
     if (contentType !== type) throw new StorageError("UploadFailed", "Content-Type does not match the signed upload");
     if (body.byteLength !== size) throw new StorageError("UploadFailed", "Content-Length does not match the signed upload");
-    await this.write(key, body, { contentType: type }, true);
+    await this.write(key, body, { contentType: type });
   }
 }

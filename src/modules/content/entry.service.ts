@@ -11,7 +11,7 @@ import type { StoredDocument } from "./document/schema";
 import { DRAFT_CHANGED } from "./messages";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "./paths";
 import { canAssignTerms, canChangeAuthor, canCreateEntry, canCreditOthers, canUpdateEntry, type EntryRef } from "./policies";
-import { assertNewReferences } from "./references";
+import { assertNewReferences, assertUsableImages } from "./references";
 import {
   findDraft, findEntry, insertDraft, insertEntry, isMember, memberName, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, updateEntry, type EntryRow,
 } from "./repository";
@@ -152,8 +152,8 @@ export async function createHomePage(tx: TenantTx, ctx: OrgContext, site: { id: 
  * What is checked, besides who may: the document (closed schema, 1 MB, 2,000
  * nodes); a slug someone typed (used as typed, or refused: never suffixed;
  * not a reserved path); fields the type does not have; terms (each one a term
- * of this site, of a taxonomy the type uses); the featured image (of this site:
- * the composite key).
+ * of this site, of a taxonomy the type uses); the featured image (a ready image
+ * of this site, M6-1; the composite key besides).
  */
 export async function saveDraft(ctx: SiteContext, entryId: string, expectedVersion: number, input: DraftInput): Promise<{ version: number }> {
   const version = parseInput(versionSchema, expectedVersion);
@@ -176,7 +176,14 @@ export async function saveDraft(ctx: SiteContext, entryId: string, expectedVersi
     if (draft.title !== undefined) values.title = draft.title;
     if (draft.excerpt !== undefined) values.excerpt = draft.excerpt;
     if (draft.template !== undefined) values.template = draft.template;
-    if (draft.featuredMediaId !== undefined) values.featuredMediaId = draft.featuredMediaId;
+    if (draft.featuredMediaId !== undefined) {
+      // A new featured image must be a ready image of this site (M6-1: uploads can be pending or refused). One that was
+      // already there is not checked again, as the document's images.
+      if (draft.featuredMediaId && draft.featuredMediaId !== (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.featuredMediaId) {
+        await assertUsableImages(tx, ctx, [draft.featuredMediaId], { featuredMediaId: ["Choose an image of this site."] });
+      }
+      values.featuredMediaId = draft.featuredMediaId;
+    }
     if (draft.content !== undefined) {
       const parsed = parseDocument(draft.content);
       if (!parsed.ok) throw validationError({ content: [documentProblem(parsed)] });

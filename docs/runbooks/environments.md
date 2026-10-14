@@ -133,10 +133,10 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
 2. CORS on each bucket for presigned uploads from the app:
 
    ```json
-   [{ "AllowedOrigins": ["https://cms.forgelinetechnologies.com"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["content-type", "content-length"], "MaxAgeSeconds": 3600 }]
+   [{ "AllowedOrigins": ["https://cms.forgelinetechnologies.com"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["content-type", "content-length", "if-none-match"], "MaxAgeSeconds": 3600 }]
    ```
 
-   Add the preview origin(s) you test uploads from to the preview bucket.
+   Add the preview origin(s) you test uploads from to the preview bucket. `if-none-match` is signed into every upload target, so that an upload creates its file once and never replaces one (M6-1, ADR 0008 addendum).
 3. An API token scoped to these buckets only (Object Read & Write) → `STORAGE_ACCESS_KEY_ID` / `STORAGE_SECRET_ACCESS_KEY`.
 4. In Vercel, set the storage variables for Production and Preview (ADR 0008):
    - `STORAGE_BUCKET`
@@ -144,12 +144,13 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
    - `STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY`
    - `STORAGE_REGION` can stay unset (`auto`), and so can `STORAGE_DRIVER`: on Vercel the driver is S3.
    - Until these are set, readiness reports the `storage` group as invalid.
-5. Before first use, run the storage contract against a test bucket:
+5. Before first use, run the storage contract and the upload protocol against a test bucket:
    ```sh
    TEST_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com TEST_S3_BUCKET=forge-media-preview \
    TEST_S3_ACCESS_KEY_ID=<id> TEST_S3_SECRET_ACCESS_KEY=<secret> \
-   npm run test:integration -- tests/integration/storage.test.ts
+   npm run test:integration -- tests/integration/storage.test.ts tests/integration/media-uploads.test.ts
    ```
+   Until this has passed, R2's handling of the signed `If-None-Match` and of the signed size on a presigned PUT is assumed, not verified (only RustFS has been exercised).
 
 Local development needs none of this: the local driver stores files in `.storage/`.
 

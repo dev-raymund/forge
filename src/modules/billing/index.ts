@@ -10,7 +10,7 @@ import { subscriptions } from "./schema";
  */
 
 export { allowanceOf, assertLimit } from "./limits";
-export { countOf, hasRoomFor, limitMessage, PLANS } from "./plans";
+export { countOf, formatBytes, hasRoomFor, limitMessage, PLANS } from "./plans";
 export type { Allowance, LimitKey, Plan, PlanKey } from "./plans";
 
 export const TRIAL_DAYS = 14;

@@ -1,5 +1,6 @@
 import type { Actor } from "@/modules/auth/shared";
 import { canPublishEntry, canUpdateEntry, submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "@/modules/content";
+import { completeUpload, requestUploads, submitCompleteUpload, submitRequestUploads } from "@/modules/media";
 import {
   listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
 } from "@/modules/sites";
@@ -10,6 +11,7 @@ import {
   submitTransferOwnership, transferOwnership, updateOrganization,
   type FormOutcome, type OrgContext, type OwnedResource, type OwnScope, type Permission,
 } from "@/modules/tenancy";
+import { AppError, type ActionResult } from "@/platform/errors";
 
 /**
  * Registry of operations that take an identifier from the caller, for the
@@ -52,6 +54,8 @@ export type Foreign = {
   invitationId: string;
   /** A page of B's site (M5-3). */
   entryId: string;
+  /** A media item of B's site, uploaded by B's Owner (M6-1). */
+  mediaId: string;
 };
 
 export type TenantOperation = {
@@ -79,7 +83,26 @@ export const tenantOperations: TenantOperation[] = [
   { name: "tenancy.revokeInvitation(B's invitation)", run: ({ ctx }, b) => revokeInvitation(ctx, { invitationId: b.invitationId }) },
   { name: "tenancy.revokeInvitation(B's member id as the invitation id)", run: ({ ctx }, b) => revokeInvitation(ctx, { invitationId: b.memberId }) },
   { name: "tenancy.acceptInvitation(B's invitation id as the token)", run: ({ actor }, b) => acceptInvitation(actor, b.invitationId) },
+
+  // Uploads (M6-1): finishing B's upload from A's site; starting one on B's site, named from A's URL or B's.
+  { name: "media.completeUpload(A's site, B's media)", run: async ({ actor, orgSlug, siteSlug }, b) => completeUpload(await resolveSiteContext(actor, orgSlug, siteSlug), b.mediaId) },
+  { name: "media.completeUpload(A's site, B's site id as the media)", run: async ({ actor, orgSlug, siteSlug }, b) => completeUpload(await resolveSiteContext(actor, orgSlug, siteSlug), b.siteId) },
+  { name: "media.requestUploads(A's slug, B's site)", run: async ({ actor, orgSlug }, b) => requestUploads(await resolveSiteContext(actor, orgSlug, b.siteSlug), [UPLOAD]) },
+  // The Server Actions answer with a result instead of throwing: their refusal, rethrown as what it says.
+  { name: "media.submitCompleteUpload(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitCompleteUpload(actor, orgSlug, siteSlug, b.mediaId)) },
+  { name: "media.submitCompleteUpload(B's slug, B's site, B's media)", run: ({ actor }, b) => refused(submitCompleteUpload(actor, b.orgSlug, b.siteSlug, b.mediaId)) },
+  { name: "media.submitRequestUploads(B's slug, B's site)", run: ({ actor }, b) => refused(submitRequestUploads(actor, b.orgSlug, b.siteSlug, [UPLOAD])) },
+  { name: "media.submitRequestUploads(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => refused(submitRequestUploads(actor, orgSlug, b.siteId, [UPLOAD])) },
 ];
+
+const UPLOAD = { name: "photo.png", size: 1_024, type: "image/png" };
+
+/** An action's refusal as the `AppError` it stands for; a success is returned (and fails a check that expects a refusal). */
+async function refused<T>(result: Promise<ActionResult<T>>): Promise<T> {
+  const answer = await result;
+  if (answer.ok) return answer.data;
+  throw new AppError(answer.code === "Internal" ? "Unavailable" : answer.code, answer.error);
+}
 
 /**
  * Operations that take no identifier at all: their target is the caller's own
@@ -116,6 +139,20 @@ export const contextBoundOperations: { name: string; run: (caller: Caller, forei
       );
       if (outcome.state.status !== "success") throw new Error(`expected the site to be created in A: ${JSON.stringify(outcome.state)}`);
       return outcome;
+    },
+  },
+  // Uploads (M6-1): a file described with B's organization, site, media id and a key in B's prefix is still A's,
+  // on A's site, under a key made by the server.
+  {
+    name: "media.requestUploads(A's site, file fields naming B)",
+    run: async ({ actor, orgSlug, siteSlug }, b) => {
+      const ctx = await resolveSiteContext(actor, orgSlug, siteSlug);
+      const file = { ...UPLOAD, organizationId: b.orgId, siteId: b.siteId, mediaId: b.mediaId, id: b.mediaId, key: `o/${b.orgId}/s/${b.siteId}/m/${b.mediaId}/v1/original/x.png`, storageKey: `o/${b.orgId}/s/${b.siteId}/x.png` };
+      const { uploads } = await requestUploads(ctx, [file]);
+      if (uploads.length !== 1 || uploads[0]!.mediaId === b.mediaId || !uploads[0]!.upload.url.includes(`o/${ctx.org.id}/s/${ctx.site.id}/m/${uploads[0]!.mediaId}/`)) {
+        throw new Error(`expected an upload of A's own: ${JSON.stringify(uploads)}`);
+      }
+      return uploads;
     },
   },
   // Members and invitations (M3-4).

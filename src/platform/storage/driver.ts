@@ -57,7 +57,10 @@ export interface StorageDriver {
   /** Removes an object. Deleting a missing object is not an error. */
   delete(key: string): Promise<void>;
 
-  /** A short-lived target for a direct browser upload of exactly `contentLength` bytes of `contentType`. */
+  /**
+   * A short-lived target for a direct browser upload of exactly `contentLength` bytes of `contentType`. It creates
+   * the object once: a second PUT to it (a retry, a reused link) is refused and changes nothing (M6-1).
+   */
   createUpload(input: CreateUploadInput): Promise<UploadTarget>;
 
   /** The public URL of an object, independent of where it is stored. */

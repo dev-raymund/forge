@@ -97,3 +97,19 @@ The contract suite also found and fixed two driver bugs: an invalid key reported
 - The local driver is for development only. On Vercel the default is S3, and missing settings are reported instead of silently writing to an ephemeral disk.
 - Real Cloudflare R2 has not been exercised yet (no account). R2's S3 API supports everything used here: conditional puts, range reads, and presigned PUTs with signed headers. The first deployment should run the contract suite against a test bucket there:
   `TEST_S3_ENDPOINT=… TEST_S3_BUCKET=… TEST_S3_ACCESS_KEY_ID=… TEST_S3_SECRET_ACCESS_KEY=… npm run test:integration -- tests/integration/storage.test.ts`.
+
+## Addendum (M6-1, 2026-10-15): upload targets create their object once; the development route is gone
+
+The upload protocol (ADR 0020) uses `createUpload`, `head` and `readRange` as decided here. The interface does not change. One behaviour of `createUpload` does:
+
+- **A target creates its object once.** The S3 driver signs `If-None-Match: *` into the presigned PUT, as `put` already sent it. The target's `headers` now hold `{ "content-type", "if-none-match": "*" }`, and the client sends them as given.
+  - A second PUT to the same target is refused with 412: a retry, or the same link reused within its 10 minutes with other bytes of the same size and type.
+  - So is a PUT without the header, because the header is part of the signature.
+  - The local driver's upload route never overwrites either. It answers 412 when the object exists, as S3 does.
+  - Before this, a presigned PUT overwrote, so the uploader could replace a file after `completeUpload` had checked it.
+- **The `/api/dev/storage` route is deleted**, as M1-5's hand-off asked. It issued targets for a fixed development tenant to any caller in development. Targets now come only from `requestUploads`, which checks the session, the membership, `media.upload` and the storage limit.
+- **Contract suite:** 47 tests. It now checks, against both drivers, that a target is refused a second time and the first file is kept. RustFS honours the signed `If-None-Match` on a presigned PUT.
+- **Real R2:** that R2 honours it on a presigned PUT is not verified (no account). The runbook's CORS rule gains `if-none-match` in `AllowedHeaders`, because a browser's PUT carrying it is preflighted. The first deployment's contract run against a test bucket covers both.
+- **E2E:** `tests/e2e/storage.spec.ts` checks what a browser can reach without a session:
+  - the development route answers 404;
+  - the local upload route refuses an unsigned or forged PUT (403) and malformed keys (422).

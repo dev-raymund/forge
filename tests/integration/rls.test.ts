@@ -236,6 +236,32 @@ describe("token lookups (SECURITY DEFINER, owned by forge_lookup)", () => {
   });
 });
 
+describe("the uploads.cleanup lookup (SECURITY DEFINER, owned by forge_lookup; M6-1)", () => {
+  const lookup = (before: Date, limit = 1000) =>
+    withPlatform(async (tx) => (await tx.execute(sql`select * from organizations_with_unfinished_uploads(${before.toISOString()}::timestamptz, ${limit})`)).rows);
+
+  it("names the organizations with an upload not ready before the cutoff, and nothing else: organization ids only", async () => {
+    // A's graph media is `ready`: A is not named. One pending upload of B's is.
+    expect((await lookup(new Date(Date.now() + 3_600_000))).map((row) => row.organization_id)).not.toContain(A.org.id);
+    const [pending] = await withTenant({ orgId: B.org.id }, (tx) =>
+      tx
+        .insert(t.mediaAssets)
+        .values({
+          organizationId: B.org.id, siteId: B.site.id, kind: "image", status: "pending", storageKey: `o/${B.org.id}/s/${B.site.id}/m/${uuidv7()}/v1/original/x.png`,
+          originalFilename: "x.png", mimeType: "image/png", sizeBytes: 10, uploadedBy: B.user.id,
+        })
+        .returning(),
+    );
+    const later = await lookup(new Date(Date.now() + 3_600_000));
+    expect(later).toContainEqual({ organization_id: B.org.id });
+    expect(Object.keys(later[0]!)).toEqual(["organization_id"]);
+    expect(await lookup(new Date(Date.now() - 3_600_000))).not.toContainEqual({ organization_id: B.org.id }); // too recent
+    // Without the function, a context with no organization still sees no media rows at all.
+    expect(await orgIdsVisible("media_assets")).toEqual([]);
+    await withTenant({ orgId: B.org.id }, (tx) => tx.execute(sql`delete from media_assets where id = ${pending!.id}`));
+  });
+});
+
 describe("append-only tables", () => {
   it("audit_logs rejects UPDATE and DELETE for the runtime role", async () => {
     const asA = (statement: ReturnType<typeof sql>) =>

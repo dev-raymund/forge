@@ -1097,19 +1097,35 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Depends on:** M1-5, M3-2
 
 **Acceptance criteria:**
-- [ ] Tables `media_folders`, `media_assets`
-- [ ] `requestUploads(files)`: type and size checks, storage limit check, `pending` rows, presigned PUTs (10 min)
-- [ ] `completeUpload(mediaId)`: HEAD size match, magic-byte sniff, mismatch → delete + `failed`
-- [ ] `uploads.cleanup` daily job for `pending` rows older than 24 h
+- [x] Tables `media_folders`, `media_assets` *(since M1-1; M6-1 adds two partial indexes, migration 0006, and the cleanup's lookup function, 0007)*
+- [x] `requestUploads(files)`: type and size checks, storage limit check, `pending` rows, presigned PUTs (10 min) *(`modules/media/upload.service.ts`, `requestUploadsAction`; JPEG/PNG/WebP/GIF ≤ 20 MB, PDF ≤ 25 MB; all or nothing; Free 1 GB, Pro 20 GB under the organization lock; targets signed for type and size, create once)*
+- [x] `completeUpload(mediaId)`: HEAD size match, magic-byte sniff, mismatch → delete + `failed` *(the uploader's own upload only; stored type checked too; `ready` recorded as `media.uploaded`)*
+- [x] `uploads.cleanup` daily job for `pending` rows older than 24 h *(`modules/media/cleanup.ts`, in `DAILY_JOBS`; refused rows go too; objects deleted through each row's own scope)*
+
+**Decisions taken here (ADR 0020; ADR 0008 addendum):**
+- **Server Actions**, as the plan lists them; no UI (the dropzone is M6-3's). The `/api/dev/storage` route is deleted.
+- **Completion checks what storage holds:** the size, the stored type and the first 4 KB must be the declared type's. A mislabelled file (a JPEG named `.png`) is refused with what it is.
+- **Storage reserved at request:** pending, ready and trashed uploads count; failed ones give their bytes back. Five concurrent requests for the last room: exactly one wins.
+- **Upload targets create their object once** (`If-None-Match: *` signed; the local route never overwrites): a retry or a reused link cannot replace a checked file.
+- **Content may point only at a ready image of its site:** image blocks now also require `kind = 'image'`, and a new featured image gets the same check in `saveDraft`.
+- **Provisional numbers recorded as open:** 20 files a request, 255-character names, binary MB/GB.
 
 **Likely files/modules:** `src/modules/media/*`
 
-**Testing:** integration against MinIO: happy path, spoofed type, oversize, quota race.
+**Testing:** integration against MinIO: happy path, spoofed type, oversize, quota race. ✔ integration against RustFS and the local driver: `tests/integration/media-uploads.test.ts` (all four, and mislabelled types, create-once targets, early completion, size mismatch, concurrent completions, storage and database failures, audit rollback, the cleanup and its race with a completion, roles, uploader-only, other sites and organizations, content attachment); `isolation.test.ts`, `rls.test.ts` (the lookup), `audit.test.ts`, `storage.test.ts`; unit `media/policy.test.ts`, `billing/plans.test.ts`; E2E `storage.spec.ts`, `cron.spec.ts`. Real Cloudflare R2: not verified (runbook §4).
 
 ### M6-2 · Image processing and CDN delivery
 **Labels:** `area:media` `type:feature`
 
 **Description:** Synchronous variants and fast delivery.
+
+*From M6-1 (ADR 0020):*
+- *`completeUpload` (`modules/media/upload.service.ts`) checks the object and then settles the row `pending → ready` with `media.uploaded`, in one transaction. Run `processImage` between the checks and that transaction, outside it (storage I/O).*
+- *A failure that is the file's fault (too many megapixels, undecodable): settle it `failed` and delete the object, as the sniff mismatch does. A failure that is ours (storage down): leave it `pending`, so a retry works.*
+- *Variants' keys: `mediaObjectKey({ …, variant: "w800" })` under the same media id. Delete them wherever the original is deleted: the cleanup (`modules/media/cleanup.ts`) deletes only `storage_key` today.*
+- *Decide whether variants count towards the storage limit. `billing/limits.ts` sums `size_bytes` of the originals.*
+- *`/media/{key}` must serve only the objects of `ready`, untrashed rows. A pending upload's object exists before it is checked, and a refused one's may linger until the cleanup. Look the key up rather than streaming any key that exists.*
+- *Next queues a page's Server Actions, so completions run one after another. If processing makes that slow for many files, a route handler with an origin check is the alternative (ADR 0020, "Reconsider").*
 
 *From M2-4: the account avatar moved here. It is a user-level image (no organization): store it through `platformStorage()` under a user prefix (e.g. `u/{userId}/…`), run it through `processImage` (square thumb, metadata stripped), serve it from `/media/{key}`, and set `users.image` to that URL. `/update-user` currently accepts the name only (`EDITABLE_PROFILE_FIELDS` in `modules/auth/auth.ts`): set the image on the server from the upload, never from a URL the browser sends. The account page (`src/app/(admin)/account/page.tsx`) and `AccountMenu` show initials until then; a Google account may carry Google's picture URL in `users.image`, which is not displayed.*
 
@@ -1130,6 +1146,17 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:media` `type:feature`
 
 **Description:** Manage media.
+
+*From M6-1 (ADR 0020): the dropzone calls `requestUploadsAction(orgSlug, siteSlug, files)` with up to 20 `{ name, size, type }`. It then PUTs each file to its `upload.url` with exactly `upload.headers` (they include `if-none-match: *`). Use XHR for progress (fetch has no upload progress). Then it calls `completeUploadAction(orgSlug, siteSlug, mediaId)` per file.*
+- *Answers:*
+  - *`Conflict`: the file has not arrived. Send it again within the 10 minutes, then complete again.*
+  - *`Validation` with a message: the file was refused. It is gone; show the message.*
+  - *`LimitExceeded`: the plan's storage.*
+- *`checkFile` and `UPLOAD_TYPES` in `@/modules/media/shared` let the dropzone warn before asking. The server decides anyway.*
+- *A request is all or nothing. Leave refused files out and ask again.*
+- *Folders: `requestUploads` puts files in no folder; add the folder there (a folder of the same site: the composite key).*
+- *Authors' own uploads: `uploaded_by`. A NULL uploader is nobody's own (only `.any`).*
+- *The open numbers to settle with the screen: 20 files a request, 255-character names, re-issuing a target for a pending upload (not offered).*
 
 **Depends on:** M6-2
 
@@ -1152,7 +1179,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M5-5 (ADR 0003 addendum): the image block's schema is already in the registry (`src/blocks/image/schema.ts`: `mediaId`, `alt`, `caption`, `size`, `link`; `editable: false`). Stored documents with images are validated, and the server checks every new `mediaId` on save (a media item of this site, `ready`, not deleted) and refuses another site's on publish (`modules/content/references.ts`). What is left here:*
 - *An `extension.ts`, a `node-view.tsx` and a `render.tsx` (with `ResponsiveImage`) for it. Add it to `BLOCK_EDITORS` in `src/blocks/editor.ts` and `BLOCK_RENDERERS`, and set `editable: true`. `EDITOR_NODE_TYPES` then includes `image`, and pages with images open in the editor (`tests/e2e/editor.spec.ts` "a page holding blocks this editor cannot edit yet" changes with it).*
 - *Inserting one: a slash-menu entry that `asks` for a media item (like the embed's `asks: "address"`) and opens the picker, so an image is never inserted without a `mediaId`. Its alt, caption, size and link come from the properties panel, which already generates fields from the schema.*
-- *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists.*
+- *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists. From M6-1: it is `assertUsableImages` now (this site, `ready`, not trashed, `kind = 'image'`), used for images in documents and for a new featured image in `saveDraft`. A PDF is a media item but never an image.*
 - *No upload path was added in M5-5. Images reach a document only through the picker and the existing upload protocol (M6-1).*
 - *From M5-7 (ADR 0018): the post sidebar has a featured-image slot (`data-testid="featured-image"` in `modules/content/editor/entry-settings.tsx`) that says it arrives with the media library. Wire the picker there, sending `featuredMediaId` with the draft fields (saveDraft already checks it against the site).*
 - *From M5-6 (ADR 0017): the public renderer skips `image` and reports it (`NOT_RENDERED_YET` in `modules/rendering/document.tsx`). Add the image's renderer to `BLOCK_RENDERERS` (its media resolved through the render context, never a stored URL), remove it from `NOT_RENDERED_YET`, tag `loadEntry` with each media item's `media:{mid}` it draws (plan §20, capped), and add `figure`/`img` cases to the XSS corpus. `RENDERED_ELEMENTS` already lists `figure` and `figcaption`.*
@@ -1177,6 +1204,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M6-1 (ADR 0020): trashed media still counts towards the storage limit until purged (`billing/limits.ts`). Purging media deletes its objects through `storageFor` the row's own organization and site, then the row. `uploads.cleanup` (`modules/media/cleanup.ts`) does the same for refused uploads. It finds organizations with work through a SECURITY DEFINER lookup that returns ids only (migration 0007), and works in each one's own tenant context; `trash.purge` needs the same across organizations.*
 
 *From M5-7 (ADR 0018): the lists' status filter is `ENTRY_STATUS_FILTERS` (`content/list-query.ts`); add the trash there and to `listPages`/`listPosts` (they leave trashed entries out today). Moving a page whose parent is later trashed: `movePage` already refuses a parent in the trash.*
 
@@ -1467,6 +1496,8 @@ The suite can run against real R2 with `TEST_S3_*`.
 *From M3-4: `inviteMember` does not check a seat limit. Plan §14 counts members plus pending invitations; add `assertLimit(tx, org, "members")` there, under the organization lock it already takes, after the permission and verified-email checks. Re-sending does not add a seat. Accepting an invitation was already counted when it was sent.*
 
 *From M4-1 (ADR 0011): `modules/billing/plans.ts` holds the plans with only the sites limit (Free 1, Pro 5), and `assertLimit(tx, orgId, key)` (`modules/billing/limits.ts`) locks the organization's row and counts. The plan is read from `subscriptions.plan_key`; no row means Free. Add the other limits as keys of `LimitKey` with their counts, and decide here how `status`, `trial_ends_at` and `grace_until` change the plan (one function, `planOf`). The sites page already shows "n of N sites on the X plan" to those who may create sites.*
+
+*From M6-1 (ADR 0020): the storage limit is wired. `LimitKey` has `"storage"` (Free 1 GB, Pro 20 GB, binary). `assertLimit(tx, org, key, amount)` takes the bytes being added, and `requestUploads` calls it. Usage is the sum of non-failed uploads' declared sizes, trashed included. Over the limit after a downgrade: nothing is deleted, and new uploads are refused.*
 
 **Depends on:** M3-1
 
