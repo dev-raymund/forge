@@ -17,6 +17,13 @@ export { publishEntry } from "./publishing.service";
 export type { Published } from "./publishing.service";
 export { setHomepage } from "./homepage.service";
 export { movePage, placePage } from "./tree.service";
+// The lifecycle (M7-1, ADR 0024): unpublish, the trash, restore, purge, and the daily `trash.purge` job.
+export { ENTRY_TRASH_DAYS, LIFECYCLE_ACTIONS, stateOf, transition } from "./lifecycle";
+export type { LifecycleAction, LifecycleState, Transition } from "./lifecycle";
+export { purgeEntry, restoreEntry, trashEntry, unpublishEntry } from "./lifecycle.service";
+export type { Purged, Restored, Trashed, Unpublished } from "./lifecycle.service";
+export { purgeTrashedEntries, trashPurge } from "./purge";
+export type { EntryPurgeResult } from "./purge";
 // Categories and tags (M5-8).
 export { createTerm, deleteTerm, listTermsWithUsage, updateTerm } from "./term.service";
 export type { TermSummary } from "./term.service";
@@ -24,12 +31,13 @@ export type { TermWithUsage } from "./term.repository";
 export { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 export type { MovedEntry } from "./tree";
 export {
-  canArrangePage, canAssignTerms, canChangeAuthor, canCreateEntry, canCreateTerm, canCreditOthers, canManageTerms, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage,
-  canUpdateEntry, ownPostsOnly,
+  canArrangePage, canAssignTerms, canChangeAuthor, canCreateEntry, canCreateTerm, canCreditOthers, canManageTerms, canPublishEntry, canPurgeEntry, canSeeEntry, canSeePages,
+  canSetHomepage, canTransition, canTrashEntry, canUpdateEntry, ownPostsOnly,
 } from "./policies";
 export type { EntryRef } from "./policies";
 export {
-  DRAFT_FIELD_MAX, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitSaveDraft, submitSetHomepage,
+  DRAFT_FIELD_MAX, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry, submitRestoreEntry, submitSaveDraft,
+  submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";
 
 // The editor and its link picker (M5-4).

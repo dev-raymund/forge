@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { ENTRY_STATUS_FILTERS, hasListFilters, type PageListQuery } from "../list-query";
 import type { PageListItem } from "../queries";
 import { PagesTree } from "./pages-tree";
+import { TrashList, type TrashItem } from "./trash-list";
 
 /**
  * A site's pages (M5-7; plan §19 `/…/pages`): the tree, a search by title and a status filter (a GET form, as the
@@ -17,7 +18,7 @@ import { PagesTree } from "./pages-tree";
 const CONTROL =
   "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-foreground focus-visible:ring-3 focus-visible:ring-foreground/25 md:text-sm";
 const LINK = "rounded-sm font-medium underline underline-offset-4 outline-none hover:no-underline focus-visible:ring-3 focus-visible:ring-foreground/25";
-const STATUS_LABELS: Record<string, string> = { draft: "Drafts", published: "Published", scheduled: "Scheduled" };
+const STATUS_LABELS: Record<string, string> = { draft: "Drafts", published: "Published", scheduled: "Scheduled", trash: "In the trash" };
 
 export type PagesViewProps = {
   orgSlug: string;
@@ -36,6 +37,7 @@ export type PagesViewProps = {
 
 export function PagesView({ orgSlug, siteSlug, basePath, query, pages, truncated, hasHome, newHref, newHomeHref, canArrange }: PagesViewProps) {
   const filtered = hasListFilters(query);
+  const inTrash = query.status === "trash";
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -50,7 +52,16 @@ export function PagesView({ orgSlug, siteSlug, basePath, query, pages, truncated
         ) : null}
       </div>
       <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-        The site&rsquo;s pages, each under the page above it. {canArrange ? "Drag a page by its handle, or use its menu, to change its place." : null}
+        The site&rsquo;s pages, each under the page above it. {canArrange ? "Drag a page by its handle, or use its menu, to change its place." : null}{" "}
+        {inTrash ? (
+          <Link href={basePath} className={LINK}>
+            Back to the pages
+          </Link>
+        ) : (
+          <Link href={`${basePath}?status=trash`} className={LINK}>
+            Trash
+          </Link>
+        )}
       </p>
 
       {!hasHome ? (
@@ -96,7 +107,9 @@ export function PagesView({ orgSlug, siteSlug, basePath, query, pages, truncated
         </div>
       </form>
 
-      {pages.length ? (
+      {inTrash ? (
+        <TrashList orgSlug={orgSlug} siteSlug={siteSlug} type="page" items={pages.filter((page): page is PageListItem & { trash: TrashItem["trash"] } => Boolean(page.trash))} />
+      ) : pages.length ? (
         <PagesTree
           orgSlug={orgSlug}
           siteSlug={siteSlug}

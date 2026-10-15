@@ -1,5 +1,6 @@
 import "server-only";
 import { can, canActOn, type OrgContext } from "@/modules/tenancy";
+import { transition, type LifecycleAction, type LifecycleState } from "./lifecycle";
 import type { ContentTypeKey } from "./types/definition";
 
 /**
@@ -19,6 +20,10 @@ import type { ContentTypeKey } from "./types/definition";
  *   change the author  the type's edit right and its "any" right  Owner–Editor (M5-7)
  *   manage terms       terms.manage                               Owner–Editor: create, rename, move, delete (M5-8)
  *   create a tag       terms.manage or terms.assign               Owner–Author (M5-8)
+ *   unpublish          as publish                                 (M7-1, ./lifecycle.ts)
+ *   trash, restore     pages: entries.page.delete                 Owner–Editor
+ *                      posts: entries.post.delete.any, or .own for the post's author (an Author: their own)
+ *   purge (by hand)    pages: entries.page.delete; posts: entries.post.delete.any    Owner–Editor
  *
  * Pages have plain keys; posts have own/any pairs, for which `canActOn` with the
  * post's author is the whole policy (ADR 0009 hand-off to M5-3).
@@ -91,3 +96,25 @@ export const canManageTerms = (ctx: OrgContext): boolean => can(ctx, "terms.mana
  * (plan §13, M5-8 criterion 3). Renaming and deleting stay `terms.manage`.
  */
 export const canCreateTerm = (ctx: OrgContext, taxonomy: "category" | "tag"): boolean => canManageTerms(ctx) || (taxonomy === "tag" && canAssignTerms(ctx));
+
+// ── M7-1: the lifecycle ──────────────────────────────────────────────────────
+
+/** Move to the trash, or restore from it: the type's delete right (an Author: their own posts). */
+export function canTrashEntry(ctx: OrgContext, entry: EntryRef): boolean {
+  if (entry.organizationId !== ctx.org.id) return false;
+  return entry.type === "page" ? can(ctx, "entries.page.delete") : canActOn(ctx, "entries.post.delete", owned(entry));
+}
+
+/** Delete from the trash for good, before the 30 days are up: the "any" delete right (plan §9: `delete.any`). */
+export function canPurgeEntry(ctx: OrgContext, entry: EntryRef): boolean {
+  if (entry.organizationId !== ctx.org.id) return false;
+  return entry.type === "page" ? can(ctx, "entries.page.delete") : can(ctx, "entries.post.delete.any");
+}
+
+/** May the caller take this action on this entry, in this state? The transition is allowed, and they hold its right. */
+export function canTransition(ctx: OrgContext, entry: EntryRef, state: LifecycleState, action: LifecycleAction): boolean {
+  const step = transition(state, action);
+  if (!step.ok) return false;
+  if (step.right === "publish") return canPublishEntry(ctx, entry);
+  return step.right === "delete" ? canTrashEntry(ctx, entry) : canPurgeEntry(ctx, entry);
+}

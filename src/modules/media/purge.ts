@@ -1,14 +1,13 @@
 import "server-only";
-import { z } from "zod";
 import { withPlatform, withTenant } from "@/platform/db";
-import { defineJob } from "@/platform/jobs";
 import { logger, type Logger } from "@/platform/observability";
 import { storageFor } from "@/platform/storage";
 import { claimTrashedMedia, deleteFailedUploads, objectKeysOf, organizationsWithPurgeableMedia, type FailedUpload } from "./repository";
 
 /**
  * `trash.purge` (daily; plan §8, §16; M6-3): media in the trash for 30 days is deleted, its objects with it (the
- * original and every variant on its row). Entries join this job in M7-1.
+ * original and every variant on its row). The job itself is the content module's since M7-1 (`content/purge.ts`):
+ * it purges entries, then calls this, unchanged.
  *
  * In each organization that has any (a lookup that returns organization ids only, migration 0011), in that
  * organization's own tenant context:
@@ -73,14 +72,3 @@ export async function purgeTrashedMedia(options: { now?: Date; budgetMs?: number
   if (organizations.length === ORGANIZATIONS_PER_RUN) result.unfinished = true;
   return result;
 }
-
-export const trashPurge = defineJob({
-  type: "trash.purge",
-  scope: "platform",
-  payload: z.object({}),
-  run: async (_payload, ctx) => {
-    const result = await purgeTrashedMedia({ log: ctx.log });
-    ctx.log.info("trash.purge finished", result);
-    if (result.kept) throw new Error(`trash.purge could not delete the objects of ${result.kept} media item(s); uploads.cleanup retries them`);
-  },
-});

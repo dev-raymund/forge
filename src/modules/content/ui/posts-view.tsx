@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { entryEditorPath } from "../admin-paths";
 import { ENTRY_STATUS_FILTERS, hasListFilters, listHref, POST_SORTS, type PostListQuery } from "../list-query";
-import type { PostList, TermOption } from "../queries";
+import type { PostList, PostListItem, TermOption } from "../queries";
 import { StatusBadge } from "./status-badge";
+import { TrashList, type TrashItem } from "./trash-list";
 
 /**
  * A site's posts (M5-7; plan §19 `/…/posts`): newest edits first by default, filtered by status, category, author
@@ -18,7 +19,7 @@ import { StatusBadge } from "./status-badge";
 const CONTROL =
   "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-foreground focus-visible:ring-3 focus-visible:ring-foreground/25 md:text-sm";
 const LINK = "rounded-sm font-medium underline underline-offset-4 outline-none hover:no-underline focus-visible:ring-3 focus-visible:ring-foreground/25";
-const STATUS_LABELS: Record<string, string> = { draft: "Drafts", published: "Published", scheduled: "Scheduled" };
+const STATUS_LABELS: Record<string, string> = { draft: "Drafts", published: "Published", scheduled: "Scheduled", trash: "In the trash" };
 
 export type PostsViewProps = {
   orgSlug: string;
@@ -34,6 +35,7 @@ export type PostsViewProps = {
 
 export function PostsView({ orgSlug, siteSlug, basePath, query, list, categories, authors, newHref }: PostsViewProps) {
   const filtered = hasListFilters(query);
+  const inTrash = query.status === "trash";
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -48,7 +50,16 @@ export function PostsView({ orgSlug, siteSlug, basePath, query, list, categories
         ) : null}
       </div>
       <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-        {list.onlyOwn ? "Your posts on this site." : "Everything published on the blog, and the drafts on their way there."}
+        {list.onlyOwn ? "Your posts on this site." : "Everything published on the blog, and the drafts on their way there."}{" "}
+        {inTrash ? (
+          <Link href={basePath} className={LINK}>
+            Back to the posts
+          </Link>
+        ) : (
+          <Link href={`${basePath}?status=trash`} className={LINK}>
+            Trash
+          </Link>
+        )}
       </p>
 
       <form key={listHref("", { ...query, page: 1 })} method="get" action={basePath} className="mt-8 grid gap-4 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Filter posts">
@@ -113,7 +124,9 @@ export function PostsView({ orgSlug, siteSlug, basePath, query, list, categories
         </div>
       </form>
 
-      {list.items.length > 0 ? (
+      {inTrash ? (
+        <TrashList orgSlug={orgSlug} siteSlug={siteSlug} type="post" items={list.items.filter((post): post is PostListItem & { trash: TrashItem["trash"] } => Boolean(post.trash))} />
+      ) : list.items.length > 0 ? (
         <ul className="mt-8 divide-y rounded-lg border" data-testid="posts">
           {list.items.map((post) => (
             <li key={post.id} data-testid="post-row" className="grid gap-1.5 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4 sm:p-4">

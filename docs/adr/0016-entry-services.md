@@ -117,3 +117,15 @@ The editor (M5-4), blocks and the block registry (M5-5), rendering and `resolveR
 - `tests/integration/content-entries.test.ts` (real Postgres): the Home page with each site and its rollback; createEntry (paths, suffixes, reserved, concurrency, parents, types, authors, roles, rollback); saveDraft (fields, conflict, concurrency, every document refusal, typed slugs, type support, terms of other sites and organizations, images of other sites, roles, other sites' entries); publishEntry (revision and projection, republish, idempotency, stale version, concurrency, descendants, taken addresses, injected bad data, Home, rollback at the record, the commit and the terms, roles); setHomepage (both trees, no-op, taken slug, collision, posts, sites without a Home, roles, concurrency, rollback); the forms.
 - `tests/integration/isolation.test.ts`: the four forms with B's entry, from B's URL and from A's own site; the content policies; B's content in the fingerprint.
 - `tests/integration/audit.test.ts`: the three events are covered by a mutation.
+
+## Addendum (M7-1, 2026-10-16): the lifecycle after publishing
+
+ADR 0024 has the details.
+
+- **New services:** `unpublishEntry`, `trashEntry`, `restoreEntry` and `purgeEntry` join `publishEntry`, asking `content/lifecycle.ts` which transitions are allowed.
+- **Changed from this ADR's hand-off:**
+  - Trashing a published entry is refused (unpublish first), rather than unpublishing it in the same transaction.
+  - A restore whose address is taken is refused, naming the address, rather than re-suffixed. This is the same rule as a typed slug: never suffixed.
+- **The tree's lock:** trash, restore and purge take the site's settings row lock first, as `setHomepage` and moving pages do.
+- **`createEntry`:** it now share-locks the parent page, so a page cannot be created under a page that is going to the trash.
+- **Unpublishing keeps `published_at`:** publishing again keeps the first date, as this ADR decided for a republish.

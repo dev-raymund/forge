@@ -1274,9 +1274,9 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M5-3
 
 **Acceptance criteria:**
-- [ ] `lifecycle.ts` pure state machine (draft / scheduled / published + trash) with permission per transition
-- [ ] `unpublishEntry` (+ optional "redirect this URL to…"), `trashEntry` (unpublishes in the same transaction, frees the path), `restoreEntry` (→ draft, slug re-suffixed), `purgeEntry`
-- [ ] `trash.purge` daily job (30 days); trash filter in lists
+- [x] `lifecycle.ts` pure state machine (draft / scheduled / published + trash) with permission per transition *(ADR 0024 §1: `transition(state, action)` → the new state and the right (publish, delete, delete-any), or the reason; the services and the screens ask it)*
+- [x] `unpublishEntry` (+ optional "redirect this URL to…"), `trashEntry` (unpublishes in the same transaction, frees the path), `restoreEntry` (→ draft, slug re-suffixed), `purgeEntry` *(§2–5. As M7-1's brief decided, three points differ: trashing refuses a published entry (unpublish first, its own step); restore refuses a taken address, naming it, and restores nothing (no suffix); the redirect is M8-5's. A page goes to the trash and comes back with its subtree; the Home page is refused until another page is made the Home page)*
+- [x] `trash.purge` daily job (30 days); trash filter in lists *(§6–7: one job, entries then media, the same 30 days; `?status=trash` on the pages and posts lists, with Restore and "Delete permanently…". §8: trashing an image in use warns, from the drawer, with the published pages that stop showing it)*
 
 **Likely files/modules:** `src/modules/content/lifecycle.ts`, `publishing.service.ts`, lists
 
@@ -1288,6 +1288,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Description:** Timed publishing of a frozen revision.
 
 *V1 (ADR 0006): on Vercel Hobby the job runs when the runner is next called. That is the minute scheduler (optional, free, external) or the daily cron. Without a scheduler, a post can publish up to a day late: a known V1 limitation.*
+
+*From M7-1 (ADR 0024): `content/lifecycle.ts` already has `schedule` (draft → scheduled) and `cancel_schedule` (scheduled → draft), both with the publish right, and refuses publishing a scheduled entry ("Cancel the schedule first") and trashing one; offer them and add the services. `trash.purge` is not recorded for want of a system actor: once there is one, decide whether it records what it deletes. `trash.purge` is the content module's job now (`content/purge.ts`).*
 
 *From M3-5 (ADR 0010): a scheduled publish has no user in its transaction, and `record()` refuses to write without one. Add a system actor to the audit writer as an explicit, typed caller (the table already allows `actor_type = 'system'`), not as a free parameter.*
 
@@ -1306,6 +1308,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Labels:** `area:content` `type:feature`
 
 **Description:** Snapshot history.
+
+*From M7-1 (ADR 0024): restoring from the trash is not restoring a revision: it brings the entry back as the draft it was. Unpublishing keeps every revision; deleting for good deletes them with the entry. A trashed entry's editor is not found: its history is reachable once it is restored.*
 
 *From M5-8 (ADR 0019): revisions keep the term ids they were published with, and a term may have been deleted since. Restoring a revision into the draft must drop the ids that are no longer terms of the site (and say so), or the restored draft cannot be saved or published.*
 
@@ -1392,6 +1396,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 
 **Description:** Header and footer navigation.
 
+*From M7-1 (ADR 0024): an entry can now be unpublished, trashed and deleted for good. Menu items pointing at it must be omitted while it is not published (the public reads already resolve `entry:` links only to live entries: `livePaths`). `menus.items` is JSON with no key, so an item can outlive a purged entry: resolve it like a link (nothing drawn), and consider saying so in the menu editor. `entry.unpublished` flushes `routes` and the lists at once.*
+
 **Depends on:** M5-6
 
 **Acceptance criteria:**
@@ -1438,6 +1444,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** URLs never break.
+
+*From M7-1 (ADR 0024): plan §9's "Unpublish: offer redirect this URL to…" was left here. Unpublishing, trashing and deleting for good change no path but take the entry's away (trash frees it for others); a restore may come back at a new address when its parent moved meanwhile, and the success message names it. The services return their cache events; a redirect created with an unpublish would add `site.configChanged`.*
 
 *From M5-3 (ADR 0016): paths change in three places, each in one transaction that returns the moved entries: `publishEntry` (slug change, its `moved`), `setHomepage` (both Home pages and the pages below them), and `moveSubtree` (shared by both). Insert the auto 301s there, from each `MovedEntry`'s `from` to `to` for live entries. Saving the reading settings with a new blog path does not move posts yet (see M5-6).*
 

@@ -4,8 +4,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DAILY_JOBS, jobRegistry } from "@/app/api/internal/cron/jobs";
 import {
   canSeeLibrary, cleanUpUploads, completeUpload, createFolder, deleteFolder, listLibrary, moveMedia, parseLibraryQuery, purgeTrashedMedia, renameFolder, requestUploads, restoreMedia,
-  trashMedia, trashPurge, updateMediaDetails, type LibraryQuery,
+  trashMedia, updateMediaDetails, type LibraryQuery,
 } from "@/modules/media";
+import { trashPurge } from "@/modules/content";
 import { createSite, siteNavItems } from "@/modules/sites";
 import { inTenant, resolveSiteContext, type SiteContext } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
@@ -303,7 +304,10 @@ describe("changing files", () => {
     const { ctx } = await siteOf(a);
     const { folder } = await createFolder(ctx, { name: "Short-lived" });
     const id = await ready(ctx, { filename: "photo.jpg", folderId: folder.id });
-    expect(await trashMedia(ctx, id)).toEqual({ events: [{ type: "media.trashed", mediaId: id, siteId: ctx.site.id }] });
+    expect(await trashMedia(ctx, id)).toEqual({
+      events: [{ type: "media.trashed", mediaId: id, siteId: ctx.site.id }],
+      usage: { published: 0, drafts: 0, publishedTitles: [], draftTitles: [], logo: false, favicon: false },
+    });
     expect(await trashMedia(ctx, id)).toEqual({ events: [] }); // already there
     expect((await listLibrary(ctx, query())).items).toHaveLength(0);
     // Only trashed files are left in it: it can be deleted, and they come back in no folder.

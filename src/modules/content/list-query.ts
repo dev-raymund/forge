@@ -13,7 +13,8 @@ export const POSTS_PAGE_SIZE = 25;
 /** The longest search text kept. */
 export const LIST_SEARCH_MAX = 100;
 
-export const ENTRY_STATUS_FILTERS = ["draft", "published", "scheduled"] as const;
+/** The statuses a list filters by, and the trash (not a status: `deleted_at`, M7-1). */
+export const ENTRY_STATUS_FILTERS = ["draft", "published", "scheduled", "trash"] as const;
 export type EntryStatusFilter = (typeof ENTRY_STATUS_FILTERS)[number];
 
 export const POST_SORTS = { updated: "Recently edited", published: "Recently published", title: "Title (A–Z)", oldest: "Oldest first" } as const;

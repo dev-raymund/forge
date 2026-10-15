@@ -109,7 +109,10 @@ test("upload three images and a PDF, search, move to a folder, trash and restore
 
   // Trash, and restore.
   await items(page).first().getByRole("button").first().click();
-  await drawer.getByRole("button", { name: "Move to trash" }).click();
+  await drawer.getByRole("button", { name: "Move to trash…" }).click();
+  // It asks first, saying where the file is used (M7-1): nowhere yet.
+  await expect(drawer.getByTestId("media-usage")).toContainText("No page or post uses it.");
+  await drawer.getByTestId("trash-confirm").getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(items(page)).toHaveCount(0);
   await page.getByRole("link", { name: "Trash" }).click();
   await expect(page.getByRole("heading", { level: 2, name: "Trash" })).toBeVisible();
@@ -184,7 +187,7 @@ test("an Author uploads and changes only their own; a Viewer has no media librar
   const drawer = page.getByTestId("media-drawer");
   await expect(drawer).toContainText("Only its uploader or an editor can change this file.");
   await expect(drawer.getByLabel("Title")).toBeDisabled();
-  await expect(drawer.getByRole("button", { name: "Move to trash" })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: /^Move to trash/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page.locator('[data-testid="media-item"][data-name="mine.png"]').getByRole("button").first().click();
   await drawer.getByLabel("Title").fill("My loaf");

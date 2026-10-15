@@ -85,6 +85,20 @@
       "when": 1792024794618,
       "tag": "0011_media_purge_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792058255354,
+      "tag": "0012_entries_trash_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792058259760,
+      "tag": "0013_entries_purge_lookup",
+      "breakpoints": true
     }
   ]
 }

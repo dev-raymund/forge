@@ -1,9 +1,11 @@
 import "server-only";
+import { actionOk, asAppError, toActionResult, type ActionResult } from "@/platform/errors";
+import { reportError } from "@/platform/observability";
 import type { Actor } from "@/modules/auth";
 import { sitePath } from "@/modules/sites/shared";
 import { refusal, resolveSiteContext, type FormOutcome, type RequestMeta } from "@/modules/tenancy";
 import { text } from "@/platform/forms";
-import { createFolder, deleteFolder, moveMedia, renameFolder, restoreMedia, trashMedia, updateMediaDetails } from "./library.service";
+import { createFolder, deleteFolder, mediaUsage, moveMedia, renameFolder, restoreMedia, trashMedia, updateMediaDetails, type MediaUsage } from "./library.service";
 
 /**
  * What the media library's forms and buttons do (M6-3): everything about a Server Action except flushing and
@@ -46,8 +48,10 @@ export async function submitMoveMedia(actor: Actor, orgSlug: string, siteSlug: s
 export async function submitTrashMedia(actor: Actor, orgSlug: string, siteSlug: string, mediaId: string, meta: RequestMeta = {}): Promise<FormOutcome> {
   try {
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    const { events } = await trashMedia(ctx, mediaId);
-    return done(ctx.org.slug, ctx.site.slug, "Moved to the trash. It can be restored for 30 days.", { invalidate: events });
+    const { events, usage } = await trashMedia(ctx, mediaId);
+    const shown = usage?.published ?? 0;
+    const where = shown ? ` ${shown} published ${shown === 1 ? "page or post no longer shows" : "pages and posts no longer show"} it.` : "";
+    return done(ctx.org.slug, ctx.site.slug, `Moved to the trash.${where} It can be restored for 30 days.`, { invalidate: events });
   } catch (error) {
     return refusal(error, meta, {}, mediaLibraryPath(orgSlug, siteSlug), {}, MODULE);
   }
@@ -92,5 +96,19 @@ export async function submitDeleteFolder(actor: Actor, orgSlug: string, siteSlug
     return done(ctx.org.slug, ctx.site.slug, "Folder deleted.");
   } catch (error) {
     return refusal(error, meta, {}, mediaLibraryPath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/**
+ * Where a file is used (M7-1): what the drawer says before it is moved to the trash. Read-only; the trash itself checks
+ * again, and reports what it found.
+ */
+export async function submitMediaUsage(actor: Actor, orgSlug: string, siteSlug: string, mediaId: unknown, meta: RequestMeta = {}): Promise<ActionResult<MediaUsage>> {
+  try {
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    return actionOk(await mediaUsage(ctx, mediaId));
+  } catch (error) {
+    if (!asAppError(error)) reportError(error, { module: MODULE, requestId: meta.requestId });
+    return toActionResult(error, meta.requestId);
   }
 }

@@ -88,8 +88,9 @@ export async function createEntry(ctx: SiteContext, input: CreateEntryInput): Pr
     let dir = "";
     if (definition.key === "post") dir = `/${site.blogPath}`;
     else if (values.parentId) {
-      // A page of this site, not in the trash. Another site's page, even of this organization, is not one.
-      const parent = await findEntry(tx, ctx.org.id, ctx.site.id, values.parentId);
+      // A page of this site, not in the trash. Another site's page, even of this organization, is not one. Share-locked
+      // (M7-1): it cannot go to the trash before this page is under it, and a trash under way is waited for, then seen.
+      const parent = await findEntry(tx, ctx.org.id, ctx.site.id, values.parentId, { share: true });
       if (!parent || parent.type !== "page" || parent.locale !== site.locale) throw validationError({ parentId: ["Choose a page of this site."] });
       dir = parent.path;
     }

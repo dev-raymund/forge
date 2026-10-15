@@ -24,6 +24,7 @@ import { dedupeIds } from "./dedupe-ids";
 import { EmbedDialog } from "./embed-dialog";
 import { EntrySettings, type DraftFields, type EntryPlace, type SidebarChoices } from "./entry-settings";
 import { EDITOR_NODE_TYPES, editorExtensions } from "./extensions";
+import { TrashSection, UnpublishButton } from "./lifecycle-controls";
 import { LinkDialog } from "./link-dialog";
 import { currentBlock, PropertiesPanel, type CurrentBlock } from "./panel/properties-panel";
 import { runBlockAction, topLevelIndexAt, type BlockAction } from "./reorder";
@@ -394,6 +395,19 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               Resolve…
             </Button>
           ) : null}
+          {isLive && entry.lifecycle.canUnpublish ? (
+            <UnpublishButton
+              orgSlug={orgSlug}
+              siteSlug={siteSlug}
+              entry={entry}
+              title={title}
+              disabled={publishing}
+              onDone={(result) => {
+                if (result.ok) setLive((current) => ({ ...current, status: "draft" }));
+                setNotice({ tone: result.ok ? "success" : "error", text: result.text });
+              }}
+            />
+          ) : null}
           {canEdit && entry.canPublish ? (
             <Button type="button" className="h-9 px-4" onClick={publish} aria-busy={publishing || undefined} disabled={publishing || conflict}>
               {publishing ? "Publishing…" : isLive ? "Publish changes" : "Publish"}
@@ -523,7 +537,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
           </div>
         ) : null}
         {/* The entry's own settings (M5-7): beside the text on a wide screen, after it on a phone. */}
-        <div className="lg:col-start-2 lg:self-start">
+        <div className="grid gap-4 lg:col-start-2 lg:self-start">
           <EntrySettings
             orgSlug={orgSlug}
             siteSlug={siteSlug}
@@ -550,6 +564,31 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               setNotice({ tone: "success", text: message });
             }}
           />
+          {entry.lifecycle.canTrash && !unsupported.length ? (
+            <TrashSection
+              orgSlug={orgSlug}
+              siteSlug={siteSlug}
+              entry={entry}
+              title={title}
+              isLive={isLive}
+              isHome={place.isHome}
+              beforeTrash={async () => {
+                // What is typed is saved first, so the trash keeps it; a draft that cannot be saved is not trashed.
+                const autosave = autosaveRef.current;
+                if (!autosave || !canEdit) return null;
+                await autosave.flush();
+                const state = statusRef.current.state;
+                if (state === "conflict") return "Not moved: the draft was changed somewhere else. Load the latest version first.";
+                if (state === "invalid" || state === "error" || state === "pending") return "Not moved: the latest changes are not saved yet.";
+                return null;
+              }}
+              onTrashed={(trashPath) => {
+                autosaveRef.current?.dispose();
+                if (storage) clearBuffer(storage, entry.id, autosaveRef.current?.version ?? entry.draft.version);
+                window.location.assign(trashPath);
+              }}
+            />
+          ) : null}
         </div>
       </div>
 

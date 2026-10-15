@@ -17,8 +17,11 @@ describe("tagsFor (the invalidation map)", () => {
   it.each([
     [{ type: "entry.published", siteId: S, entryId: E, contentType: "post" } as const,
       { immediate: [tags.entry(S, E), tags.routes(S)], stale: [tags.list(S, "post")] }],
+    // M7-1: off the site at once, lists and archives included.
+    [{ type: "entry.unpublished", siteId: S, entryId: E, contentType: "post" } as const,
+      { immediate: [tags.entry(S, E), tags.routes(S), tags.list(S, "post")], stale: [] }],
     [{ type: "entry.unpublished", siteId: S, entryId: E, contentType: "page", pathChanged: true } as const,
-      { immediate: [tags.entry(S, E), tags.routes(S), tags.config(S)], stale: [tags.list(S, "page")] }],
+      { immediate: [tags.entry(S, E), tags.routes(S), tags.list(S, "page"), tags.config(S)], stale: [] }],
     // M5-3: a live page whose path changed without being published again (below a moved page, or the Home page changing).
     [{ type: "entry.moved", siteId: S, entryId: E, contentType: "page" } as const,
       { immediate: [tags.entry(S, E), tags.routes(S), tags.config(S)], stale: [tags.list(S, "page")] }],

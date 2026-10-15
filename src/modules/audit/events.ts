@@ -151,6 +151,27 @@ export const AUDIT_EVENTS = {
     label: "Author changed",
     metadata: z.object({ type: entryType, title: line(), authorName: line(), previousAuthorName: line().optional() }),
   },
+  // M7-1 (ADR 0024): the lifecycle. `below`: the pages that went (or came back, or were deleted) with it.
+  "entry.unpublished": {
+    resourceType: "entry",
+    label: "Entry unpublished",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath }),
+  },
+  "entry.trashed": {
+    resourceType: "entry",
+    label: "Entry moved to the trash",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, below: z.int().min(0).max(100_000) }),
+  },
+  "entry.restored": {
+    resourceType: "entry",
+    label: "Entry restored",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, below: z.int().min(0).max(100_000) }),
+  },
+  "entry.deleted": {
+    resourceType: "entry",
+    label: "Entry deleted for good",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, below: z.int().min(0).max(100_000) }),
+  },
   // M5-8: categories and tags.
   "term.created": {
     resourceType: "term",
@@ -291,6 +312,7 @@ const FIELD_WORDS: Record<string, string> = {
   logo: "logo", favicon: "favicon",
   facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
 };
+const withBelow = (below: number) => (below ? `, with ${below} ${below === 1 ? "page" : "pages"} below it` : "");
 const fieldWord = (key: string) => FIELD_WORDS[key] ?? key.replace(/([A-Z])/g, " $1").toLowerCase();
 
 type Details<A extends AuditAction> = z.output<(typeof AUDIT_EVENTS)[A]["metadata"]>;
@@ -326,6 +348,10 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "entry.reordered": (actor, m) => `${actor} moved the ${m.type} ${m.title} to position ${m.position} of ${m.of}.`,
   "entry.author_changed": (actor, m) =>
     m.previousAuthorName ? `${actor} made ${m.authorName} the author of the ${m.type} ${m.title}, in place of ${m.previousAuthorName}.` : `${actor} made ${m.authorName} the author of the ${m.type} ${m.title}.`,
+  "entry.unpublished": (actor, m) => `${actor} unpublished the ${m.type} ${m.title}, which was at ${m.path}.`,
+  "entry.trashed": (actor, m) => `${actor} moved the ${m.type} ${m.title} to the trash${withBelow(m.below)}.`,
+  "entry.restored": (actor, m) => `${actor} restored the ${m.type} ${m.title} from the trash, at ${m.path}${withBelow(m.below)}.`,
+  "entry.deleted": (actor, m) => `${actor} deleted the ${m.type} ${m.title} for good${withBelow(m.below)}.`,
   "term.created": (actor, m) => `${actor} created the ${m.taxonomy} ${m.name}.`,
   "term.updated": (actor, m) =>
     m.previousName && m.previousName !== m.name
@@ -367,6 +393,10 @@ const PLAIN: Record<AuditAction, string> = {
   "entry.moved": "moved a page",
   "entry.reordered": "reordered a page",
   "entry.author_changed": "changed an author",
+  "entry.unpublished": "unpublished a page or post",
+  "entry.trashed": "moved a page or post to the trash",
+  "entry.restored": "restored a page or post",
+  "entry.deleted": "deleted a page or post for good",
   "term.created": "created a category or tag",
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",

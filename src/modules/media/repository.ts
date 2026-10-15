@@ -312,3 +312,36 @@ export async function claimTrashedMedia(tx: TenantTx, organizationId: string, be
     .where(and(eq(mediaAssets.organizationId, organizationId), inArray(mediaAssets.id, candidates)))
     .returning({ id: mediaAssets.id, organizationId: mediaAssets.organizationId, siteId: mediaAssets.siteId, storageKey: mediaAssets.storageKey, variants: mediaAssets.variants });
 }
+
+
+// ── M7-1: where an image is used, before it goes to the trash ────────────────
+
+export type UsageRow = { kind: "published" | "draft"; title: string; type: string };
+
+/**
+ * The site's pages and posts (not in the trash) that use this media item: as their featured image, or in an image block
+ * of their published revision (`published`) or of their draft (`draft`), found by walking the stored document as JSON
+ * (any `image` node whose `attrs.mediaId` is it), never by matching text. Revisions other than the published one are
+ * history, not use (cms-architecture §13). Read from the content module's tables, as the sites module reads them for
+ * its checklist; this site only. And whether it is the site's logo or favicon.
+ */
+export async function usageOf(tx: TenantTx, organizationId: string, siteId: string, mediaId: string): Promise<{ rows: UsageRow[]; logo: boolean; favicon: boolean }> {
+  const path = sql`'$.** ? (@.type == "image" && @.attrs.mediaId == $id)'::jsonpath`;
+  const vars = sql`jsonb_build_object('id', ${mediaId}::text)`;
+  const { rows } = await tx.execute<{ kind: "published" | "draft"; title: string; type: string }>(sql`
+    select 'published' as kind, e.title, e.type
+      from entries e
+      left join entry_revisions r on r.id = e.published_revision_id and r.entry_id = e.id and r.site_id = e.site_id
+     where e.organization_id = ${organizationId} and e.site_id = ${siteId} and e.deleted_at is null and e.status = 'published'
+       and (e.featured_media_id = ${mediaId} or coalesce(jsonb_path_exists(r.content, ${path}, ${vars}), false))
+    union all
+    select 'draft' as kind, coalesce(nullif(d.title, ''), e.title), e.type
+      from entry_drafts d
+      join entries e on e.id = d.entry_id and e.site_id = d.site_id and e.organization_id = d.organization_id
+     where d.organization_id = ${organizationId} and d.site_id = ${siteId} and e.deleted_at is null
+       and (d.featured_media_id = ${mediaId} or jsonb_path_exists(d.content, ${path}, ${vars}))`);
+  const { rows: settings } = await tx.execute<{ logo: boolean; favicon: boolean }>(sql`
+    select coalesce(logo_media_id = ${mediaId}, false) as logo, coalesce(favicon_media_id = ${mediaId}, false) as favicon
+      from site_settings where organization_id = ${organizationId} and site_id = ${siteId}`);
+  return { rows, logo: settings[0]?.logo ?? false, favicon: settings[0]?.favicon ?? false };
+}

@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { TenantTx } from "@/platform/db";
+import type { PlatformTx, TenantTx } from "@/platform/db";
 import * as t from "@/platform/db/schema";
 import { readReading } from "@/modules/sites/shared";
 import { entries, entryDrafts, entryRevisions, entryTerms, terms } from "./schema";
@@ -26,10 +26,13 @@ const ofSite = (organizationId: string, siteId: string) => and(eq(entries.organi
 /** The site is not deleted (sites are soft-deleted, ADR 0011): a context resolved just before the deletion reaches nothing of it. */
 const siteIsLive = sql`exists (select 1 from ${t.sites} s where s.id = ${entries.siteId} and s.organization_id = ${entries.organizationId} and s.deleted_at is null)`;
 
-/** An entry of the site that is not in the trash, of a site that is not deleted; locked until the transaction ends when asked. */
-export async function findEntry(tx: TenantTx, organizationId: string, siteId: string, entryId: string, options: { lock?: boolean } = {}): Promise<EntryRow | null> {
+/**
+ * An entry of the site that is not in the trash, of a site that is not deleted; locked until the transaction ends when
+ * asked (`lock`), or share-locked (`share`: it cannot be trashed or changed under the caller, M7-1).
+ */
+export async function findEntry(tx: TenantTx, organizationId: string, siteId: string, entryId: string, options: { lock?: boolean; share?: boolean } = {}): Promise<EntryRow | null> {
   const query = tx.select().from(entries).where(and(ofSite(organizationId, siteId), eq(entries.id, entryId), isNull(entries.deletedAt), siteIsLive));
-  const [row] = options.lock ? await query.for("update") : await query;
+  const [row] = options.lock ? await query.for("update") : options.share ? await query.for("share") : await query;
   return row ?? null;
 }
 
@@ -258,4 +261,163 @@ export async function setSortOrders(tx: TenantTx, organizationId: string, siteId
     if (page.sortOrder === index) continue;
     await tx.update(entries).set({ sortOrder: index }).where(and(ofSite(organizationId, siteId), eq(entries.id, page.id)));
   }
+}
+
+
+// ── M7-1: unpublish, the trash, restore, purge ───────────────────────────────
+
+/**
+ * An entry of the site that is in the trash (of a site that is not deleted), locked, with whether it has been there
+ * longer than `days` by the database's clock: past that it is `trash.purge`'s, and is not restored.
+ */
+export async function findTrashedEntry(tx: TenantTx, organizationId: string, siteId: string, entryId: string, days: number): Promise<(EntryRow & { expired: boolean }) | null> {
+  const [row] = await tx
+    .select({ entry: entries, expired: sql<boolean>`${entries.deletedAt} < now() - make_interval(days => ${days})` })
+    .from(entries)
+    .where(and(ofSite(organizationId, siteId), eq(entries.id, entryId), sql`${entries.deletedAt} is not null`, siteIsLive))
+    .for("update");
+  return row ? { ...row.entry, expired: row.expired } : null;
+}
+
+/** Locks these entries of the site (in the trash or not) and returns them: the caller then reads them as they now are. */
+export async function lockEntries(tx: TenantTx, organizationId: string, siteId: string, ids: readonly string[]): Promise<EntryRow[]> {
+  if (!ids.length) return [];
+  return tx.select().from(entries).where(and(ofSite(organizationId, siteId), inArray(entries.id, [...ids]))).orderBy(entries.id).for("update");
+}
+
+/**
+ * Into the trash, all at one moment: `deleted_at` is one `clock_timestamp()` for every row (a CTE is evaluated once),
+ * so the pages trashed together can be found together again (`trashedWith`). Only rows not already in the trash.
+ */
+export async function moveToTrash(tx: TenantTx, organizationId: string, siteId: string, ids: readonly string[], userId: string): Promise<number> {
+  if (!ids.length) return 0;
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    with moment as (select clock_timestamp() as at)
+    update entries e set deleted_at = moment.at, updated_at = moment.at, updated_by = ${userId}
+      from moment
+     where e.organization_id = ${organizationId} and e.site_id = ${siteId} and e.id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+       and e.deleted_at is null
+    returning e.id`);
+  return rows.length;
+}
+
+export type TrashedRow = TreeRow & { locale: string; authorId: string | null };
+
+/**
+ * A trashed entry and the pages trashed with it, below it: those whose `deleted_at` is the very same moment (one trash,
+ * ./lifecycle.service.ts). A page trashed on its own before is not one of them: it stays in the trash. Shallowest first.
+ */
+export async function trashedWith(tx: TenantTx, organizationId: string, siteId: string, rootId: string): Promise<TrashedRow[]> {
+  const { rows } = await tx.execute<{
+    id: string; parent_id: string | null; slug: string; path: string; type: string; status: string; title: string; depth: number; locale: string; author_id: string | null;
+  }>(sql`
+    with recursive root as (
+      select deleted_at from entries where organization_id = ${organizationId} and site_id = ${siteId} and id = ${rootId} and deleted_at is not null
+    ), together (id, parent_id, slug, path, type, status, title, locale, author_id, depth) as (
+      select id, parent_id, slug, path, type, status, title, locale, author_id, 0
+        from entries where organization_id = ${organizationId} and site_id = ${siteId} and id = ${rootId} and deleted_at is not null
+      union all
+      select e.id, e.parent_id, e.slug, e.path, e.type, e.status, e.title, e.locale, e.author_id, t.depth + 1
+        from entries e join together t on e.parent_id = t.id, root
+       where e.organization_id = ${organizationId} and e.site_id = ${siteId} and e.deleted_at = root.deleted_at and t.depth < ${MAX_DEPTH}
+    )
+    select distinct on (id) * from together order by id, depth`);
+  return rows
+    .map((row) => ({
+      id: row.id, parentId: row.parent_id, slug: row.slug, path: row.path, type: row.type, status: row.status, title: row.title, depth: row.depth, locale: row.locale,
+      authorId: row.author_id,
+    }))
+    .sort((a, b) => a.depth - b.depth);
+}
+
+/** Every entry below one, in the trash or not, with whether it is: a page in the trash never has live pages below it. */
+export async function everythingBelow(tx: TenantTx, organizationId: string, siteId: string, rootId: string): Promise<{ id: string; title: string; trashed: boolean }[]> {
+  const { rows } = await tx.execute<{ id: string; title: string; trashed: boolean }>(sql`
+    with recursive tree (id, title, trashed, depth) as (
+      select id, title, deleted_at is not null, 1 from entries where organization_id = ${organizationId} and site_id = ${siteId} and parent_id = ${rootId}
+      union all
+      select e.id, e.title, e.deleted_at is not null, t.depth + 1
+        from entries e join tree t on e.parent_id = t.id
+       where e.organization_id = ${organizationId} and e.site_id = ${siteId} and t.depth < ${MAX_DEPTH}
+    )
+    select distinct on (id) id, title, trashed from tree where id <> ${rootId} order by id`);
+  return rows;
+}
+
+/** Entries of the site and locale that are not in the trash and hold one of these paths. */
+export async function holdersOf(tx: TenantTx, organizationId: string, siteId: string, locale: string, paths: readonly string[]): Promise<{ id: string; path: string; title: string }[]> {
+  if (!paths.length) return [];
+  return tx
+    .select({ id: entries.id, path: entries.path, title: entries.title })
+    .from(entries)
+    .where(and(ofSite(organizationId, siteId), eq(entries.locale, locale), inArray(entries.path, [...paths]), isNull(entries.deletedAt)));
+}
+
+/** Out of the trash, as a draft (it was one when it went in: published and scheduled entries are never trashed), at `path`. */
+export async function restoreRow(tx: TenantTx, organizationId: string, siteId: string, entryId: string, path: string, userId: string): Promise<void> {
+  await tx
+    .update(entries)
+    .set({ deletedAt: null, status: "draft", scheduledAt: null, path, updatedBy: userId, updatedAt: new Date() })
+    .where(and(ofSite(organizationId, siteId), eq(entries.id, entryId), sql`${entries.deletedAt} is not null`));
+}
+
+/**
+ * Deletes these trashed entries for good. Their drafts, revisions and published term links go with them (the foreign
+ * keys cascade); media they used is not touched. Only rows still in the trash, and (when given) trashed before `before`.
+ */
+export async function deleteTrashed(tx: TenantTx, organizationId: string, siteId: string, ids: readonly string[], before?: Date): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = await tx
+    .delete(entries)
+    .where(
+      and(
+        eq(entries.organizationId, organizationId), eq(entries.siteId, siteId), inArray(entries.id, [...ids]), sql`${entries.deletedAt} is not null`,
+        before ? sql`${entries.deletedAt} < ${before.toISOString()}::timestamptz` : undefined,
+      ),
+    )
+    .returning({ id: entries.id });
+  return rows.map((row) => row.id);
+}
+
+// The daily purge (./purge.ts): which organizations, which sites, which rows.
+
+/** Organizations with entries in the trash since before `before`: ids only, through a SECURITY DEFINER lookup (migration 0013). */
+export async function organizationsWithPurgeableEntries(tx: PlatformTx, before: Date, limit: number): Promise<string[]> {
+  const { rows } = await tx.execute<{ organization_id: string }>(sql`select organization_id from organizations_with_purgeable_entries(${before.toISOString()}::timestamptz, ${limit})`);
+  return rows.map((row) => row.organization_id);
+}
+
+/** The organization's sites with entries due to be purged. */
+export async function sitesWithPurgeableEntries(tx: TenantTx, organizationId: string, before: Date): Promise<string[]> {
+  const rows = await tx
+    .selectDistinct({ siteId: entries.siteId })
+    .from(entries)
+    .where(and(eq(entries.organizationId, organizationId), sql`${entries.deletedAt} is not null`, sql`${entries.deletedAt} < ${before.toISOString()}::timestamptz`));
+  return rows.map((row) => row.siteId);
+}
+
+/** A batch of the site's entries due to be purged, oldest in the trash first, locked. */
+export async function purgeCandidates(tx: TenantTx, organizationId: string, siteId: string, before: Date, limit: number): Promise<{ id: string; parentId: string | null }[]> {
+  return tx
+    .select({ id: entries.id, parentId: entries.parentId })
+    .from(entries)
+    .where(and(eq(entries.organizationId, organizationId), eq(entries.siteId, siteId), sql`${entries.deletedAt} is not null`, sql`${entries.deletedAt} < ${before.toISOString()}::timestamptz`))
+    .orderBy(entries.deletedAt, entries.id)
+    .limit(limit)
+    .for("update");
+}
+
+/** The entries directly below any of these, with whether each is in the trash, and in it since before `before` (due). */
+export async function childrenOf(
+  tx: TenantTx, organizationId: string, siteId: string, parentIds: readonly string[], before: Date,
+): Promise<{ id: string; parentId: string; trashed: boolean; due: boolean }[]> {
+  if (!parentIds.length) return [];
+  const rows = await tx
+    .select({
+      id: entries.id, parentId: entries.parentId, trashed: sql<boolean>`${entries.deletedAt} is not null`,
+      due: sql<boolean>`coalesce(${entries.deletedAt} < ${before.toISOString()}::timestamptz, false)`,
+    })
+    .from(entries)
+    .where(and(eq(entries.organizationId, organizationId), eq(entries.siteId, siteId), inArray(entries.parentId, [...parentIds])));
+  return rows.map((row) => ({ id: row.id, parentId: row.parentId!, trashed: row.trashed, due: row.due }));
 }

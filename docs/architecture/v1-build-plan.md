@@ -666,6 +666,14 @@ src/themes/
 
 **Revisions:** full snapshots (D-15). The history panel lists author, time, kind and label, with Restore. Compare UI is SHOULD after V1.
 
+- **As built (M7-1, ADR 0024):**
+  - **Two steps:** unpublish is its own action, and trash refuses a published or scheduled entry. Unpublish keeps the revisions, the draft and the date, and drops the entry from its path, the lists, the archives and links at once.
+  - **Pages:** a page goes to the trash with every page below it, at one moment, and comes back with them. The Home page is refused until another page is made the Home page.
+  - **Restore:** back as a draft, at the address its place in the tree gives it now. A taken or reserved address refuses the whole restore, naming it (no suffix). So does a page above it in the trash.
+  - **Purge:** by hand ("Delete permanently", `delete.any`), or by `trash.purge` after 30 days. One job: entries, then media. Not recorded (no system actor until M7-2).
+  - **No redirects:** the redirect prompt is M8-5's.
+  - **Media warning:** trashing an image says which published pages and posts stop showing it.
+
 ---
 
 ## 10. SEO

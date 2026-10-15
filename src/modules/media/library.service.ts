@@ -11,7 +11,7 @@ import { LIBRARY_PAGE_SIZE, type LibraryQuery } from "./library-query";
 import { displayName } from "./policy";
 import { isWidthVariant } from "./processing";
 import {
-  deleteFolderRow, filesKeepingFolder, findFolder, FOLDER_NAME_KEY, foldersOf, insertFolder, libraryItems, lockLibraryItems, renameFolderRow, updateMediaRow,
+  deleteFolderRow, filesKeepingFolder, findFolder, FOLDER_NAME_KEY, foldersOf, insertFolder, libraryItems, lockLibraryItems, renameFolderRow, updateMediaRow, usageOf,
   type FolderRow, type MediaRow,
 } from "./repository";
 
@@ -196,16 +196,49 @@ export async function moveMedia(ctx: SiteContext, mediaIds: unknown, folderId: u
   });
 }
 
-/** To the trash: no longer in the library, no longer served, not usable in content; restorable for 30 days (`trash.purge`). */
-export async function trashMedia(ctx: SiteContext, mediaId: unknown): Promise<{ events: CacheEvent[] }> {
+/**
+ * Where a file is used (M7-1), for the warning before it goes to the trash: how many published pages and posts show
+ * it, how many drafts hold it, and whether it is the site's logo or favicon. Titles (at most five of each) only for
+ * those who see every page and post: an Author sees the counts, not the titles of pages they cannot open.
+ */
+export type MediaUsage = { published: number; drafts: number; publishedTitles: string[]; draftTitles: string[]; logo: boolean; favicon: boolean };
+const USAGE_TITLES = 5;
+
+function usageFrom(ctx: SiteContext, found: Awaited<ReturnType<typeof usageOf>>): MediaUsage {
+  const titled = can(ctx, "entries.page.update") || can(ctx, "entries.post.update.any");
+  const titles = (kind: "published" | "draft") => (titled ? found.rows.filter((row) => row.kind === kind).slice(0, USAGE_TITLES).map((row) => row.title.trim() || "Untitled") : []);
+  return {
+    published: found.rows.filter((row) => row.kind === "published").length,
+    drafts: found.rows.filter((row) => row.kind === "draft").length,
+    publishedTitles: titles("published"),
+    draftTitles: titles("draft"),
+    logo: found.logo,
+    favicon: found.favicon,
+  };
+}
+
+export async function mediaUsage(ctx: SiteContext, mediaId: unknown): Promise<MediaUsage> {
+  assertSees(ctx);
+  return inTenant(ctx, async (tx) => {
+    const row = await libraryItem(tx, ctx, mediaId);
+    return usageFrom(ctx, await usageOf(tx, ctx.org.id, ctx.site.id, row.id));
+  });
+}
+
+/**
+ * To the trash: no longer in the library, no longer served, not usable in content; restorable for 30 days
+ * (`trash.purge`). Returns where it was used, as the trash found it (M7-1): the pages that stop showing it.
+ */
+export async function trashMedia(ctx: SiteContext, mediaId: unknown): Promise<{ events: CacheEvent[]; usage?: MediaUsage }> {
   assertSees(ctx);
   return inTenant(ctx, async (tx) => {
     const row = await libraryItem(tx, ctx, mediaId);
     if (!canTrash(ctx, row)) throw forbidden("Only its uploader or an editor can trash this file.");
     if (row.deletedAt) return { events: [] }; // already there
+    const usage = usageFrom(ctx, await usageOf(tx, ctx.org.id, ctx.site.id, row.id));
     await updateMediaRow(tx, ctx.org.id, ctx.site.id, row.id, { deletedAt: new Date() });
     await record(tx, { action: "media.trashed", resourceType: "media", resourceId: row.id, siteId: ctx.site.id, metadata: auditOf(row) }, ctx);
-    return { events: [{ type: "media.trashed", mediaId: row.id, siteId: ctx.site.id }] };
+    return { events: [{ type: "media.trashed", mediaId: row.id, siteId: ctx.site.id }], usage };
   });
 }
 

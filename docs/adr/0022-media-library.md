@@ -155,3 +155,17 @@ Each change is one transaction with its audit record (seven new events), and ret
   - a phone with the keyboard.
 
   Repeated 5 times: 35 of 35 passed.
+
+## Addendum (M7-1, 2026-10-16): `trash.purge` purges entries too; the media trash warns
+
+ADR 0024 has the details.
+
+- **The job:** `trash.purge` is now defined in the content module (`content/purge.ts`). It purges entries in the trash for 30 days, then calls `purgeTrashedMedia`, unchanged. The media module keeps the function and `TRASH_DAYS`; the job no longer lives in `media/purge.ts`. Still one daily job, and the same 30 days.
+- **The warning:** "Move to trash…" in the drawer asks first. It shows where the file is used (`mediaUsage`, this site only):
+  - the published pages and posts that stop showing it at once (featured image, or an image block of the published revision, found in the stored JSON);
+  - the drafts that hold it;
+  - the logo and favicon.
+
+  Titles appear only for those who see every entry. Nothing is refused.
+- **At commit:** `trashMedia` counts the usage again in its transaction, and the message says how many published pages no longer show the file.
+- **Not promised:** that copies already cached by a browser or CDN are taken back (ADR 0023 §8).

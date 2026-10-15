@@ -22,6 +22,14 @@ describe("the lists' queries", () => {
     expect(parsePostQuery({ q: "x".repeat(500) }).q).toHaveLength(100);
   });
 
+  it("the trash is a filter of its own (M7-1); only its exact name", () => {
+    expect(parsePageQuery({ status: "trash" })).toEqual({ status: "trash" });
+    expect(parsePostQuery({ status: "trash", sort: "title" })).toMatchObject({ status: "trash", sort: "title" });
+    expect(parsePageQuery({ status: "Trash" })).toEqual({});
+    expect(listHref("/p", { status: "trash", sort: "updated", page: 1 })).toBe("/p?status=trash");
+    expect(hasListFilters({ status: "trash" })).toBe(true);
+  });
+
   it("a list's URL leaves out the defaults; page 1 is the plain path", () => {
     expect(listHref("/acme/sites/bakery/posts", { sort: "updated", page: 1 })).toBe("/acme/sites/bakery/posts");
     expect(listHref("/p", { q: "a b", status: "draft", sort: "title", page: 1 }, { page: 2 })).toBe("/p?q=a+b&status=draft&sort=title&page=2");

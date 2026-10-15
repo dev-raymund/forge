@@ -1,7 +1,11 @@
 import type { Actor } from "@/modules/auth/shared";
-import { canPublishEntry, canUpdateEntry, submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "@/modules/content";
 import {
-  completeUpload, deleteFolder, moveMedia, renameFolder, requestUploads, restoreMedia, submitCompleteUpload, submitDeleteFolder, submitMoveMedia, submitRenameFolder,
+  canPublishEntry, canUpdateEntry, purgeEntry, restoreEntry, submitCreateEntry, submitPublishEntry, submitPurgeEntry, submitRestoreEntry, submitSaveDraft, submitSetHomepage,
+  submitTrashEntry, submitUnpublishEntry, trashEntry, unpublishEntry,
+} from "@/modules/content";
+import {
+  completeUpload, deleteFolder, mediaUsage, moveMedia, renameFolder, requestUploads, restoreMedia, submitCompleteUpload, submitDeleteFolder, submitMediaUsage, submitMoveMedia,
+  submitRenameFolder,
   submitRequestAvatarUpload, submitRequestUploads, submitRestoreMedia, submitTrashMedia, submitUpdateMedia, trashMedia, updateMediaDetails,
 } from "@/modules/media";
 import {
@@ -111,6 +115,20 @@ export const tenantOperations: TenantOperation[] = [
     name: `media.${name}(A's site, B's ${name.includes("Folder") ? "folder" : "media"})`,
     run: async ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => run(await resolveSiteContext(actor, orgSlug, siteSlug), b),
   })),
+  // The lifecycle (M7-1): B's entry named on A's site, in the trash or not.
+  ...([
+    ["unpublishEntry", unpublishEntry],
+    ["trashEntry", trashEntry],
+    ["restoreEntry", restoreEntry],
+    ["purgeEntry", purgeEntry],
+  ] as const).map(([name, run]) => ({
+    name: `content.${name}(A's site, B's entry)`,
+    run: async ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => run(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId),
+  })),
+  // The warning before a file goes to the trash (M7-1): where B's file is used, asked from A's site or B's URL.
+  { name: "media.mediaUsage(A's site, B's media)", run: async ({ actor, orgSlug, siteSlug }, b) => mediaUsage(await resolveSiteContext(actor, orgSlug, siteSlug), b.mediaId) },
+  { name: "media.submitMediaUsage(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitMediaUsage(actor, orgSlug, siteSlug, b.mediaId)) },
+  { name: "media.submitMediaUsage(B's slug, B's site, B's media)", run: ({ actor }, b) => refused(submitMediaUsage(actor, b.orgSlug, b.siteSlug, b.mediaId)) },
   { name: "media.submitUpdateMedia(B's slug, B's site, B's media)", run: ({ actor }, b) => refusedForm(submitUpdateMedia(actor, b.orgSlug, b.siteSlug, b.mediaId, formOf({ title: "x" }))) },
   { name: "media.submitTrashMedia(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refusedForm(submitTrashMedia(actor, orgSlug, siteSlug, b.mediaId)) },
   { name: "media.submitRestoreMedia(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refusedForm(submitRestoreMedia(actor, orgSlug, siteSlug, b.mediaId)) },
@@ -288,6 +306,11 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
     ["submitSaveDraft", (actor: Actor, org: string, site: string, entry: string) => submitSaveDraft(actor, org, site, entry, form({ version: "1", draft: JSON.stringify({ title: "Hijacked" }) }))],
     ["submitPublishEntry", (actor: Actor, org: string, site: string, entry: string) => submitPublishEntry(actor, org, site, entry, form({ version: "1" }))],
     ["submitSetHomepage", (actor: Actor, org: string, site: string, entry: string) => submitSetHomepage(actor, org, site, entry, form({}))],
+    // M7-1.
+    ["submitUnpublishEntry", (actor: Actor, org: string, site: string, entry: string) => submitUnpublishEntry(actor, org, site, entry, form({}))],
+    ["submitTrashEntry", (actor: Actor, org: string, site: string, entry: string) => submitTrashEntry(actor, org, site, entry, form({}))],
+    ["submitRestoreEntry", (actor: Actor, org: string, site: string, entry: string) => submitRestoreEntry(actor, org, site, entry, form({}))],
+    ["submitPurgeEntry", (actor: Actor, org: string, site: string, entry: string) => submitPurgeEntry(actor, org, site, entry, form({}))],
   ] as const).flatMap(([name, submit]) => [
     { name: `content.${name}(B's slug, B's site, B's entry)`, run: ({ actor }: Caller, b: Foreign) => submit(actor, b.orgSlug, b.siteSlug, b.entryId) },
     { name: `content.${name}(A's slug, A's site, B's entry)`, run: ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => submit(actor, orgSlug, siteSlug, b.entryId) },

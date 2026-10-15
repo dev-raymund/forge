@@ -27,6 +27,10 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "entry.moved": { type: "page", title: "Team", parentTitle: "About us", from: "/team", to: "/about-us/team" },
   "entry.reordered": { type: "page", title: "Team", position: 2, of: 3 },
   "entry.author_changed": { type: "post", title: "Hello", authorName: "Jane Doe", previousAuthorName: "John Doe" },
+  "entry.unpublished": { type: "post", title: "Hello", path: "/blog/hello" },
+  "entry.trashed": { type: "page", title: "About us", path: "/about-us", below: 2 },
+  "entry.restored": { type: "page", title: "About us", path: "/about-us", below: 2 },
+  "entry.deleted": { type: "post", title: "Hello", path: "/blog/hello", below: 0 },
   "term.created": { taxonomy: "category", name: "Bread", slug: "bread" },
   "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
   "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
@@ -41,7 +45,7 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1 and the seven of M6-3, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1, the seven of M6-3 and the four of M7-1, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -50,6 +54,7 @@ describe("the audit vocabulary", () => {
         "site.created", "site.address_changed", "site.deleted", "site.theme_changed", "site.settings_changed", "site.status_changed",
         "entry.created", "entry.published", "site.homepage_changed",
         "entry.moved", "entry.reordered", "entry.author_changed",
+        "entry.unpublished", "entry.trashed", "entry.restored", "entry.deleted",
         "term.created", "term.updated", "term.deleted",
         "media.uploaded",
         "media.updated", "media.moved", "media.trashed", "media.restored", "media.folder_created", "media.folder_renamed", "media.folder_deleted",
@@ -139,6 +144,10 @@ describe("what is stored with an event", () => {
       ["entry.moved", { type: "page", title: "X", from: "/x" }],
       ["entry.reordered", { type: "page", title: "X", position: 0, of: 1 }],
       ["entry.author_changed", { type: "post", title: "X" }],
+      ["entry.unpublished", { type: "post", title: "X" }],
+      ["entry.trashed", { type: "page", title: "X", path: "/x", below: -1 }],
+      ["entry.restored", { type: "page", title: "X", path: "/x" }],
+      ["entry.deleted", { type: "custom", title: "X", path: "/x", below: 0 }],
       ["term.created", { taxonomy: "section", name: "X", slug: "x" }],
       ["term.created", { taxonomy: "tag", name: "X", slug: "X Y" }],
       ["term.updated", { taxonomy: "tag", name: "X", slug: "x", fields: [] }],
@@ -220,6 +229,13 @@ describe("an event as a sentence", () => {
     expect(say("entry.moved", { type: "page", title: "Home", parentTitle: "About us", from: "/", to: "/" })).toBe("Raymund moved the page Home under About us.");
     expect(say("entry.reordered", { type: "page", title: "Team", position: 1, of: 4 })).toBe("Raymund moved the page Team to position 1 of 4.");
     expect(say("entry.author_changed", { type: "post", title: "Hello", authorName: "Jane Doe" })).toBe("Raymund made Jane Doe the author of the post Hello.");
+    expect(say("entry.unpublished", { type: "post", title: "Hello", path: "/blog/hello" })).toBe("Raymund unpublished the post Hello, which was at /blog/hello.");
+    expect(say("entry.trashed", { type: "page", title: "About us", path: "/about-us", below: 2 })).toBe("Raymund moved the page About us to the trash, with 2 pages below it.");
+    expect(say("entry.trashed", { type: "post", title: "Hello", path: "/blog/hello", below: 0 })).toBe("Raymund moved the post Hello to the trash.");
+    expect(say("entry.restored", { type: "page", title: "About us", path: "/about-us", below: 1 })).toBe(
+      "Raymund restored the page About us from the trash, at /about-us, with 1 page below it.",
+    );
+    expect(say("entry.deleted", { type: "post", title: "Hello", path: "/blog/hello", below: 0 })).toBe("Raymund deleted the post Hello for good.");
     expect(say("term.created", { taxonomy: "category", name: "Bread", slug: "bread" })).toBe("Raymund created the category Bread.");
     expect(say("term.updated", { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" })).toBe(
       "Raymund renamed the tag Rye to Sourdough, with the slug sourdough instead of rye.",

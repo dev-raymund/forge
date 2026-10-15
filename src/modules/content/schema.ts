@@ -79,6 +79,8 @@ export const entries = pgTable(
       .on(t.siteId, t.type, t.updatedAt.desc())
       .where(sql`deleted_at is null`),
     index("entries_tree_idx").on(t.siteId, t.parentId, t.sortOrder),
+    // M7-1: the trash lists and `trash.purge` find entries in the trash; most entries are not.
+    index("entries_trashed_idx").on(t.siteId, t.deletedAt).where(sql`deleted_at is not null`),
     oneOf("entries_type_check", t.type, ENTRY_TYPES),
     oneOf("entries_status_check", t.status, ENTRY_STATUSES),
     check("entries_slug_format", sql`slug ~ ${sql.raw(`'${SLUG_RE}'`)}`),

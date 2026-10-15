@@ -5,7 +5,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
-import { changeAuthor, createEntry, createTerm, deleteTerm, movePage, placePage, publishEntry, setHomepage, updateTerm } from "@/modules/content";
+import {
+  changeAuthor, createEntry, createTerm, deleteTerm, movePage, placePage, publishEntry, purgeEntry, restoreEntry, setHomepage, trashEntry, unpublishEntry, updateTerm,
+} from "@/modules/content";
 import { completeUpload, createFolder, deleteFolder, moveMedia, renameFolder, requestUploads, restoreMedia, trashMedia, updateMediaDetails } from "@/modules/media";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
@@ -229,7 +231,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3, the lifecycle of M7-1)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -264,6 +266,13 @@ describe("every change writes its line, in the same transaction", () => {
     await movePage(siteCtx, below.id, null); // last at the top level again
     await placePage(siteCtx, below.id, beside.id);
     await changeAuthor(siteCtx, entry.id, one.user.id);
+    // M7-1: the lifecycle (its own tests are tests/integration/content-lifecycle.test.ts).
+    await publishEntry(siteCtx, beside.id, 1);
+    await unpublishEntry(siteCtx, beside.id);
+    await trashEntry(siteCtx, beside.id);
+    await restoreEntry(siteCtx, beside.id);
+    await trashEntry(siteCtx, beside.id);
+    await purgeEntry(siteCtx, beside.id);
     // M5-8: terms (their own tests are tests/integration/content-terms.test.ts).
     const { term } = await createTerm(siteCtx, { taxonomy: "tag", name: "Covered" });
     await updateTerm(siteCtx, term.id, { name: "Covered again" });

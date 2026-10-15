@@ -141,16 +141,21 @@ describe("the five tables, as the migrations made them (plan §4.2)", () => {
       [CONTENT_TABLES],
     );
     expect(rows.sort((x, y) => x.relname.localeCompare(y.relname))).toEqual([...CONTENT_TABLES].sort().map((relname) => ({ relname, enabled: true, forced: true })));
-    const policies = await getPool().query<{ tablename: string; policyname: string; cmd: string; qual: string; with_check: string }>(
-      "select tablename, policyname, cmd, qual, with_check from pg_policies where tablename = any($1)",
+    const policies = await getPool().query<{ tablename: string; policyname: string; cmd: string; roles: string; qual: string; with_check: string | null }>(
+      "select tablename, policyname, cmd, roles, qual, with_check from pg_policies where tablename = any($1)",
       [CONTENT_TABLES],
     );
-    expect(policies.rows).toHaveLength(CONTENT_TABLES.length);
-    for (const policy of policies.rows) {
+    const tenant = policies.rows.filter((policy) => policy.policyname.endsWith("_tenant_isolation"));
+    expect(tenant).toHaveLength(CONTENT_TABLES.length);
+    for (const policy of tenant) {
       expect(policy, policy.tablename).toMatchObject({
         policyname: `${policy.tablename}_tenant_isolation`, cmd: "ALL", qual: "(organization_id = app_current_org_id())", with_check: "(organization_id = app_current_org_id())",
       });
     }
+    // And one other (M7-1, migration 0013): the purge lookup's role may read entries in the trash, nothing else.
+    expect(policies.rows.filter((policy) => !policy.policyname.endsWith("_tenant_isolation"))).toEqual([
+      { tablename: "entries", policyname: "entries_trashed_lookup", cmd: "SELECT", roles: "{forge_lookup}", qual: "(deleted_at IS NOT NULL)", with_check: null },
+    ]);
   });
 
   it("grants: the runtime role reads and writes every content table, but may never UPDATE a revision", async () => {

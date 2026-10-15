@@ -1,0 +1,1 @@
+CREATE INDEX "entries_trashed_idx" ON "entries" USING btree ("site_id","deleted_at") WHERE deleted_at is not null;

@@ -23,16 +23,16 @@ export type { IssuedAvatarUpload } from "./avatar.service";
 export { submitCompleteAvatarUpload, submitRequestAvatarUpload } from "./upload-requests";
 export { AvatarForm } from "./ui/avatar-form";
 export {
-  canManageFolders, canSeeLibrary, createFolder, deleteFolder, FOLDER_NAME_MAX, listLibrary, MEDIA_ALT_MAX, MEDIA_CAPTION_MAX, MEDIA_TITLE_MAX, MOVE_MAX, moveMedia,
-  renameFolder, restoreMedia, trashMedia, updateMediaDetails,
+  canManageFolders, canSeeLibrary, createFolder, deleteFolder, FOLDER_NAME_MAX, listLibrary, MEDIA_ALT_MAX, MEDIA_CAPTION_MAX, MEDIA_TITLE_MAX, mediaUsage, MOVE_MAX,
+  moveMedia, renameFolder, restoreMedia, trashMedia, updateMediaDetails,
 } from "./library.service";
-export type { Library, LibraryFolder, LibraryItem } from "./library.service";
+export type { Library, LibraryFolder, LibraryItem, MediaUsage } from "./library.service";
 export { LIBRARY_PAGE_SIZE, libraryHref, parseLibraryQuery } from "./library-query";
 export type { LibraryQuery } from "./library-query";
 export {
-  mediaLibraryPath, submitCreateFolder, submitDeleteFolder, submitMoveMedia, submitRenameFolder, submitRestoreMedia, submitTrashMedia, submitUpdateMedia,
+  mediaLibraryPath, submitCreateFolder, submitDeleteFolder, submitMediaUsage, submitMoveMedia, submitRenameFolder, submitRestoreMedia, submitTrashMedia, submitUpdateMedia,
 } from "./library-forms";
-export { purgeTrashedMedia, TRASH_DAYS, trashPurge } from "./purge";
+export { purgeTrashedMedia, TRASH_DAYS } from "./purge";
 export type { TrashPurgeResult } from "./purge";
 export { MediaLibrary } from "./ui/media-library";
 export { imagePreviews, publicImages, siteImageRefusal, siteImagery, usableImageIds } from "./images";

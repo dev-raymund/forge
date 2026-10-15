@@ -31,8 +31,6 @@ export type TagSet = { immediate: string[]; stale: string[] };
 export function tagsFor(event: CacheEvent): TagSet {
   switch (event.type) {
     case "entry.published":
-    case "entry.unpublished":
-    case "entry.trashed":
       return {
         // An auto-redirect on a path change lives in the site's config.
         immediate: [
@@ -41,6 +39,19 @@ export function tagsFor(event: CacheEvent): TagSet {
           ...(event.pathChanged ? [tags.config(event.siteId)] : []),
         ],
         stale: [tags.list(event.siteId, event.contentType)],
+      };
+    case "entry.unpublished":
+    case "entry.trashed":
+      // Gone from the site (M7-1): its page, its path, and the lists and archives that link to it, at once. A list
+      // that showed it for one more request would send a visitor to a page that is no longer there.
+      return {
+        immediate: [
+          tags.entry(event.siteId, event.entryId),
+          tags.routes(event.siteId),
+          tags.list(event.siteId, event.contentType),
+          ...(event.pathChanged ? [tags.config(event.siteId)] : []),
+        ],
+        stale: [],
       };
     case "entry.moved":
       // As a publish that changed the path: its own page, the routes, the config (for M8-5's redirect), its lists.

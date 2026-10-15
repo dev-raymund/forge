@@ -3,7 +3,10 @@
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
-import { submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "./entry-forms";
+import {
+  submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry, submitRestoreEntry, submitSaveDraft, submitSetHomepage,
+  submitTrashEntry, submitUnpublishEntry,
+} from "./entry-forms";
 import { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 
 /**
@@ -61,4 +64,22 @@ export async function updateTermAction(orgSlug: string, siteSlug: string, termId
 
 export async function deleteTermAction(orgSlug: string, siteSlug: string, termId: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitDeleteTerm(await getCurrentActor(), orgSlug, siteSlug, termId, formData, await currentRequestMeta()));
+}
+
+// M7-1: the lifecycle.
+
+export async function unpublishEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitUnpublishEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function trashEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitTrashEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function restoreEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitRestoreEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function purgeEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitPurgeEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
 }

@@ -7,8 +7,9 @@ import type { FormState } from "@/platform/forms";
 import { kickJobs } from "@/platform/jobs";
 import { avatarsCollect, type IssuedAvatarUpload } from "./avatar.service";
 import {
-  submitCreateFolder, submitDeleteFolder, submitMoveMedia, submitRenameFolder, submitRestoreMedia, submitTrashMedia, submitUpdateMedia,
+  submitCreateFolder, submitDeleteFolder, submitMediaUsage, submitMoveMedia, submitRenameFolder, submitRestoreMedia, submitTrashMedia, submitUpdateMedia,
 } from "./library-forms";
+import type { MediaUsage } from "./library.service";
 import { submitCompleteAvatarUpload, submitCompleteUpload, submitRequestAvatarUpload, submitRequestUploads } from "./upload-requests";
 import type { IssuedUpload, UploadedMedia } from "./upload.service";
 
@@ -52,6 +53,11 @@ export async function updateMediaAction(orgSlug: string, siteSlug: string, media
 
 export async function moveMediaAction(orgSlug: string, siteSlug: string, mediaIds: unknown, folderId: unknown): Promise<FormState> {
   return finish(await submitMoveMedia(await getCurrentActor(), orgSlug, siteSlug, mediaIds, folderId, await currentRequestMeta()));
+}
+
+/** Where a file is used, for the warning before the trash (M7-1). Read-only. */
+export async function mediaUsageAction(orgSlug: string, siteSlug: string, mediaId: string): Promise<ActionResult<MediaUsage>> {
+  return submitMediaUsage(await getCurrentActor(), orgSlug, siteSlug, mediaId, await currentRequestMeta());
 }
 
 export async function trashMediaAction(orgSlug: string, siteSlug: string, mediaId: string): Promise<FormState> {

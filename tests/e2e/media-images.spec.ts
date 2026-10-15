@@ -172,7 +172,10 @@ test("an image from the slash menu and the picker (uploaded there; a PDF refused
   // Trashed in the library: gone from the live page on the next request, the rest of the page still there.
   await page.goto(`${base}/media`);
   await page.locator('[data-testid="media-item"][data-name="Rye loaf.png"]').getByRole("button").first().click();
-  await page.getByTestId("media-drawer").getByRole("button", { name: "Move to trash" }).click();
+  await page.getByTestId("media-drawer").getByRole("button", { name: "Move to trash…" }).click();
+  // The warning (M7-1): the published page that shows it, which stops showing it at once.
+  await expect(page.getByTestId("media-usage")).toContainText("1 published page or post shows it: Home. They stop showing it at once.");
+  await page.getByTestId("trash-confirm").getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(page.getByTestId("media-item")).toHaveCount(0);
   await visitor.reload();
   await expect(visitor.getByRole("main")).toContainText("Our bakery.");

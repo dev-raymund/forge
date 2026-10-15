@@ -5,9 +5,10 @@ import { sitePath } from "@/modules/sites/shared";
 import { refusal, resolveSiteContext, type FormOutcome, type RequestMeta } from "@/modules/tenancy";
 import { forbidden, notFound, validationError } from "@/platform/errors";
 import { text } from "@/platform/forms";
-import { entryEditorPath } from "./admin-paths";
+import { entryEditorPath, entryListPath } from "./admin-paths";
 import { changeAuthor, createEntry, saveDraft } from "./entry.service";
 import { setHomepage } from "./homepage.service";
+import { purgeEntry, restoreEntry, trashEntry, unpublishEntry } from "./lifecycle.service";
 import { canSetHomepage } from "./policies";
 import { publishEntry } from "./publishing.service";
 import { movePage, placePage } from "./tree.service";
@@ -213,5 +214,86 @@ export async function submitChangeAuthor(actor: Actor, orgSlug: string, siteSlug
     };
   } catch (error) {
     return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+// ── M7-1: unpublish, the trash, restore, purge ───────────────────────────────
+
+const pagesBelow = (n: number) => (n ? `, with ${n} ${n === 1 ? "page" : "pages"} below it` : "");
+/** The admin pages that list or show entries of the site: its overview, and both lists (a page's trash moves pages only, but a refresh is cheap). */
+const listsOf = (orgSlug: string, siteSlug: string) => [sitePath(orgSlug, siteSlug), entryListPath(orgSlug, siteSlug, "page"), entryListPath(orgSlug, siteSlug, "post")];
+
+/** Takes a published entry off the site; its draft, revisions and date are kept. */
+export async function submitUnpublishEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, _formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { changed, events } = await unpublishEntry(ctx, id);
+    return {
+      state: { status: "success", message: changed ? "Unpublished: it is no longer on the site." : "It is not published." },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+      // The editor that asked updates itself; a refresh under it could hand it an older draft version.
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** Moves a draft to the trash, with the pages below it. The screen that asked goes to the trash list itself. */
+export async function submitTrashEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, _formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { entry, below, events } = await trashEntry(ctx, id);
+    return {
+      state: {
+        status: "success",
+        message: `Moved to the trash${pagesBelow(below)}. It can be restored for 30 days.`,
+        values: { trashPath: `${entryListPath(ctx.org.slug, ctx.site.slug, entry.type)}?status=trash` },
+      },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** Restores an entry from the trash as a draft, with the pages trashed with it, or nothing at all. */
+export async function submitRestoreEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, _formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { entry, below, events } = await restoreEntry(ctx, id);
+    return {
+      state: {
+        status: "success",
+        message: `Restored as a draft at ${entry.path}${pagesBelow(below)}. Publish it to put it back on the site.`,
+        values: { editorPath: entryEditorPath(ctx.org.slug, ctx.site.slug, entry.type, entry.id) },
+      },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+    };
+  } catch (error) {
+    return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** Deletes an entry in the trash for good, now, with the pages below it. */
+export async function submitPurgeEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, _formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { below, events } = await purgeEntry(ctx, id);
+    return {
+      state: { status: "success", message: `Deleted for good${pagesBelow(below)}.` },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+    };
+  } catch (error) {
+    return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
   }
 }

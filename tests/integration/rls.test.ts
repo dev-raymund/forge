@@ -313,6 +313,30 @@ describe("the trash.purge lookup (SECURITY DEFINER, owned by forge_lookup; M6-3)
   });
 });
 
+describe("the trash.purge lookup for entries (SECURITY DEFINER, owned by forge_lookup; M7-1)", () => {
+  it("names the organizations with entries trashed before the cutoff: organization ids only; nothing about the entries", async () => {
+    const lookup = (before: Date) =>
+      withPlatform(async (tx) => (await tx.execute(sql`select * from organizations_with_purgeable_entries(${before.toISOString()}::timestamptz, 1000)`)).rows);
+    const cutoff = () => new Date(Date.now() - 30 * 24 * 3_600_000);
+    expect(await lookup(cutoff())).not.toContainEqual({ organization_id: B.org.id });
+    const id = uuidv7();
+    await withTenant({ orgId: B.org.id }, (tx) =>
+      tx.execute(sql`insert into entries (id, organization_id, site_id, type, locale, title, slug, path, deleted_at)
+                     values (${id}, ${B.org.id}, ${B.site.id}, 'page', 'en', 'Old', ${`old-${id.slice(-8)}`}, ${`/old-${id.slice(-8)}`}, now() - interval '31 days')`),
+    );
+    try {
+      const rows = await lookup(cutoff());
+      expect(rows).toContainEqual({ organization_id: B.org.id });
+      expect(Object.keys(rows[0]!)).toEqual(["organization_id"]);
+      expect(await lookup(new Date(Date.now() - 32 * 24 * 3_600_000))).not.toContainEqual({ organization_id: B.org.id });
+      // Without the function, a context with no organization still sees no entries.
+      expect(await orgIdsVisible("entries")).toEqual([]);
+    } finally {
+      await withTenant({ orgId: B.org.id }, (tx) => tx.execute(sql`delete from entries where id = ${id}`));
+    }
+  });
+});
+
 describe("append-only tables", () => {
   it("audit_logs rejects UPDATE and DELETE for the runtime role", async () => {
     const asA = (statement: ReturnType<typeof sql>) =>

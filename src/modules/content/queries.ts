@@ -4,12 +4,16 @@ import { imagePreviews, type ImagePreview } from "@/modules/media";
 import { inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
 import { forbidden, notFound } from "@/platform/errors";
+import { entryListPath } from "./admin-paths";
 import { refOf } from "./entry.service";
 import { POSTS_PAGE_SIZE, type PageListQuery, type PostListQuery } from "./list-query";
 import { referencesOf } from "./document/references";
 import { HOME_PATH } from "./paths";
-import { canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage, canUpdateEntry, ownPostsOnly } from "./policies";
-import { findDraft, findEntry, memberName, revisionById, siteFacts } from "./repository";
+import { ENTRY_TRASH_DAYS } from "./lifecycle";
+import {
+  canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canPurgeEntry, canSeeEntry, canSeePages, canSetHomepage, canTrashEntry, canUpdateEntry, ownPostsOnly,
+} from "./policies";
+import { descendantsOf, findDraft, findEntry, memberName, revisionById, siteFacts } from "./repository";
 import { entries, entryDrafts, entryRevisions, terms } from "./schema";
 import type { ContentTypeKey } from "./types/definition";
 
@@ -38,6 +42,12 @@ export type EditorEntry = {
   images: Record<string, ImagePreview>;
   /** What the caller may do: the same policies the services ask (ADR 0016). For the screen only. */
   canEdit: boolean;
+  /**
+   * The lifecycle (M7-1), for the screen: whether the caller may unpublish it and move it to the trash, and, for a
+   * page, the pages below it that would go with it (and those that keep it out of the trash: published ones, the Home
+   * page). The services check all of it again.
+   */
+  lifecycle: { canUnpublish: boolean; canTrash: boolean; below: number; liveBelow: string[]; homeBelow: boolean; trashPath: string };
   canPublish: boolean;
   /** M5-7's sidebar: the draft's other fields, the entry's place and author, and what else the caller may do. */
   settings: {
@@ -77,6 +87,7 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
     const live = entry.publishedRevisionId ? await revisionById(tx, ctx.org.id, ctx.site.id, entry.id, entry.publishedRevisionId) : null;
     const imageIds = [...referencesOf(draft.content).mediaIds, ...(draft.featuredMediaId ? [draft.featuredMediaId] : [])];
     const images = await imagePreviews(tx, ctx.org.id, ctx.site.id, imageIds);
+    const below = entry.type === "page" ? await descendantsOf(tx, ctx.org.id, ctx.site.id, entry.id) : [];
     return {
       id: entry.id,
       type: entry.type,
@@ -88,6 +99,14 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
       images,
       canEdit: canUpdateEntry(ctx, refOf(entry)),
       canPublish: canPublishEntry(ctx, refOf(entry)),
+      lifecycle: {
+        canUnpublish: canPublishEntry(ctx, refOf(entry)),
+        canTrash: canTrashEntry(ctx, refOf(entry)),
+        below: below.length,
+        liveBelow: below.filter((row) => row.status !== "draft").map((row) => row.title || "Untitled"),
+        homeBelow: below.some((row) => row.path === HOME_PATH),
+        trashPath: `${entryListPath(ctx.org.slug, ctx.site.slug, entry.type)}?status=trash`,
+      },
       settings: {
         slug: draft.slug,
         template: draft.template,
@@ -150,13 +169,23 @@ export async function searchEntries(ctx: SiteContext, query: string): Promise<En
 
 // ── M5-7: the lists ───────────────────────────────────────────────────────────
 
-const ofSite = (ctx: SiteContext) =>
+/** The site's entries: those not in the trash, or (M7-1) only those in it. */
+const ofSite = (ctx: SiteContext, inTrash = false) =>
   and(
     eq(entries.organizationId, ctx.org.id),
     eq(entries.siteId, ctx.site.id),
-    isNull(entries.deletedAt),
+    inTrash ? sql`${entries.deletedAt} is not null` : isNull(entries.deletedAt),
     sql`exists (select 1 from ${t.sites} s where s.id = ${entries.siteId} and s.deleted_at is null)`,
   );
+/** A list's status filter: the trash is not a status (it is `deleted_at`, M7-1). */
+const statusFilter = (status: PageListQuery["status"]) => (status && status !== "trash" ? eq(entries.status, status) : undefined);
+
+/**
+ * An entry in the trash, as the trash lists show it (M7-1): when it went, when `trash.purge` deletes it, how many
+ * pages went with it, whether it sits under a page in the trash (restore that one first), and what the caller may do.
+ */
+export type TrashInfo = { trashedAt: Date; purgeAt: Date; below: number; underTrashedPage: boolean; canRestore: boolean; canPurge: boolean };
+const purgeDateOf = (trashedAt: Date) => new Date(trashedAt.getTime() + ENTRY_TRASH_DAYS * 24 * 3_600_000);
 const draftOf = and(eq(entryDrafts.organizationId, entries.organizationId), eq(entryDrafts.siteId, entries.siteId), eq(entryDrafts.entryId, entries.id));
 const liveRevisionOf = and(eq(entryRevisions.id, entries.publishedRevisionId), eq(entryRevisions.entryId, entries.id), eq(entryRevisions.siteId, entries.siteId));
 const matching = (q: string | undefined): SQL | undefined => (q ? or(ilike(entryDrafts.title, `%${escapeLike(q)}%`), ilike(entries.title, `%${escapeLike(q)}%`)) : undefined);
@@ -173,6 +202,8 @@ export type PageListItem = {
   /** Published, with changes saved since. */
   changed: boolean;
   updatedAt: Date;
+  /** In the trash (the trash filter, M7-1). */
+  trash?: TrashInfo;
 };
 
 /** The most pages the tree shows at once. V1 sites are far below it; past it the list says so. */
@@ -186,6 +217,7 @@ export const PAGE_TREE_LIMIT = 1_000;
 export async function listPages(ctx: SiteContext, query: PageListQuery = {}): Promise<{ items: PageListItem[]; truncated: boolean }> {
   requirePermission(ctx, "entries.page.read");
   if (!canSeePages(ctx)) throw forbidden();
+  if (query.status === "trash") return trashedPages(ctx, query);
   return inTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -195,7 +227,7 @@ export async function listPages(ctx: SiteContext, query: PageListQuery = {}): Pr
       .from(entries)
       .innerJoin(entryDrafts, draftOf)
       .leftJoin(entryRevisions, liveRevisionOf)
-      .where(and(ofSite(ctx), eq(entries.type, "page"), query.status ? eq(entries.status, query.status) : undefined, matching(query.q)))
+      .where(and(ofSite(ctx), eq(entries.type, "page"), statusFilter(query.status), matching(query.q)))
       .orderBy(asc(entries.sortOrder), asc(sql`lower(${entryDrafts.title})`), asc(entries.id))
       .limit(PAGE_TREE_LIMIT + 1);
     return {
@@ -205,6 +237,52 @@ export async function listPages(ctx: SiteContext, query: PageListQuery = {}): Pr
       })),
       truncated: rows.length > PAGE_TREE_LIMIT,
     };
+  });
+}
+
+/**
+ * The site's pages in the trash (M7-1): one row for each trash of a page, with how many pages went with it (they come
+ * back with it, and are not listed on their own), most recent first. A page trashed on its own under a page that was
+ * trashed later is listed too, marked: it waits for that page to be restored.
+ */
+async function trashedPages(ctx: SiteContext, query: PageListQuery): Promise<{ items: PageListItem[]; truncated: boolean }> {
+  return inTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: entries.id, title: entryDrafts.title, liveTitle: entries.title, path: entries.path, status: entries.status, parentId: entries.parentId,
+        updatedAt: entryDrafts.updatedAt, deletedAt: entries.deletedAt, moment: sql<string>`${entries.deletedAt}::text`, authorId: entries.authorId,
+        organizationId: entries.organizationId, type: entries.type,
+      })
+      .from(entries)
+      .innerJoin(entryDrafts, draftOf)
+      .where(and(ofSite(ctx, true), eq(entries.type, "page")))
+      .orderBy(desc(entries.deletedAt), asc(entries.id))
+      .limit(PAGE_TREE_LIMIT + 1);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    // Trashed together: the same moment, to the microsecond (compared as text, as stored).
+    const withParent = (row: (typeof rows)[number]) => (row.parentId ? byId.get(row.parentId) : undefined);
+    const isRoot = (row: (typeof rows)[number]) => withParent(row)?.moment !== row.moment;
+    const below = new Map<string, number>();
+    for (const row of rows) {
+      if (isRoot(row)) continue;
+      let up = withParent(row);
+      while (up && !isRoot(up)) up = withParent(up);
+      if (up) below.set(up.id, (below.get(up.id) ?? 0) + 1);
+    }
+    const q = query.q?.toLowerCase();
+    const items = rows
+      .filter((row) => isRoot(row) && (!q || (row.title || row.liveTitle).toLowerCase().includes(q)))
+      .map((row) => {
+        const ref = { type: row.type, organizationId: row.organizationId, authorId: row.authorId };
+        return {
+          id: row.id, title: row.title || row.liveTitle, path: row.path, status: row.status, parentId: row.parentId, isHome: false, changed: false, updatedAt: row.updatedAt,
+          trash: {
+            trashedAt: row.deletedAt!, purgeAt: purgeDateOf(row.deletedAt!), below: below.get(row.id) ?? 0, underTrashedPage: Boolean(withParent(row)),
+            canRestore: canTrashEntry(ctx, ref), canPurge: canPurgeEntry(ctx, ref),
+          },
+        };
+      });
+    return { items, truncated: rows.length > PAGE_TREE_LIMIT };
   });
 }
 
@@ -221,6 +299,8 @@ export type PostListItem = {
   changed: boolean;
   updatedAt: Date;
   publishedAt: Date | null;
+  /** In the trash (the trash filter, M7-1). */
+  trash?: TrashInfo;
 };
 
 export type PostList = { items: PostListItem[]; total: number; page: number; pages: number; pageSize: number; onlyOwn: boolean };
@@ -240,11 +320,12 @@ export async function listPosts(ctx: SiteContext, query: PostListQuery): Promise
   requirePermission(ctx, "entries.post.read");
   const onlyOwn = ownPostsOnly(ctx);
   const author = onlyOwn ? ctx.actor.userId : query.author;
+  const inTrash = query.status === "trash";
   return inTenant(ctx, async (tx) => {
     const where = and(
-      ofSite(ctx),
+      ofSite(ctx, inTrash),
       eq(entries.type, "post"),
-      query.status ? eq(entries.status, query.status) : undefined,
+      statusFilter(query.status),
       author ? eq(entries.authorId, author) : undefined,
       query.category ? sql`${entryDrafts.termIds} @> array[${query.category}]::uuid[]` : undefined,
       matching(query.q),
@@ -256,6 +337,7 @@ export async function listPosts(ctx: SiteContext, query: PostListQuery): Promise
       .select({
         id: entries.id, title: entryDrafts.title, liveTitle: entries.title, path: entries.path, status: entries.status, authorId: entries.authorId,
         authorName: t.users.name, termIds: entryDrafts.termIds, changed: changedSincePublished, updatedAt: entryDrafts.updatedAt, publishedAt: entries.publishedAt,
+        deletedAt: entries.deletedAt, organizationId: entries.organizationId,
       })
       .from(entries)
       .innerJoin(entryDrafts, draftOf)
@@ -263,7 +345,8 @@ export async function listPosts(ctx: SiteContext, query: PostListQuery): Promise
       .leftJoin(t.organizationMembers, and(eq(t.organizationMembers.organizationId, entries.organizationId), eq(t.organizationMembers.userId, entries.authorId)))
       .leftJoin(t.users, eq(t.users.id, t.organizationMembers.userId))
       .where(where)
-      .orderBy(...POST_ORDER[query.sort])
+      // The trash: most recently trashed first, whatever the sort (it is what will be purged last).
+      .orderBy(...(inTrash ? [desc(entries.deletedAt), desc(entries.id)] : POST_ORDER[query.sort]))
       .limit(POSTS_PAGE_SIZE)
       .offset((page - 1) * POSTS_PAGE_SIZE);
     const termIds = [...new Set(rows.flatMap((row) => row.termIds))];
@@ -279,6 +362,14 @@ export async function listPosts(ctx: SiteContext, query: PostListQuery): Promise
         id: row.id, title: row.title || row.liveTitle, path: row.path, status: row.status, authorId: row.authorId, authorName: row.authorName,
         categories: row.termIds.flatMap((id) => (nameOf.has(id) ? [nameOf.get(id)!] : [])).sort((a, b) => a.localeCompare(b)),
         changed: row.changed, updatedAt: row.updatedAt, publishedAt: row.publishedAt,
+        ...(row.deletedAt
+          ? {
+              trash: (() => {
+                const ref = { type: "post" as const, organizationId: row.organizationId, authorId: row.authorId };
+                return { trashedAt: row.deletedAt, purgeAt: purgeDateOf(row.deletedAt), below: 0, underTrashedPage: false, canRestore: canTrashEntry(ctx, ref), canPurge: canPurgeEntry(ctx, ref) };
+              })(),
+            }
+          : {}),
       })),
       total,
       page,
