@@ -2,7 +2,7 @@
 
 import { ImageUp, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
 import { FormAlert } from "@/components/admin/form";
 import { completeAvatarUploadAction, requestAvatarUploadAction } from "../actions";
 
@@ -20,8 +20,12 @@ const initials = (name: string) =>
  * The account picture (M6-2) on /account. The file goes from the browser straight to storage, then the server
  * checks it, makes a square of it and shows it. The browser only says which file; it never names the picture's URL.
  */
+const noSubscription = () => () => {};
+
 export function AvatarForm({ name, avatarUrl }: { name: string; avatarUrl: string | null }) {
   const router = useRouter();
+  // A file can be chosen only once this is running: a choice made before the page is interactive would be lost.
+  const interactive = useSyncExternalStore(noSubscription, () => true, () => false);
   const input = useRef<HTMLInputElement>(null);
   const inputId = useId();
   const [phase, setPhase] = useState<Phase>({ status: "idle" });
@@ -72,14 +76,14 @@ export function AvatarForm({ name, avatarUrl }: { name: string; avatarUrl: strin
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
               className="sr-only"
-              disabled={working}
+              disabled={working || !interactive}
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
                 if (file) void upload(file);
               }}
             />
           </label>
-          <p className="text-xs text-muted-foreground">JPEG, PNG, WebP or GIF, up to 20 MB. It is cropped to a square.</p>
+          <p className="text-xs text-muted-foreground">JPEG, PNG, WebP or GIF, up to 20 MiB. It is cropped to a square.</p>
         </div>
       </div>
     </div>

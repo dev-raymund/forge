@@ -267,7 +267,7 @@ describe("the storage limit counts variants (with the local driver)", () => {
     const issued = await sent(ctx, "big.png", bytes, "image/png");
     expect(await storageUsed(ctx)).toBe(GB - variantBytes + 1); // the reservation: the original, once
     const outcome = await completeUpload(ctx, issued.mediaId);
-    expect(outcome).toMatchObject({ status: "failed", code: "LimitExceeded", message: expect.stringContaining("The Free plan includes 1 GB of storage") });
+    expect(outcome).toMatchObject({ status: "failed", code: "LimitExceeded", message: expect.stringContaining("The Free plan includes 1 GiB of storage") });
     const row = (await rowOf(ctx, issued.mediaId))!;
     expect(row.status).toBe("failed");
     for (const key of [row.storageKey, ...row.variants.map((v) => v.storageKey)]) expect(await platformStorage().head(key)).toBeNull();

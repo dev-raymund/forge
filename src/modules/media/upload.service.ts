@@ -15,6 +15,7 @@ import {
 import {
   claimUpload, findMedia, insertMedia, objectKeysOf, recordVariants, releaseUpload, settleFailed, settleReady, siteExists, type MediaRow, type NewMediaRow,
 } from "./repository";
+import { uploadFolder } from "./library.service";
 import type { MediaVariant } from "./schema";
 
 /**
@@ -96,7 +97,11 @@ async function storageStep<T>(work: () => Promise<T>): Promise<T> {
 
 const scopedStorage = (ctx: SiteContext): StorageDriver => storageFor({ organizationId: ctx.org.id, siteId: ctx.site.id });
 
-export async function requestUploads(ctx: SiteContext, files: unknown): Promise<{ uploads: IssuedUpload[] }> {
+/**
+ * `options.folderId`: the folder they go into (M6-3), one of this site's (none: no folder). It is locked while the
+ * rows are written, so it cannot be deleted under them; another site's, or none at all, refuses the request.
+ */
+export async function requestUploads(ctx: SiteContext, files: unknown, options: { folderId?: unknown } = {}): Promise<{ uploads: IssuedUpload[] }> {
   requirePermission(ctx, "media.upload");
   if (!Array.isArray(files) || files.length === 0) throw validationError({ files: ["Choose at least one file."] });
   if (files.length > MAX_FILES_PER_REQUEST) throw validationError({ files: [`Upload at most ${MAX_FILES_PER_REQUEST} files at a time.`] });
@@ -116,6 +121,7 @@ export async function requestUploads(ctx: SiteContext, files: unknown): Promise<
   return storageStep(() =>
     inTenant(ctx, async (tx) => {
       if (!(await siteExists(tx, ctx.org.id, ctx.site.id))) throw notFound();
+      const folderId = await uploadFolder(tx, ctx, options.folderId);
       // Locks the organization: concurrent requests take turns, each counting the others' reservations.
       await assertLimit(tx, ctx.org.id, "storage", total);
       const rows: NewMediaRow[] = accepted.map((file) => {
@@ -124,6 +130,7 @@ export async function requestUploads(ctx: SiteContext, files: unknown): Promise<
           id,
           organizationId: ctx.org.id,
           siteId: ctx.site.id,
+          folderId,
           kind: file.type.kind,
           status: "pending",
           storageDriver: storage.name,

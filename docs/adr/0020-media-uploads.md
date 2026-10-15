@@ -245,3 +245,30 @@ ADR 0021 extends `completeUpload`; the protocol, its checks and its guarantees h
   - never touches an upload a completion holds now.
 - **`UploadedMedia`** gains `width`, `height` (null for a document) and `storedBytes`.
 - **M6-1's tests** now complete real images; a byte string that only carries a signature is refused by the decoder.
+
+## Addendum (M6-3, 2026-10-15): the upload policy, settled
+
+M6-1 left five numbers and rules open (§ "Policy decisions left open"). They are settled as follows, and the server constants, messages, screens and tests use them.
+
+| Question | Settled | Where it is enforced |
+|---|---|---|
+| Files per request | **At most 20.** A dropzone selection of more is sent as several requests of at most 20. Each request is its own all-or-nothing request, with its own status and refusals; several are never presented as one operation | `MAX_FILES_PER_REQUEST`; the dropzone's `batchesOf` |
+| File names | **At most 255 characters**, after the last path segment is taken and control and text-direction characters are removed (NFC). Longer is refused, never cut. The name is display text only and never builds a storage key | `displayName`, `checkFile` |
+| Units | **Binary, and shown as such:** images up to 20 MiB (20,971,520 bytes), PDFs up to 25 MiB (26,214,400 bytes), storage Free 1 GiB (1,073,741,824 bytes), Pro and trial 20 GiB. Every screen and message says KiB, MiB, GiB (`formatBytes`, `sizeInWords`), so what is shown is what is counted | `UPLOAD_TYPES`, `PLANS`, `formatBytes` |
+| A file whose content is another allowed type than declared (a JPEG named `.png`) | **Refused, not relabelled**, with what it is: "photo.png is a JPEG file, but was sent as PNG. Give it the right extension and upload it again." | `completeUpload` (`refusalOf`) |
+| PDF signature | **`%PDF-` at byte zero.** Anything before it (a space, a byte-order mark, junk) is refused | `sniffType` |
+
+### Retrying an upload, and the server's gap
+
+The service has no way to issue a new link for an existing pending upload, nor to give up one (release its reservation early). M6-3 does not add either. The dropzone uses only the current contract (`upload-queue.ts`):
+
+| Where it stopped | What a retry does |
+|---|---|
+| The request was refused or failed | Asks again for that file alone. Nothing had been reserved: a request is all or nothing |
+| The send failed, link still valid | Sends again to the same link. It creates the file once: a 412 means the earlier send arrived, and the file is then completed |
+| The send failed and the link expired (or storage refused it: 400, 403) | Asks again: a **new** upload, stated as such ("Try again to upload the file anew"). The earlier pending upload keeps its reserved bytes until `uploads.cleanup` expires it (24 hours) |
+| Completion: "not there yet" or "still being finished" | Sends again while the link is valid (a 412 means it is there), then completes. Once the link has expired, it completes once more; if the file is still not there, only a new upload is left |
+| Completion: storage unavailable, or an unexpected error | Completes again: the upload is still pending on the server |
+| Completion refused (the file, or the storage limit) | Nothing: the server deleted it, and the message says why |
+
+A retry never reuses a refused upload's key, never overwrites an object (`If-None-Match`), and never asks for a new upload by itself: only the person's "Try again" does. **The gap:** each upload asked for anew after an expired link reserves its bytes again, while the abandoned one holds its own for up to 24 hours. That is bounded by what the person does, and it is said. A server capability to renew a pending upload's link (same key, create-once) or to cancel one would close it. It is recorded for a later issue, not built.

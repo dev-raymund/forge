@@ -53,6 +53,7 @@ describe("the audit log has one writer", () => {
       "src/modules/sites/appearance.service.ts": ["site.theme_changed"],
       "src/modules/sites/settings.service.ts": ["site.settings_changed"],
       "src/modules/media/upload.service.ts": ["media.uploaded"],
+      "src/modules/media/library.service.ts": ["media.updated", "media.moved", "media.trashed", "media.restored", "media.folder_created", "media.folder_renamed", "media.folder_deleted"],
     };
     for (const [file, actions] of Object.entries(expected)) {
       const source = readFileSync(path.join(ROOT, file), "utf8");

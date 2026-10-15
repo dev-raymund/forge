@@ -14,6 +14,9 @@ export type CacheEvent =
   | { type: "site.statusChanged"; siteId: string } // coming soon ↔ live ↔ suspended, theme switch
   | { type: "domain.changed"; siteId: string; hostnames: readonly string[] }
   | { type: "media.updated"; mediaId: string }
+  // Trashed or restored (M6-3): a page drawing the image must stop (or start) at once; `/media` already refuses a
+  // trashed item's objects, so a stale page would show a broken image.
+  | { type: "media.trashed" | "media.restored"; mediaId: string }
   // A category or tag was created, renamed, re-slugged, moved or deleted (M5-8): where archives resolve (routes), the
   // published posts that show it (their entries: names and links), and the lists.
   | { type: "term.changed"; siteId: string; entryIds: readonly string[] };
@@ -51,6 +54,9 @@ export function tagsFor(event: CacheEvent): TagSet {
       return { immediate: [...event.hostnames.map(tags.host), tags.site(event.siteId)], stale: [] };
     case "media.updated":
       return { immediate: [], stale: [tags.media(event.mediaId)] };
+    case "media.trashed":
+    case "media.restored":
+      return { immediate: [tags.media(event.mediaId)], stale: [] };
     case "term.changed":
       return {
         immediate: [

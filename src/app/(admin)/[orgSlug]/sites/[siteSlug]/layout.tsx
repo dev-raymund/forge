@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { SectionNav } from "@/components/admin/section-nav";
 import { canManageTerms, canSeePages, entryListPath, termListPath } from "@/modules/content";
+import { canSeeLibrary, mediaLibraryPath } from "@/modules/media";
 import { siteAppearancePath, siteNavItems, sitePath, siteSettingsPath } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
@@ -36,6 +37,8 @@ async function SiteLinks({ params }: Pick<LayoutProps<"/[orgSlug]/sites/[siteSlu
       // The term screens, for those who manage terms (M5-8); an Author adds tags from a post's settings.
       categories: canManageTerms(ctx) ? termListPath(org, site, "category") : null,
       tags: canManageTerms(ctx) ? termListPath(org, site, "tag") : null,
+      // The media library, for those who upload or manage media (M6-3): not a Viewer.
+      media: canSeeLibrary(ctx) ? mediaLibraryPath(org, site) : null,
       appearance: siteAppearancePath(org, site),
       settings: siteSettingsPath(org, site),
     },

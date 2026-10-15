@@ -626,6 +626,12 @@ src/themes/
   - **Processing:** one completion processes an upload at a time (a 15-minute hold), and variants are named on the row before they are written.
   - **Delivery:** `/media` serves only a ready, untrashed item's variants or document file, or a user's current avatar, never an image's original. The proxy gives it its own credential-free surface.
   - **Avatar:** uploaded the same way, under `u/{user}/`, as a 400 square.
+- **As built (M6-3, ADR 0022; ADR 0020 addendum):**
+  - **Where:** `/…/media` for Owner–Author. Authors change only their own files; folders are Editors'.
+  - **Dropzone:** requests of at most 20, with per-file progress, states and safe retries.
+  - **Library:** grid and list, one level of folders, search over title, file name and alt text, filters, sorts, and the drawer.
+  - **Trash and `trash.purge`:** after 30 days, objects included.
+  - **Units:** binary throughout (20 MiB, 25 MiB, 1 GiB, 20 GiB) and shown as such.
 | Picker | The same library in a modal, used by the image block, featured image, OG image, logo and favicon |
 
 ---

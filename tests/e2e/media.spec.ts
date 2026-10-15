@@ -31,6 +31,7 @@ test("a picture on /account: sent to storage, made square, shown in the header, 
   const area = section(page, "Picture");
   await expect(area.getByTestId("avatar-initials")).toHaveText("PP");
 
+  await expect(area.getByLabel("Upload a picture")).toBeEnabled(); // usable once the page is interactive
   await area.getByLabel("Upload a picture").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: await picture("png", 900, 600, "#2a6") });
   await expect(area.locator('[data-form-alert][role="status"]')).toHaveText("Picture updated.");
   const preview = area.getByTestId("avatar-preview");
@@ -58,6 +59,7 @@ test("a file that is not what it says is refused with the reason, and the pictur
   await page.goto("/account");
   const area = section(page, "Picture");
   const html = Buffer.from(`<!doctype html><script>alert(document.cookie)</script>${" ".repeat(500)}`);
+  await expect(area.getByLabel("Upload a picture")).toBeEnabled();
   await area.getByLabel("Upload a picture").setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: html });
   await expect(area.locator('[data-form-alert][role="alert"]')).toContainText("is not a PNG file");
   await expect(area.getByTestId("avatar-initials")).toHaveText("RR");

@@ -29,6 +29,8 @@ const entryPath = z.string().max(2048).regex(/^(\/|(\/[a-z0-9]+(-[a-z0-9]+)*)+)$
 /** A category or a tag, and its slug (the `terms_slug_format` rule). */
 const taxonomy = z.enum(["category", "tag"]);
 const termSlug = z.string().max(100).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+/** A media item's kind (M6). */
+const mediaKind = z.enum(["image", "document"]);
 
 export const AUDIT_EVENTS = {
   "organization.created": {
@@ -174,7 +176,44 @@ export const AUDIT_EVENTS = {
   "media.uploaded": {
     resourceType: "media",
     label: "File uploaded",
-    metadata: z.object({ kind: z.enum(["image", "document"]), filename: line(255), sizeBytes: z.int().min(1) }),
+    metadata: z.object({ kind: mediaKind, filename: line(255), sizeBytes: z.int().min(1) }),
+  },
+  // M6-3: the library. A file's details, its folder, the trash; the folders themselves.
+  "media.updated": {
+    resourceType: "media",
+    label: "File details changed",
+    metadata: z.object({ kind: mediaKind, filename: line(255), fields: z.array(z.enum(["title", "alt", "caption"])).min(1).max(3) }),
+  },
+  "media.moved": {
+    resourceType: "media",
+    label: "File moved",
+    // A folder's name; none for "All media" (no folder).
+    metadata: z.object({ kind: mediaKind, filename: line(255), folderName: line(100).optional(), previousFolderName: line(100).optional() }),
+  },
+  "media.trashed": {
+    resourceType: "media",
+    label: "File trashed",
+    metadata: z.object({ kind: mediaKind, filename: line(255) }),
+  },
+  "media.restored": {
+    resourceType: "media",
+    label: "File restored",
+    metadata: z.object({ kind: mediaKind, filename: line(255) }),
+  },
+  "media.folder_created": {
+    resourceType: "media_folder",
+    label: "Folder created",
+    metadata: z.object({ name: line(100) }),
+  },
+  "media.folder_renamed": {
+    resourceType: "media_folder",
+    label: "Folder renamed",
+    metadata: z.object({ name: line(100), previousName: line(100) }),
+  },
+  "media.folder_deleted": {
+    resourceType: "media_folder",
+    label: "Folder deleted",
+    metadata: z.object({ name: line(100) }),
   },
   // M4-4 (ADR 0012).
   "site.theme_changed": {
@@ -292,6 +331,14 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
       : `${actor} changed the ${m.taxonomy} ${m.name}: ${m.fields.join(", ")}.`,
   "term.deleted": (actor, m) => `${actor} deleted the ${m.taxonomy} ${m.name}, which was on ${m.posts} published ${m.posts === 1 ? "post" : "posts"} and ${m.drafts} ${m.drafts === 1 ? "draft" : "drafts"}.`,
   "media.uploaded": (actor, m) => `${actor} uploaded the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}.`,
+  "media.updated": (actor, m) => `${actor} changed the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}: ${m.fields.map((f) => (f === "alt" ? "alternative text" : f)).join(", ")}.`,
+  "media.moved": (actor, m) =>
+    `${actor} moved the ${m.kind === "image" ? "image" : "PDF"} ${m.filename} ${m.folderName ? `to the folder ${m.folderName}` : "out of its folder"}${m.previousFolderName && m.folderName ? `, from ${m.previousFolderName}` : ""}.`,
+  "media.trashed": (actor, m) => `${actor} moved the ${m.kind === "image" ? "image" : "PDF"} ${m.filename} to the trash.`,
+  "media.restored": (actor, m) => `${actor} restored the ${m.kind === "image" ? "image" : "PDF"} ${m.filename} from the trash.`,
+  "media.folder_created": (actor, m) => `${actor} created the media folder ${m.name}.`,
+  "media.folder_renamed": (actor, m) => `${actor} renamed the media folder ${m.previousName} to ${m.name}.`,
+  "media.folder_deleted": (actor, m) => `${actor} deleted the media folder ${m.name}.`,
 };
 
 /** For a row whose details cannot be read (written by other code, or damaged): what happened, without the details. */
@@ -322,6 +369,13 @@ const PLAIN: Record<AuditAction, string> = {
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",
   "media.uploaded": "uploaded a file",
+  "media.updated": "changed a file's details",
+  "media.moved": "moved a file",
+  "media.trashed": "trashed a file",
+  "media.restored": "restored a file",
+  "media.folder_created": "created a media folder",
+  "media.folder_renamed": "renamed a media folder",
+  "media.folder_deleted": "deleted a media folder",
 };
 
 /**

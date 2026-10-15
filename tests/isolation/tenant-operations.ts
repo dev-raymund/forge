@@ -1,6 +1,9 @@
 import type { Actor } from "@/modules/auth/shared";
 import { canPublishEntry, canUpdateEntry, submitCreateEntry, submitPublishEntry, submitSaveDraft, submitSetHomepage } from "@/modules/content";
-import { completeUpload, requestUploads, submitCompleteUpload, submitRequestAvatarUpload, submitRequestUploads } from "@/modules/media";
+import {
+  completeUpload, deleteFolder, moveMedia, renameFolder, requestUploads, restoreMedia, submitCompleteUpload, submitDeleteFolder, submitMoveMedia, submitRenameFolder,
+  submitRequestAvatarUpload, submitRequestUploads, submitRestoreMedia, submitTrashMedia, submitUpdateMedia, trashMedia, updateMediaDetails,
+} from "@/modules/media";
 import {
   listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
 } from "@/modules/sites";
@@ -9,7 +12,7 @@ import {
   resolveSiteContext, revokeInvitation, submitAcceptInvitation, submitChangeMemberRole, submitChangeOrganizationSlug, submitCreateOrganization,
   submitInviteMember, submitLeaveOrganization, submitRemoveMember, submitRenameOrganization, submitResendInvitation, submitRevokeInvitation,
   submitTransferOwnership, transferOwnership, updateOrganization,
-  type FormOutcome, type OrgContext, type OwnedResource, type OwnScope, type Permission,
+  type FormOutcome, type OrgContext, type OwnedResource, type OwnScope, type Permission, type SiteContext,
 } from "@/modules/tenancy";
 import { AppError, type ActionResult } from "@/platform/errors";
 
@@ -56,6 +59,8 @@ export type Foreign = {
   entryId: string;
   /** A media item of B's site, uploaded by B's Owner (M6-1). */
   mediaId: string;
+  /** A media folder of B's site (M6-3). */
+  folderId: string;
 };
 
 export type TenantOperation = {
@@ -93,9 +98,40 @@ export const tenantOperations: TenantOperation[] = [
   { name: "media.submitCompleteUpload(B's slug, B's site, B's media)", run: ({ actor }, b) => refused(submitCompleteUpload(actor, b.orgSlug, b.siteSlug, b.mediaId)) },
   { name: "media.submitRequestUploads(B's slug, B's site)", run: ({ actor }, b) => refused(submitRequestUploads(actor, b.orgSlug, b.siteSlug, [UPLOAD])) },
   { name: "media.submitRequestUploads(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => refused(submitRequestUploads(actor, orgSlug, b.siteId, [UPLOAD])) },
+
+  // The library (M6-3): B's file or folder named on A's site.
+  ...([
+    ["updateMediaDetails", (ctx: SiteContext, b: Foreign) => updateMediaDetails(ctx, b.mediaId, { title: "Hijacked" })],
+    ["trashMedia", (ctx: SiteContext, b: Foreign) => trashMedia(ctx, b.mediaId)],
+    ["restoreMedia", (ctx: SiteContext, b: Foreign) => restoreMedia(ctx, b.mediaId)],
+    ["moveMedia", (ctx: SiteContext, b: Foreign) => moveMedia(ctx, [b.mediaId], null)],
+    ["renameFolder", (ctx: SiteContext, b: Foreign) => renameFolder(ctx, b.folderId, { name: "Hijacked" })],
+    ["deleteFolder", (ctx: SiteContext, b: Foreign) => deleteFolder(ctx, b.folderId)],
+  ] as const).map(([name, run]) => ({
+    name: `media.${name}(A's site, B's ${name.includes("Folder") ? "folder" : "media"})`,
+    run: async ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => run(await resolveSiteContext(actor, orgSlug, siteSlug), b),
+  })),
+  { name: "media.submitUpdateMedia(B's slug, B's site, B's media)", run: ({ actor }, b) => refusedForm(submitUpdateMedia(actor, b.orgSlug, b.siteSlug, b.mediaId, formOf({ title: "x" }))) },
+  { name: "media.submitTrashMedia(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refusedForm(submitTrashMedia(actor, orgSlug, siteSlug, b.mediaId)) },
+  { name: "media.submitRestoreMedia(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refusedForm(submitRestoreMedia(actor, orgSlug, siteSlug, b.mediaId)) },
+  { name: "media.submitMoveMedia(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refusedForm(submitMoveMedia(actor, orgSlug, siteSlug, [b.mediaId], null)) },
+  { name: "media.submitRenameFolder(B's slug, B's site, B's folder)", run: ({ actor }, b) => refusedForm(submitRenameFolder(actor, b.orgSlug, b.siteSlug, b.folderId, formOf({ name: "x" }))) },
+  { name: "media.submitDeleteFolder(A's slug, A's site, B's folder)", run: ({ actor, orgSlug, siteSlug }, b) => refusedForm(submitDeleteFolder(actor, orgSlug, siteSlug, b.folderId)) },
 ];
 
 const UPLOAD = { name: "photo.png", size: 1_024, type: "image/png" };
+const formOf = (fields: Record<string, string>) => {
+  const data = new FormData();
+  for (const [name, value] of Object.entries(fields)) data.set(name, value);
+  return data;
+};
+
+/** A form submission's refusal as the `AppError` it stands for. */
+async function refusedForm(outcome: Promise<FormOutcome>): Promise<FormOutcome> {
+  const answer = await outcome;
+  if (!answer.refused) return answer;
+  throw new AppError(answer.refused === "Internal" ? "Unavailable" : answer.refused, answer.refused === "NotFound" ? "Not found." : (answer.state.message ?? ""));
+}
 
 /** An action's refusal as the `AppError` it stands for; a success is returned (and fails a check that expects a refusal). */
 async function refused<T>(result: Promise<ActionResult<T>>): Promise<T> {

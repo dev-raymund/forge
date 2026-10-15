@@ -27,6 +27,8 @@ describe("tagsFor (the invalidation map)", () => {
     [{ type: "domain.changed", siteId: S, hostnames: ["old.com", "new.com"] } as const,
       { immediate: ["host:old.com", "host:new.com", `site:${S}`], stale: [] }],
     [{ type: "media.updated", mediaId: E } as const, { immediate: [], stale: [`media:${E}`] }],
+    [{ type: "media.trashed", mediaId: E } as const, { immediate: [`media:${E}`], stale: [] }],
+    [{ type: "media.restored", mediaId: E } as const, { immediate: [`media:${E}`], stale: [] }],
     // M5-8: a term created, renamed, re-slugged, moved or deleted: its archive's address, the posts that show it, the lists.
     [{ type: "term.changed", siteId: S, entryIds: [] } as const, { immediate: [tags.routes(S)], stale: [tags.list(S, "post")] }],
     [{ type: "term.changed", siteId: S, entryIds: [E] } as const, { immediate: [tags.routes(S), tags.entry(S, E)], stale: [tags.list(S, "post")] }],

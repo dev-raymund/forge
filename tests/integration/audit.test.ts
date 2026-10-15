@@ -6,7 +6,7 @@ import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
 import { changeAuthor, createEntry, createTerm, deleteTerm, movePage, placePage, publishEntry, setHomepage, updateTerm } from "@/modules/content";
-import { completeUpload, requestUploads } from "@/modules/media";
+import { completeUpload, createFolder, deleteFolder, moveMedia, renameFolder, requestUploads, restoreMedia, trashMedia, updateMediaDetails } from "@/modules/media";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
@@ -229,7 +229,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -278,6 +278,15 @@ describe("every change writes its line, in the same transaction", () => {
       const [row] = await withTenant({ orgId: a.org.id }, (tx) => tx.select({ key: t.mediaAssets.storageKey }).from(t.mediaAssets).where(eq(t.mediaAssets.id, uploads[0]!.mediaId)));
       await platformStorage().put(row!.key, pdf, { contentType: "application/pdf" });
       expect((await completeUpload(siteCtx, uploads[0]!.mediaId)).status).toBe("ready");
+      // M6-3: the library (its own tests are tests/integration/media-library.test.ts).
+      const { folder } = await createFolder(siteCtx, { name: "Covered" });
+      await renameFolder(siteCtx, folder.id, { name: "Covered again" });
+      await updateMediaDetails(siteCtx, uploads[0]!.mediaId, { title: "Covered" });
+      await moveMedia(siteCtx, [uploads[0]!.mediaId], folder.id);
+      await moveMedia(siteCtx, [uploads[0]!.mediaId], null);
+      await trashMedia(siteCtx, uploads[0]!.mediaId);
+      await restoreMedia(siteCtx, uploads[0]!.mediaId);
+      await deleteFolder(siteCtx, folder.id);
     } finally {
       setStorageDriverForTests(null);
       rmSync(storageRoot, { recursive: true, force: true });

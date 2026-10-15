@@ -104,7 +104,7 @@ test("an Author adds a tag while writing: it is ticked and saved with the draft,
   const { org, site, base } = await withSite(page, "author");
   await seedTerm(org.id, site.id, "tag", "rye", "Rye");
   await page.goto(base); // drawn again for the role they now have
-  await expect(nav(page).getByRole("link")).toHaveText(["Overview", "Posts"]);
+  await expect(nav(page).getByRole("link")).toHaveText(["Overview", "Posts", "Media"]); // the media library is an Author's too (M6-3)
   await page.goto(`${base}/posts/categories`);
   await expect(page.getByTestId("no-access")).toBeVisible();
 

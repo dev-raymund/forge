@@ -87,6 +87,8 @@ export const mediaAssets = pgTable(
     index("media_assets_org_usage_idx").on(t.organizationId).where(sql`status <> 'failed'`),
     // …and `uploads.cleanup` finds the ones never completed, or refused, in every organization.
     index("media_assets_unfinished_idx").on(t.createdAt).where(sql`status <> 'ready'`),
+    // M6-3: `trash.purge` finds what has been in the trash for 30 days, in every organization.
+    index("media_assets_trashed_idx").on(t.deletedAt).where(sql`deleted_at is not null`),
     oneOf("media_assets_kind_check", t.kind, MEDIA_KINDS),
     oneOf("media_assets_status_check", t.status, MEDIA_STATUSES),
     tenantPolicy("media_assets"),

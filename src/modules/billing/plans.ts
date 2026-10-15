@@ -9,8 +9,10 @@ import type { PLAN_KEYS } from "./schema";
  * remaining ones).
  *
  * The figures are the plan's ("illustrative" there, and the ones V1 ships
- * with): Free 1 site and 1 GB, Pro and the Pro trial 5 sites and 20 GB. A
- * gigabyte here is 1024³ bytes.
+ * with): Free 1 site and 1 GiB, Pro and the Pro trial 5 sites and 20 GiB.
+ * Storage is binary throughout (M6-3, ADR 0020): 1 GiB is 1,073,741,824
+ * bytes, and the screens say GiB, MiB and KiB, so what they show is what is
+ * counted.
  */
 
 export type PlanKey = (typeof PLAN_KEYS)[number];
@@ -25,9 +27,9 @@ export const PLANS: Readonly<Record<PlanKey, Plan>> = Object.freeze({
   pro: { label: "Pro", limits: { sites: 5, storage: 20 * GB } },
 });
 
-/** A number of bytes the way people read it: "1 GB", "20 GB", "512 MB", "1.5 GB". */
+/** A number of bytes in binary units: "1 GiB", "20 GiB", "512 MiB", "1.5 GiB", "300 bytes". */
 export function formatBytes(bytes: number): string {
-  const units = ["bytes", "KB", "MB", "GB", "TB"];
+  const units = ["bytes", "KiB", "MiB", "GiB", "TiB"];
   let value = bytes;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {
@@ -38,7 +40,7 @@ export function formatBytes(bytes: number): string {
   return `${Number.isInteger(value) ? value : Number(value.toFixed(1))} ${units[unit]}`;
 }
 
-/** What a limit is called in a sentence: "1 site", "5 sites", "1 GB of storage". */
+/** What a limit is called in a sentence: "1 site", "5 sites", "1 GiB of storage". */
 export function countOf(key: LimitKey, n: number): string {
   if (key === "storage") return `${formatBytes(n)} of storage`;
   return `${n} ${n === 1 ? "site" : "sites"}`;

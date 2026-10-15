@@ -152,11 +152,35 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
      tests/integration/media-processing.test.ts tests/integration/media-delivery.test.ts tests/integration/avatar-upload.test.ts
    ```
    Until this has passed, R2's handling of the signed `If-None-Match` and of the signed size on a presigned PUT is assumed, not verified (only RustFS has been exercised).
-6. After the first deployment, check media delivery on Vercel (M6-2, ADR 0021):
-   - upload an image in a site's media library and open one of its `/media/…/w800/….webp` URLs twice: the second response should come from Vercel's cache (`x-vercel-cache: HIT`);
-   - in the function logs, `media image processed` lines carry each image's `durationMs` and the instance's `p95Ms`. A completion should stay well under the 60 s `maxDuration`.
+6. **After the first deployment, verify media on the real platform.** This is separate from local and CI acceptance, which use the local driver and RustFS only (ADR 0020–0022). Use the preview deployment and bucket first. Record what was seen (date, deployment, result) in the issue tracker; until then, these behaviours are unverified.
+   - **R2 CORS and the browser's PUT.** In a real browser on the deployed admin, upload an image and a PDF from a site's media library (`/…/media`).
+     - In the network panel, the preflight `OPTIONS` to R2 answers 200 and allows `PUT` with `content-type` and `if-none-match`.
+     - The `PUT` answers 200, and the files reach "Ready".
+   - **The signed headers.** Copy a `PUT` request from the network panel as cURL, then send it again three ways:
+     - unchanged: 412 (create-once);
+     - with another `Content-Type`: 403;
+     - with a body one byte longer: 403.
 
-Local development needs none of this: the local driver stores files in `.storage/`.
+     Then run the integration suites against a test bucket (step 5), which check the same in code.
+   - **Processing time and memory.** Upload a phone photo of about 12 MP and a 20 MiB JPEG.
+     - In the function logs, each `media image processed` line has `durationMs` and the instance's `p95Ms`; note them.
+     - In the Vercel dashboard, note the function's peak memory and duration for those requests. A completion should end well under the page's `maxDuration` of 60 s.
+     - A 50 MP image should still finish. A larger one is refused from its header, at once.
+   - **`/media` through Vercel's CDN.** Open one of a ready image's variant URLs (`/media/…/w800/….webp`) twice.
+     - Expect `cache-control: public, max-age=31536000, immutable`, `x-content-type-options: nosniff`, `content-security-policy: default-src 'none'; sandbox`, and no `set-cookie`.
+     - The second response should carry `x-vercel-cache: HIT`. If it never hits, add `s-maxage` or `Vercel-CDN-Cache-Control` (ADR 0021 §5).
+   - **Ready versus pending.**
+     - While an upload is still pending (sent, not completed), its would-be variant URL answers 404 with `cache-control: no-store`.
+     - After it is ready, the same URL answers 200. A cached 404 must never stand in its way (`x-vercel-cache` is not HIT on the 404).
+     - Trash the file: its URL answers 404 from the next request on the function. A CDN copy cached before may remain until evicted (ADR 0021).
+   - **PDFs in real browsers.** Open a ready PDF's URL in Chrome, Firefox and Safari.
+     - Note whether each displays it inline under the `sandbox` CSP, or downloads it instead (Chrome's viewer may refuse).
+     - M6-4 decides from this how PDFs are linked from content.
+   - **Storage unavailable.** On the preview deployment, set `STORAGE_ENDPOINT` to an address that does not answer, and redeploy.
+     - Uploading answers "Storage is not answering right now", and nothing is created.
+     - Restore the setting: "Try again" then completes the file.
+     - Do not do this on production.
+   - **Retries in a browser.** During a `PUT`, go offline in the developer tools, then back online and press "Try again". The file completes, with no second file in the library.
 
 ## 5. Resend, Sentry, Turnstile, Stripe
 

@@ -4,8 +4,9 @@ import { countOf, formatBytes, hasRoomFor, limitMessage, PLANS, type Allowance }
 const GB = 1024 ** 3;
 
 describe("the plans' limits (plan §14)", () => {
-  it("Free: 1 site and 1 GB. Pro, and the Pro trial: 5 sites and 20 GB", () => {
+  it("Free: 1 site and 1 GiB (1,073,741,824 bytes). Pro, and the Pro trial: 5 sites and 20 GiB", () => {
     expect(PLANS.free).toEqual({ label: "Free", limits: { sites: 1, storage: GB } });
+    expect(GB).toBe(1_073_741_824);
     expect(PLANS.pro).toEqual({ label: "Pro", limits: { sites: 5, storage: 20 * GB } });
     expect(Object.isFrozen(PLANS)).toBe(true);
   });
@@ -28,16 +29,16 @@ describe("the plans' limits (plan §14)", () => {
   it("says which plan and how many, in words", () => {
     expect(countOf("sites", 1)).toBe("1 site");
     expect(countOf("sites", 5)).toBe("5 sites");
-    expect(countOf("storage", 20 * GB)).toBe("20 GB of storage");
+    expect(countOf("storage", 20 * GB)).toBe("20 GiB of storage");
     expect(limitMessage({ plan: "free", key: "sites", used: 1, limit: 1 })).toBe("The Free plan includes 1 site, and this organization has reached it.");
     expect(limitMessage({ plan: "pro", key: "sites", used: 5, limit: 5 })).toBe("The Pro plan includes 5 sites, and this organization has reached it.");
     expect(limitMessage({ plan: "free", key: "storage", used: 900 * 1024 ** 2, limit: GB })).toBe(
-      "The Free plan includes 1 GB of storage, and these files would take this organization past it (900 MB used).",
+      "The Free plan includes 1 GiB of storage, and these files would take this organization past it (900 MiB used).",
     );
   });
 
-  it("formats bytes the way people read them", () => {
+  it("formats bytes in binary units, as they are counted (M6-3)", () => {
     expect([0, 1, 1023].map(formatBytes)).toEqual(["0 bytes", "1 byte", "1023 bytes"]);
-    expect([1024, 1536, 20 * 1024 ** 2, 1.5 * GB, GB].map(formatBytes)).toEqual(["1 KB", "1.5 KB", "20 MB", "1.5 GB", "1 GB"]);
+    expect([1024, 1536, 20 * 1024 ** 2, 1.5 * GB, GB].map(formatBytes)).toEqual(["1 KiB", "1.5 KiB", "20 MiB", "1.5 GiB", "1 GiB"]);
   });
 });

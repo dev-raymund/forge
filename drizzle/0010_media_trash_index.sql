@@ -1,0 +1,1 @@
+CREATE INDEX "media_assets_trashed_idx" ON "media_assets" USING btree ("deleted_at") WHERE deleted_at is not null;

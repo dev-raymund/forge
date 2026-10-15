@@ -24,11 +24,14 @@ export const canManageAppearance = (ctx: OrgContext): boolean => canManageSiteSe
 /**
  * The links of a site's own nav, for what this member may open. Which pages a
  * member may see is still decided by each page; this only leaves out links to
- * pages that would say "no access". The content lists (M5-7) are given by the
- * caller, which asks the content module who may see them (null: not this member).
+ * pages that would say "no access". The content lists (M5-7) and the media
+ * library (M6-3) are given by the caller, which asks their module who may see
+ * them (null: not this member).
  */
 export function siteNavItems(
-  paths: { overview: string; appearance: string; settings: string; pages?: string | null; posts?: string | null; categories?: string | null; tags?: string | null },
+  paths: {
+    overview: string; appearance: string; settings: string; pages?: string | null; posts?: string | null; categories?: string | null; tags?: string | null; media?: string | null;
+  },
   ctx: OrgContext,
 ): { href: string; label: string }[] {
   return [
@@ -37,6 +40,7 @@ export function siteNavItems(
     ...(paths.posts ? [{ href: paths.posts, label: "Posts" }] : []),
     ...(paths.categories ? [{ href: paths.categories, label: "Categories" }] : []),
     ...(paths.tags ? [{ href: paths.tags, label: "Tags" }] : []),
+    ...(paths.media ? [{ href: paths.media, label: "Media" }] : []),
     ...(canManageAppearance(ctx) ? [{ href: paths.appearance, label: "Appearance" }] : []),
     ...(canOpenSiteSettings(ctx) ? [{ href: paths.settings, label: "Settings" }] : []),
   ];

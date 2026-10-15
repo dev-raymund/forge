@@ -1,10 +1,14 @@
 "use server";
 
 import { getCurrentActor } from "@/modules/auth";
-import { currentRequestMeta } from "@/modules/tenancy";
+import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { ActionResult } from "@/platform/errors";
+import type { FormState } from "@/platform/forms";
 import { kickJobs } from "@/platform/jobs";
 import { avatarsCollect, type IssuedAvatarUpload } from "./avatar.service";
+import {
+  submitCreateFolder, submitDeleteFolder, submitMoveMedia, submitRenameFolder, submitRestoreMedia, submitTrashMedia, submitUpdateMedia,
+} from "./library-forms";
 import { submitCompleteAvatarUpload, submitCompleteUpload, submitRequestAvatarUpload, submitRequestUploads } from "./upload-requests";
 import type { IssuedUpload, UploadedMedia } from "./upload.service";
 
@@ -18,8 +22,9 @@ import type { IssuedUpload, UploadedMedia } from "./upload.service";
  * Neither changes a public page (a new upload is in no content yet), so there is nothing to invalidate.
  */
 
-export async function requestUploadsAction(orgSlug: string, siteSlug: string, files: unknown): Promise<ActionResult<{ uploads: IssuedUpload[] }>> {
-  return submitRequestUploads(await getCurrentActor(), orgSlug, siteSlug, files, await currentRequestMeta());
+/** `folderId`: the folder they go into (M6-3), checked against the site; none: no folder. */
+export async function requestUploadsAction(orgSlug: string, siteSlug: string, files: unknown, folderId: unknown = null): Promise<ActionResult<{ uploads: IssuedUpload[] }>> {
+  return submitRequestUploads(await getCurrentActor(), orgSlug, siteSlug, files, await currentRequestMeta(), { folderId });
 }
 
 export async function completeUploadAction(orgSlug: string, siteSlug: string, mediaId: unknown): Promise<ActionResult<UploadedMedia>> {
@@ -36,4 +41,35 @@ export async function completeAvatarUploadAction(avatarId: unknown): Promise<Act
   const result = await submitCompleteAvatarUpload(await getCurrentActor(), avatarId, await currentRequestMeta());
   if (result.ok) kickJobs([avatarsCollect]);
   return result;
+}
+
+// The media library (M6-3): a file's details, its folder, the trash; the folders. Each ends as a form does (finish):
+// the library page shows the change, and public pages drop what it made out of date.
+
+export async function updateMediaAction(orgSlug: string, siteSlug: string, mediaId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitUpdateMedia(await getCurrentActor(), orgSlug, siteSlug, mediaId, formData, await currentRequestMeta()));
+}
+
+export async function moveMediaAction(orgSlug: string, siteSlug: string, mediaIds: unknown, folderId: unknown): Promise<FormState> {
+  return finish(await submitMoveMedia(await getCurrentActor(), orgSlug, siteSlug, mediaIds, folderId, await currentRequestMeta()));
+}
+
+export async function trashMediaAction(orgSlug: string, siteSlug: string, mediaId: string): Promise<FormState> {
+  return finish(await submitTrashMedia(await getCurrentActor(), orgSlug, siteSlug, mediaId, await currentRequestMeta()));
+}
+
+export async function restoreMediaAction(orgSlug: string, siteSlug: string, mediaId: string): Promise<FormState> {
+  return finish(await submitRestoreMedia(await getCurrentActor(), orgSlug, siteSlug, mediaId, await currentRequestMeta()));
+}
+
+export async function createFolderAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitCreateFolder(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
+}
+
+export async function renameFolderAction(orgSlug: string, siteSlug: string, folderId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitRenameFolder(await getCurrentActor(), orgSlug, siteSlug, folderId, formData, await currentRequestMeta()));
+}
+
+export async function deleteFolderAction(orgSlug: string, siteSlug: string, folderId: string): Promise<FormState> {
+  return finish(await submitDeleteFolder(await getCurrentActor(), orgSlug, siteSlug, folderId, await currentRequestMeta()));
 }

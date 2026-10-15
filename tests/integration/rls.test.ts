@@ -294,6 +294,25 @@ describe("the /media lookup (SECURITY DEFINER, owned by forge_lookup; M6-2)", ()
   });
 });
 
+describe("the trash.purge lookup (SECURITY DEFINER, owned by forge_lookup; M6-3)", () => {
+  it("names the organizations with media trashed before the cutoff: organization ids only", async () => {
+    const lookup = (before: Date) =>
+      withPlatform(async (tx) => (await tx.execute(sql`select * from organizations_with_purgeable_media(${before.toISOString()}::timestamptz, 1000)`)).rows);
+    // Nothing of B's has been in the trash 30 days yet (an earlier test here trashed one just now).
+    expect(await lookup(new Date(Date.now() - 30 * 24 * 3_600_000))).not.toContainEqual({ organization_id: B.org.id });
+    await withTenant({ orgId: B.org.id }, (tx) => tx.execute(sql`update media_assets set deleted_at = now() - interval '31 days' where id = ${B.media.id}`));
+    try {
+      const rows = await lookup(new Date(Date.now() - 30 * 24 * 3_600_000));
+      expect(rows).toContainEqual({ organization_id: B.org.id });
+      expect(Object.keys(rows[0]!)).toEqual(["organization_id"]);
+      expect(await lookup(new Date(Date.now() - 32 * 24 * 3_600_000))).not.toContainEqual({ organization_id: B.org.id });
+      expect(await orgIdsVisible("media_assets")).toEqual([]);
+    } finally {
+      await withTenant({ orgId: B.org.id }, (tx) => tx.execute(sql`update media_assets set deleted_at = null where id = ${B.media.id}`));
+    }
+  });
+});
+
 describe("append-only tables", () => {
   it("audit_logs rejects UPDATE and DELETE for the runtime role", async () => {
     const asA = (statement: ReturnType<typeof sql>) =>

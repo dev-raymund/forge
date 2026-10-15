@@ -5,7 +5,7 @@ import { isStorageError, StorageError, storageErrorToAppError } from "./errors";
 import { getStorageDriver } from "./get-driver";
 import { LocalStorageDriver } from "./providers/local";
 
-/** Uploads through the local driver are for development; cap them like V1's largest file (25 MB PDF, plan §8). */
+/** Uploads through the local driver are for development; cap them like V1's largest file (a 25 MiB PDF, plan §8). */
 const MAX_BYTES = 25 * 1024 * 1024;
 
 /**

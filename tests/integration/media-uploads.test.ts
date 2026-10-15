@@ -438,8 +438,8 @@ describe("what may be uploaded, and by whom (with the local driver)", () => {
       expect(await rowsOfSite(ctx)).toHaveLength(0);
       return refusal;
     };
-    expect(await refused([{ name: "big.jpg", size: 20 * MB + 1, type: "image/jpeg" }])).toMatchObject({ kind: "Validation", fieldErrors: { "files.0": ["big.jpg is 20 MB. Images can be at most 20 MB."] } });
-    expect((await refused([{ name: "big.pdf", size: 25 * MB + 1, type: "application/pdf" }])).fieldErrors).toEqual({ "files.0": ["big.pdf is 25 MB. PDFs can be at most 25 MB."] });
+    expect(await refused([{ name: "big.jpg", size: 20 * MB + 1, type: "image/jpeg" }])).toMatchObject({ kind: "Validation", fieldErrors: { "files.0": ["big.jpg is 20 MiB. Images can be at most 20 MiB."] } });
+    expect((await refused([{ name: "big.pdf", size: 25 * MB + 1, type: "application/pdf" }])).fieldErrors).toEqual({ "files.0": ["big.pdf is 25 MiB. PDFs can be at most 25 MiB."] });
     expect((await refused([{ name: "ok.png", size: 10, type: "image/png" }, { name: "logo.svg", size: 10, type: "image/svg+xml" }])).fieldErrors).toEqual({
       "files.1": ["logo.svg can't be uploaded. Upload JPEG, PNG, WebP, GIF or PDF files."],
     });
@@ -558,18 +558,18 @@ describe("the storage limit (Free 1 GB, Pro and trial 20 GB)", () => {
     await fill(ctx, 5 * MB, "pending");
     await fill(ctx, 5 * MB, "ready", true); // trashed: its object is still stored
     await fill(ctx, 500 * MB, "failed"); // given back
-    // 20 MB left.
+    // 20 MiB left.
     const refusal = await refusalOf(() => requestUploads(ctx, [{ name: "a.jpg", size: 15 * MB, type: "image/jpeg" }, { name: "b.jpg", size: 6 * MB, type: "image/jpeg" }]));
     expect(refusal).toMatchObject({
       kind: "LimitExceeded", entitlement: "storage",
-      message: "The Free plan includes 1 GB of storage, and these files would take this organization past it (1004 MB used).",
+      message: "The Free plan includes 1 GiB of storage, and these files would take this organization past it (1004 MiB used).",
     });
     expect((await rowsOfSite(ctx)).filter((row) => row.originalFilename !== "filler.pdf")).toHaveLength(0);
     const { uploads } = await requestUploads(ctx, [{ name: "a.jpg", size: 15 * MB, type: "image/jpeg" }, { name: "b.jpg", size: 5 * MB, type: "image/jpeg" }]);
     expect(uploads).toHaveLength(2); // exactly to the last byte
     expect(await refusalOf(() => requestUploads(ctx, [{ name: "c.png", size: 1, type: "image/png" }]))).toMatchObject({ kind: "LimitExceeded" });
 
-    // Pro (and the trial): 20 GB.
+    // Pro (and the trial): 20 GiB.
     await setPlan(a.org.id, "pro");
     expect((await requestUploads(ctx, [{ name: "c.png", size: 1, type: "image/png" }])).uploads).toHaveLength(1);
   });
@@ -682,7 +682,7 @@ describe("the Server Actions' answers, the daily job, and the cache", () => {
     await setPlan(a.org.id, "free");
     await fill(ctx, GB - stored); // with a.png and its variants: full (b.png, refused, counts for nothing)
     expect(await submitRequestUploads(a.actor, a.org.slug, site.slug, [{ name: "x.pdf", size: 1, type: "application/pdf" }])).toMatchObject({
-      ok: false, code: "LimitExceeded", error: expect.stringContaining("The Free plan includes 1 GB of storage"),
+      ok: false, code: "LimitExceeded", error: expect.stringContaining("The Free plan includes 1 GiB of storage"),
     });
     expect(await submitRequestUploads({ kind: "anonymous" }, a.org.slug, site.slug, [{ name: "a.png", size: 1, type: "image/png" }])).toMatchObject({ ok: false, code: "Unauthenticated" });
     expect(await submitCompleteUpload(a.actor, a.org.slug, "no-such-site", good!.mediaId)).toMatchObject({ ok: false, code: "NotFound" });

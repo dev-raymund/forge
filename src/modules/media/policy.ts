@@ -2,13 +2,13 @@
  * What may be uploaded (plan §8, M6-1). Pure and client-safe: the server
  * decides with it, and a dropzone (M6-3) may use it to warn before asking.
  *
- *   images     JPEG, PNG, WebP, GIF, at most 20 MB each
- *   documents  PDF, at most 25 MB
+ *   images     JPEG, PNG, WebP, GIF, at most 20 MiB each (20,971,520 bytes)
+ *   documents  PDF, at most 25 MiB (26,214,400 bytes)
  *   nothing else: no SVG, no video, no HTML, no archives
  *
  * The 50-megapixel limit for images needs the image decoded; it is M6-2's
- * (sharp's `limitInputPixels` in `processImage`). A megabyte here is 1024²
- * bytes.
+ * (sharp's `limitInputPixels` in `processImage`). Sizes are binary and are
+ * said so (MiB, KiB: M6-3, ADR 0020).
  */
 
 export type MediaKind = "image" | "document";
@@ -103,7 +103,8 @@ export function keyNameOf(filename: string): string {
 export type FileRequest = { name: string; size: number; type: string };
 export type AcceptedFile = { name: string; size: number; mimeType: UploadMimeType; type: UploadType };
 
-const sizeInWords = (bytes: number) => (bytes >= MB ? `${Number((bytes / MB).toFixed(1))} MB` : bytes >= 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${bytes} bytes`);
+/** A file's size in binary units, as the limits are counted: "20 MiB", "3.4 MiB", "12 KiB". */
+export const sizeInWords = (bytes: number) => (bytes >= MB ? `${Number((bytes / MB).toFixed(1))} MiB` : bytes >= 1024 ? `${Math.ceil(bytes / 1024)} KiB` : `${bytes} bytes`);
 
 /** Checks one file as the browser describes it: what it is called, its size, its type. Returns why not, or the file. */
 export function checkFile(input: unknown): { ok: true; file: AcceptedFile } | { ok: false; message: string } {

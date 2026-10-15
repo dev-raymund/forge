@@ -31,10 +31,17 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
   "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
   "media.uploaded": { kind: "image", filename: "Team photo.jpg", sizeBytes: 482_113 },
+  "media.updated": { kind: "image", filename: "Team photo.jpg", fields: ["title", "alt"] },
+  "media.moved": { kind: "document", filename: "Menu.pdf", folderName: "Menus", previousFolderName: "Old" },
+  "media.trashed": { kind: "image", filename: "Team photo.jpg" },
+  "media.restored": { kind: "image", filename: "Team photo.jpg" },
+  "media.folder_created": { name: "Events" },
+  "media.folder_renamed": { name: "Events 2026", previousName: "Events" },
+  "media.folder_deleted": { name: "Events 2026" },
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8 and the one of M6-1, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1 and the seven of M6-3, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -45,14 +52,15 @@ describe("the audit vocabulary", () => {
         "entry.moved", "entry.reordered", "entry.author_changed",
         "term.created", "term.updated", "term.deleted",
         "media.uploaded",
+        "media.updated", "media.moved", "media.trashed", "media.restored", "media.folder_created", "media.folder_renamed", "media.folder_deleted",
       ].sort(),
     );
     for (const action of AUDIT_ACTIONS) expect(action, action).toMatch(/^[a-z]+\.[a-z_]+(ed|ent|eft)$/);
   });
 
-  it("every event is about an organization, a membership, an invitation, a site, an entry, a term or a media item, and has a name for the filter list", () => {
+  it("every event is about an organization, a membership, an invitation, a site, an entry, a term, a media item or a media folder, and has a name for the filter list", () => {
     for (const action of AUDIT_ACTIONS) {
-      expect(["organization", "membership", "invitation", "site", "entry", "term", "media"], action).toContain(AUDIT_EVENTS[action].resourceType);
+      expect(["organization", "membership", "invitation", "site", "entry", "term", "media", "media_folder"], action).toContain(AUDIT_EVENTS[action].resourceType);
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
@@ -139,6 +147,11 @@ describe("what is stored with an event", () => {
       ["media.uploaded", { kind: "video", filename: "x.mp4", sizeBytes: 1 }],
       ["media.uploaded", { kind: "image", filename: "", sizeBytes: 1 }],
       ["media.uploaded", { kind: "image", filename: "x.png", sizeBytes: 0 }],
+      ["media.updated", { kind: "image", filename: "x.png", fields: [] }],
+      ["media.updated", { kind: "image", filename: "x.png", fields: ["filename"] }],
+      ["media.moved", { kind: "video", filename: "x.mp4" }],
+      ["media.folder_renamed", { name: "New" }],
+      ["media.folder_created", { name: "" }],
     ];
     for (const [action, metadata] of invalid) expect(() => sanitizeMetadata(action, metadata), `${action} ${JSON.stringify(metadata)}`).toThrow(AuditEventError);
   });
@@ -213,6 +226,13 @@ describe("an event as a sentence", () => {
     expect(say("term.deleted", { taxonomy: "category", name: "Bread", slug: "bread", posts: 1, drafts: 0 })).toBe("Raymund deleted the category Bread, which was on 1 published post and 0 drafts.");
     expect(say("media.uploaded", { kind: "image", filename: "Team photo.jpg", sizeBytes: 1 })).toBe("Raymund uploaded the image Team photo.jpg.");
     expect(say("media.uploaded", { kind: "document", filename: "Menu.pdf", sizeBytes: 1 })).toBe("Raymund uploaded the PDF Menu.pdf.");
+    expect(say("media.updated", { kind: "image", filename: "Team.jpg", fields: ["title", "alt"] })).toBe("Raymund changed the image Team.jpg: title, alternative text.");
+    expect(say("media.moved", { kind: "document", filename: "Menu.pdf", folderName: "Menus" })).toBe("Raymund moved the PDF Menu.pdf to the folder Menus.");
+    expect(say("media.moved", { kind: "image", filename: "Team.jpg", folderName: "People", previousFolderName: "Old" })).toBe("Raymund moved the image Team.jpg to the folder People, from Old.");
+    expect(say("media.moved", { kind: "image", filename: "Team.jpg", previousFolderName: "Old" })).toBe("Raymund moved the image Team.jpg out of its folder.");
+    expect(say("media.trashed", { kind: "image", filename: "Team.jpg" })).toBe("Raymund moved the image Team.jpg to the trash.");
+    expect(say("media.restored", { kind: "image", filename: "Team.jpg" })).toBe("Raymund restored the image Team.jpg from the trash.");
+    expect(say("media.folder_renamed", { name: "Events 2026", previousName: "Events" })).toBe("Raymund renamed the media folder Events to Events 2026.");
   });
 
   it.each(AUDIT_ACTIONS)("%s: a sentence, with a subject and a full stop, for its sample", (action) => {

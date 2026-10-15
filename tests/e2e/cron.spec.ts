@@ -32,6 +32,6 @@ test("the daily cron enqueues the maintenance jobs and runs the job runner", asy
   const res = await request.get("/api/internal/cron/daily", { headers: auth });
   expect(res.status()).toBe(200);
   const body = await res.json();
-  expect(body.enqueued.map((j: { type: string }) => j.type)).toEqual(["jobs.cleanup", "uploads.cleanup"]);
+  expect(body.enqueued.map((j: { type: string }) => j.type)).toEqual(["jobs.cleanup", "uploads.cleanup", "trash.purge"]);
   expect(body.run.succeeded).toBeGreaterThanOrEqual(1);
 });

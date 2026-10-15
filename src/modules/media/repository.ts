@@ -1,8 +1,8 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PlatformTx, TenantTx } from "@/platform/db";
 import { sites } from "@/platform/db/schema";
-import { mediaAssets, type MediaVariant } from "./schema";
+import { mediaAssets, mediaFolders, type MediaVariant } from "./schema";
 
 /**
  * The media module's queries (M6-1). Every one names the organization AND the
@@ -165,4 +165,150 @@ export async function deleteFailedUploads(tx: TenantTx, organizationId: string, 
     .where(and(eq(mediaAssets.organizationId, organizationId), inArray(mediaAssets.id, ids), eq(mediaAssets.status, "failed")))
     .returning({ id: mediaAssets.id });
   return rows.length;
+}
+
+// ── The library (M6-3) ────────────────────────────────────────────────────────
+
+export type FolderRow = typeof mediaFolders.$inferSelect;
+
+/** One folder of this site. `lock`: `share` while something is put in it, `update` while it is renamed or deleted. */
+export async function findFolder(tx: TenantTx, organizationId: string, siteId: string, folderId: string, lock?: "share" | "update"): Promise<FolderRow | null> {
+  const query = tx
+    .select()
+    .from(mediaFolders)
+    .where(and(eq(mediaFolders.organizationId, organizationId), eq(mediaFolders.siteId, siteId), eq(mediaFolders.id, folderId)));
+  const [row] = lock === "share" ? await query.for("share") : lock === "update" ? await query.for("update") : await query;
+  return row ?? null;
+}
+
+/** The site's folders (one level in V1), by name, each with how many of its files are in the library (ready, untrashed). */
+export async function foldersOf(tx: TenantTx, organizationId: string, siteId: string): Promise<(FolderRow & { files: number })[]> {
+  const rows = await tx
+    .select({
+      folder: mediaFolders,
+      // Spelled out: in a one-table select Drizzle leaves column names unqualified, which the subquery would read as its own.
+      files: sql<number>`(select count(*)::int from media_assets m where m.site_id = media_folders.site_id and m.folder_id = media_folders.id and m.status = 'ready' and m.deleted_at is null)`,
+    })
+    .from(mediaFolders)
+    .where(and(eq(mediaFolders.organizationId, organizationId), eq(mediaFolders.siteId, siteId)))
+    .orderBy(sql`lower(${mediaFolders.name})`, asc(mediaFolders.id));
+  return rows.map((row) => ({ ...row.folder, files: row.files }));
+}
+
+export const FOLDER_NAME_KEY = "media_folders_site_parent_name_unique";
+
+export async function insertFolder(tx: TenantTx, values: typeof mediaFolders.$inferInsert): Promise<FolderRow> {
+  const [row] = await tx.insert(mediaFolders).values(values).returning();
+  return row!;
+}
+
+export async function renameFolderRow(tx: TenantTx, organizationId: string, siteId: string, folderId: string, name: string): Promise<void> {
+  await tx
+    .update(mediaFolders)
+    .set({ name, updatedAt: sql`now()` })
+    .where(and(eq(mediaFolders.organizationId, organizationId), eq(mediaFolders.siteId, siteId), eq(mediaFolders.id, folderId)));
+}
+
+/** Files in a folder that keep it from being deleted: any not trashed and not refused (an upload in progress counts). */
+export async function filesKeepingFolder(tx: TenantTx, organizationId: string, siteId: string, folderId: string): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.organizationId, organizationId), eq(mediaAssets.siteId, siteId), eq(mediaAssets.folderId, folderId), isNull(mediaAssets.deletedAt), ne(mediaAssets.status, "failed")));
+  return row?.n ?? 0;
+}
+
+export async function deleteFolderRow(tx: TenantTx, organizationId: string, siteId: string, folderId: string): Promise<void> {
+  await tx.delete(mediaFolders).where(and(eq(mediaFolders.organizationId, organizationId), eq(mediaFolders.siteId, siteId), eq(mediaFolders.id, folderId)));
+}
+
+/** Library items of this site by id, locked for a change. Only ready ones: an upload in progress or refused is not in the library. */
+export async function lockLibraryItems(tx: TenantTx, organizationId: string, siteId: string, ids: string[]): Promise<MediaRow[]> {
+  if (!ids.length) return [];
+  return tx
+    .select()
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.organizationId, organizationId), eq(mediaAssets.siteId, siteId), inArray(mediaAssets.id, ids), eq(mediaAssets.status, "ready")))
+    .orderBy(asc(mediaAssets.id))
+    .for("update");
+}
+
+export async function updateMediaRow(tx: TenantTx, organizationId: string, siteId: string, mediaId: string, values: Partial<Pick<MediaRow, "title" | "altText" | "caption" | "folderId" | "deletedAt">>): Promise<MediaRow> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({ ...values, updatedAt: sql`now()` })
+    .where(and(eq(mediaAssets.organizationId, organizationId), eq(mediaAssets.siteId, siteId), eq(mediaAssets.id, mediaId)))
+    .returning();
+  return row!;
+}
+
+export type LibraryFilter = {
+  q?: string;
+  kind?: "image" | "document";
+  /** A folder's id; null: in no folder ("All media" is no filter at all). */
+  folder?: string | null;
+  trash: boolean;
+  sort: "newest" | "name" | "size";
+  limit: number;
+  offset: number;
+};
+
+/** Escapes `%`, `_` and `\` for ILIKE: the search text is matched as typed. */
+const likeText = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/**
+ * The library's items: ready ones of this site, in the trash or not. The search is over title, file name and
+ * alternative text together, the expression the trigram index covers (`media_assets_search_trgm_idx`).
+ */
+export async function libraryItems(tx: TenantTx, organizationId: string, siteId: string, filter: LibraryFilter): Promise<MediaRow[]> {
+  const conditions = [
+    eq(mediaAssets.organizationId, organizationId),
+    eq(mediaAssets.siteId, siteId),
+    eq(mediaAssets.status, "ready"),
+    filter.trash ? isNotNull(mediaAssets.deletedAt) : isNull(mediaAssets.deletedAt),
+  ];
+  if (filter.kind) conditions.push(eq(mediaAssets.kind, filter.kind));
+  if (filter.folder !== undefined) conditions.push(filter.folder === null ? isNull(mediaAssets.folderId) : eq(mediaAssets.folderId, filter.folder));
+  if (filter.q) conditions.push(sql`(${mediaAssets.title} || ' ' || ${mediaAssets.originalFilename} || ' ' || ${mediaAssets.altText}) ilike ${likeText(filter.q)}`);
+  const order =
+    filter.sort === "name"
+      ? [sql`lower(coalesce(nullif(${mediaAssets.title}, ''), ${mediaAssets.originalFilename}))`, asc(mediaAssets.id)]
+      : filter.sort === "size"
+        ? [sql`(${mediaAssets.sizeBytes} + ${mediaAssets.variantBytes}) desc`, asc(mediaAssets.id)]
+        : [sql`${filter.trash ? mediaAssets.deletedAt : mediaAssets.createdAt} desc`, sql`${mediaAssets.id} desc`];
+  return tx
+    .select()
+    .from(mediaAssets)
+    .where(and(...conditions))
+    .orderBy(...order)
+    .limit(filter.limit)
+    .offset(filter.offset);
+}
+
+// ── trash.purge ───────────────────────────────────────────────────────────────
+
+/** The organizations with media trashed before `before` (a SECURITY DEFINER lookup, migration 0011: ids only). */
+export async function organizationsWithPurgeableMedia(tx: PlatformTx, before: Date, limit: number): Promise<string[]> {
+  const { rows } = await tx.execute<{ organization_id: string }>(sql`select organization_id from organizations_with_purgeable_media(${before.toISOString()}::timestamptz, ${limit})`);
+  return rows.map((row) => row.organization_id);
+}
+
+/**
+ * Media of this organization trashed before `before` becomes `failed`, in one statement: from then on it cannot be
+ * restored (restoring needs `ready`), counts towards nothing, and its objects are deleted. Rows a purge cannot finish
+ * stay `failed`, where `uploads.cleanup` deletes their objects again.
+ */
+export async function claimTrashedMedia(tx: TenantTx, organizationId: string, before: Date, limit: number): Promise<FailedUpload[]> {
+  const candidates = tx
+    .select({ id: mediaAssets.id })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.organizationId, organizationId), eq(mediaAssets.status, "ready"), lt(mediaAssets.deletedAt, before)))
+    .orderBy(asc(mediaAssets.deletedAt))
+    .limit(limit)
+    .for("update", { skipLocked: true });
+  return tx
+    .update(mediaAssets)
+    .set({ status: "failed", updatedAt: sql`now()` })
+    .where(and(eq(mediaAssets.organizationId, organizationId), inArray(mediaAssets.id, candidates)))
+    .returning({ id: mediaAssets.id, organizationId: mediaAssets.organizationId, siteId: mediaAssets.siteId, storageKey: mediaAssets.storageKey, variants: mediaAssets.variants });
 }

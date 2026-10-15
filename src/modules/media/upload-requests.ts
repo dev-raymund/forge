@@ -22,10 +22,12 @@ function failure(error: unknown, meta: RequestMeta): ActionResult<never> {
   return toActionResult(error, meta.requestId);
 }
 
-export async function submitRequestUploads(actor: Actor, orgSlug: string, siteSlug: string, files: unknown, meta: RequestMeta = {}): Promise<ActionResult<{ uploads: IssuedUpload[] }>> {
+export async function submitRequestUploads(
+  actor: Actor, orgSlug: string, siteSlug: string, files: unknown, meta: RequestMeta = {}, options: { folderId?: unknown } = {},
+): Promise<ActionResult<{ uploads: IssuedUpload[] }>> {
   try {
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    return actionOk(await requestUploads(ctx, files));
+    return actionOk(await requestUploads(ctx, files, options));
   } catch (error) {
     return failure(error, meta);
   }

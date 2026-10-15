@@ -1182,15 +1182,33 @@ Real Cloudflare R2, Vercel's CDN, and function limits on Vercel: not verified (n
 **Depends on:** M6-2
 
 **Acceptance criteria:**
-- [ ] `/…/media`: dropzone multi-upload with per-file progress and retry
-- [ ] Grid and list views; folder sidebar (one level): create, rename, delete-empty, move
-- [ ] Trigram search over title/filename/alt; filter by kind and folder; sort by newest, name, size
-- [ ] Detail drawer: edit title, alt, caption; copy URL; trash/restore; `trash.purge` removes objects after 30 days
-- [ ] Authors manage their own uploads only
+- [x] `/…/media`: dropzone multi-upload with per-file progress and retry *(`ui/upload-dropzone.tsx` over `ui/upload-queue.ts`: requests of at most 20, XHR progress, per-file states and reasons, retries only as the upload's state allows; folder on upload; `maxDuration = 60`)*
+- [x] Grid and list views; folder sidebar (one level): create, rename, delete-empty, move *(move: from the drawer, or several selected at once; folders are Editors')*
+- [x] Trigram search over title/filename/alt; filter by kind and folder; sort by newest, name, size
+- [x] Detail drawer: edit title, alt, caption; copy URL; trash/restore; `trash.purge` removes objects after 30 days *(the URL is an image's widest variant, never its original; `trash.purge` is daily, media now, entries in M7-1)*
+- [x] Authors manage their own uploads only *(`media.update`/`media.delete` own/any; Authors see the library, others' files read-only)*
+
+**Decisions taken here (ADR 0022; ADR 0020 addendum):**
+- **The upload policy, settled:**
+  - 20 files a request; a larger selection is sent in independent requests;
+  - names up to 255 characters, refused beyond, never cut;
+  - binary units, shown as KiB, MiB and GiB;
+  - a mislabelled file refused, not relabelled;
+  - a PDF's `%PDF-` at byte zero.
+- **Retries** use only the current contract. An expired link means a new upload, and its earlier reservation lasts until `uploads.cleanup`. Renewing or cancelling a pending upload is a recorded server gap.
+- **The listing** shows only ready files of this site. Thumbnails are the `thumb` variant.
+- **Trash and restore** flush `media:{mid}` at once (new cache events). Details flush it stale.
+- **`trash.purge`** claims a file as `failed` before deleting its objects, so a concurrent restore can never win.
+- **Seven audit events** for files and folders.
 
 **Likely files/modules:** media page, `src/modules/media/ui/*`, `src/app/api/app/media/*`
 
-**Testing:** E2E upload 3 images + 1 PDF, search, move to a folder, trash and restore.
+**Testing:** E2E upload 3 images + 1 PDF, search, move to a folder, trash and restore. ✔
+- E2E: `tests/e2e/media-library.spec.ts`, that flow and three more (folder on upload with refusals and a retried send; an Author and a Viewer; a phone with the keyboard).
+- Integration: `media-library.test.ts` (17), isolation, RLS, audit.
+- Unit: `upload-queue.test.ts`, the policy's boundaries.
+
+Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, not yet run.
 
 ### M6-4 · Media picker, image block, featured/OG/logo/favicon
 **Labels:** `area:media` `area:editor` `type:feature`
@@ -1202,6 +1220,11 @@ Real Cloudflare R2, Vercel's CDN, and function limits on Vercel: not verified (n
 - *Inserting one: a slash-menu entry that `asks` for a media item (like the embed's `asks: "address"`) and opens the picker, so an image is never inserted without a `mediaId`. Its alt, caption, size and link come from the properties panel, which already generates fields from the schema.*
 - *`references.ts` reads `media_assets` directly because the media module has no service yet. Move that check behind the media module's API when it exists. From M6-1: it is `assertUsableImages` now (this site, `ready`, not trashed, `kind = 'image'`), used for images in documents and for a new featured image in `saveDraft`. A PDF is a media item but never an image.*
 - *No upload path was added in M5-5. Images reach a document only through the picker and the existing upload protocol (M6-1).*
+- *From M6-3 (ADR 0022):*
+  - *The picker reuses `listLibrary(ctx, query)` (only ready, untrashed files of the site; search, kind, folder, sort, pages of 48), `LibraryItem` (`thumbUrl`, `url`, `width`, `height`, `altText`), and the dropzone (`UploadDropzone`, with a folder) for "library + upload".*
+  - *`/api/app/media` (picker JSON) is not built; M6-3 needed none.*
+  - *Tag the public reads with `media:{mid}` for each image drawn: trashing and restoring now flush it at once (`media.trashed`, `media.restored`), and details stale (`media.updated`).*
+  - *Alt text lives on the item (`alt_text`); the block's `alt` overrides it.*
 - *From M6-2 (ADR 0021):*
   - *`<ResponsiveImage>` is `src/themes/_kit/components/responsive-image.tsx`. Feed it `responsiveSources(item.variants, publicUrl)` (`@/modules/media/shared`) and the item's `width`, `height` and alt text.*
   - *An image's original is never served, so a link to the "full size" is the largest variant.*
@@ -1231,6 +1254,8 @@ Real Cloudflare R2, Vercel's CDN, and function limits on Vercel: not verified (n
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M6-3 (ADR 0022): `trash.purge` exists (`modules/media/purge.ts`, daily, in `DAILY_JOBS`) and purges media trashed for 30 days. It claims each file first (`failed`, so a concurrent restore loses), then deletes its objects, then the row. Add entries to the same job. Media's trash and restore are done (`trashMedia`, `restoreMedia`, audited, with immediate cache events).*
 
 *From M6-2 (ADR 0021): purging media deletes `objectKeysOf(row)` (the original and every variant on the row), then the row. Its bytes are `size_bytes + variant_bytes`. `/media` stops serving a trashed item at once, but objects already cached (immutable) may remain in a CDN until it evicts them.*
 
