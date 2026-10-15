@@ -10,6 +10,7 @@ import { SOCIAL_KEYS } from "./settings";
 import { isSettingsGroup, SETTINGS_CONFLICT, updateSiteSettings, type SettingsGroup } from "./settings.service";
 import { notFound } from "@/platform/errors";
 import { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+import { isSiteImageRole, setSiteImage } from "./imagery.service";
 import { setSiteStatus } from "./publishing.service";
 import { changeSiteAddress, createSite, deleteSite, getSite } from "./sites.service";
 import { themeDefinition } from "@/themes/registry";
@@ -192,5 +193,27 @@ export async function submitUpdateSiteSettings(
     };
   } catch (error) {
     return refusal(error, meta, values, siteSettingsPath(orgSlug, siteSlug), { Conflict: SETTINGS_CONFLICT }, MODULE);
+  }
+}
+
+const IMAGE_SAVED = { logo: { set: "Logo saved.", removed: "Logo removed." }, favicon: { set: "Favicon saved.", removed: "Favicon removed." } } as const;
+
+/**
+ * Sets or removes the site's logo or favicon (M6-4). The role is bound by the page; the form sends `mediaId`, or
+ * nothing to remove. Which site, whether the caller may, and whether the image may be used are the server's to decide.
+ */
+export async function submitSetSiteImage(actor: Actor, orgSlug: string, siteSlug: string, role: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const mediaId = text(formData.get("mediaId")) || null;
+  const values = { mediaId: mediaId ?? "" };
+  try {
+    if (!isSiteImageRole(role)) throw notFound();
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { changed, events } = await setSiteImage(ctx, role, mediaId);
+    return {
+      state: { status: "success", message: changed ? IMAGE_SAVED[role][mediaId ? "set" : "removed"] : `Nothing to save: this is already the site’s ${role}.`, values },
+      ...(changed ? { revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug), invalidate: events } : {}),
+    };
+  } catch (error) {
+    return refusal(error, meta, values, siteSettingsPath(orgSlug, siteSlug), {}, MODULE);
   }
 }

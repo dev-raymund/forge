@@ -5,7 +5,7 @@ import {
   submitRequestAvatarUpload, submitRequestUploads, submitRestoreMedia, submitTrashMedia, submitUpdateMedia, trashMedia, updateMediaDetails,
 } from "@/modules/media";
 import {
-  listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
+  listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateSiteSettings,
 } from "@/modules/sites";
 import {
   acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
@@ -302,6 +302,14 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
       { name: `sites.submitUpdateSiteSettings(A's slug, B's site id, ${group})`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitUpdateSiteSettings(actor, orgSlug, b.siteId, group, fields) },
     ];
   }),
+
+  // The logo and favicon (M6-4): B's image for B's site, from B's URL or A's. (B's image on A's site is refused as an
+  // image that is not the site's, the same answer as an id of nothing: media-images.test.ts.)
+  ...(["logo", "favicon"] as const).flatMap((role) => [
+    { name: `sites.submitSetSiteImage(B's slug, B's site, ${role}, B's media)`, run: ({ actor }: Caller, b: Foreign) => submitSetSiteImage(actor, b.orgSlug, b.siteSlug, role, form({ mediaId: b.mediaId })) },
+    { name: `sites.submitSetSiteImage(A's slug, B's site, ${role}, B's media)`, run: ({ actor, orgSlug }: Caller, b: Foreign) => submitSetSiteImage(actor, orgSlug, b.siteSlug, role, form({ mediaId: b.mediaId })) },
+    { name: `sites.submitSetSiteImage(B's slug, B's site, ${role}, removed)`, run: ({ actor }: Caller, b: Foreign) => submitSetSiteImage(actor, b.orgSlug, b.siteSlug, role, form({})) },
+  ]),
 ];
 
 /**

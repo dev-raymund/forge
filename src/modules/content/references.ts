@@ -1,5 +1,6 @@
 import "server-only";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { usableImageIds } from "@/modules/media";
 import type { SiteContext } from "@/modules/tenancy";
 import { env } from "@/platform/config/env";
 import type { TenantTx } from "@/platform/db";
@@ -42,20 +43,9 @@ function assertEmbeds(embeds: { provider: string; url: string }[]): void {
 export async function assertUsableImages(tx: TenantTx, ctx: SiteContext, ids: readonly string[], refusal: Record<string, string[]>): Promise<void> {
   const unique = [...new Set(ids)];
   if (!unique.length) return;
-  const found = await tx
-    .select({ id: t.mediaAssets.id })
-    .from(t.mediaAssets)
-    .where(
-      and(
-        eq(t.mediaAssets.organizationId, ctx.org.id),
-        eq(t.mediaAssets.siteId, ctx.site.id),
-        inArray(t.mediaAssets.id, unique),
-        isNull(t.mediaAssets.deletedAt),
-        eq(t.mediaAssets.status, "ready"),
-        eq(t.mediaAssets.kind, "image"),
-      ),
-    );
-  if (found.length !== unique.length) throw validationError(refusal);
+  // The media module's rule (M6-4: behind its API now): this site's, ready, not trashed, an image.
+  const usable = await usableImageIds(tx, ctx.org.id, ctx.site.id, unique);
+  if (unique.some((id) => !usable.has(id))) throw validationError(refusal);
 }
 
 export async function assertNewReferences(tx: TenantTx, ctx: SiteContext, next: unknown, previous: unknown): Promise<void> {

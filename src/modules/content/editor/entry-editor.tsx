@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { ImagePreviews, type ImagePreviewData } from "@/blocks/image/preview-context";
+import { image as imageBlock } from "@/blocks/image/schema";
+import { MediaPicker, type PickedImage } from "@/modules/media/shared";
 import { IDLE } from "@/platform/forms";
 import { publishEntryAction, saveDraftAction } from "../actions";
 import { documentProblem, parseDocument } from "../document/parse";
@@ -142,6 +145,17 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
   const [slash, setSlash] = useState<SlashState | null>(null);
   // An embed asked for from the slash menu: where it goes once the address is given.
   const [embedAt, setEmbedAt] = useState<SlashRange | null>(null);
+  // An image asked for from the slash menu (M6-4): where it goes once one is chosen in the picker.
+  const [imageAt, setImageAt] = useState<SlashRange | null>(null);
+  // What the editor knows of its images (M6-4): from the server when it opened, and each image chosen since.
+  const [previews, setPreviews] = useState<Record<string, ImagePreviewData>>(entry.images);
+  // Their thumbnails load only once asked for: "Show previews", or an image chosen in the picker (which shows them).
+  const [previewsShown, setPreviewsShown] = useState(false);
+  const learn = (picked: PickedImage) => {
+    setPreviews((current) => ({ ...current, [picked.id]: { name: picked.name, altText: picked.altText, thumbUrl: picked.thumbUrl, width: picked.width, height: picked.height } }));
+    setPreviewsShown(true);
+  };
+  const imagePreviews = useMemo(() => ({ images: previews, shown: previewsShown, show: () => setPreviewsShown(true) }), [previews, previewsShown]);
   const [handlePos, setHandlePos] = useState<number | null>(null);
   const slashRef = useRef<SlashState | null>(null);
   const dismissedAt = useRef<number | null>(null);
@@ -222,6 +236,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
     if (!editor || !menu) return;
     showSlash(null);
     if (command.asks === "address") return setEmbedAt(menu.range);
+    if (command.asks === "media") return setImageAt(menu.range);
     command.run(editor, menu.range);
   }
 
@@ -350,7 +365,10 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
   const address = publicPrefix ? `${publicPrefix}${live.path === "/" ? "" : live.path}` : live.path;
   const items = slash ? filterCommands(slash.query, commandsAt(slash.inColumn)) : [];
 
-  const panel = editable && editor && block ? <PropertiesPanel key={`${block.type}:${String(block.attrs.id)}`} editor={editor} block={block} orgSlug={orgSlug} siteSlug={siteSlug} /> : null;
+  const panel =
+    editable && editor && block ? (
+      <PropertiesPanel key={`${block.type}:${String(block.attrs.id)}`} editor={editor} block={block} orgSlug={orgSlug} siteSlug={siteSlug} onImagePicked={learn} />
+    ) : null;
 
   return (
     <div className="forge-entry-editor mx-auto grid w-full max-w-5xl gap-4 px-4 py-6 sm:px-6">
@@ -464,7 +482,11 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               </div>
             </DragHandle>
           ) : null}
-          {editor && !unsupported.length ? <EditorContent editor={editor} /> : null}
+          {editor && !unsupported.length ? (
+            <ImagePreviews.Provider value={imagePreviews}>
+              <EditorContent editor={editor} />
+            </ImagePreviews.Provider>
+          ) : null}
           {slash && editable ? (
             <ul
               role="listbox"
@@ -496,7 +518,9 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
         </div>
         {/* The selected block's settings: beside the text on a wide screen, kept in view at the bottom on a phone. */}
         {panel ? (
-          <div className="max-lg:sticky max-lg:bottom-0 max-lg:z-20 max-lg:max-h-[45vh] max-lg:overflow-y-auto max-lg:bg-background lg:sticky lg:top-14 lg:self-start">{panel}</div>
+          <div className="max-lg:sticky max-lg:bottom-0 max-lg:z-20 max-lg:max-h-[45vh] max-lg:overflow-y-auto max-lg:bg-background lg:sticky lg:top-14 lg:self-start">
+            <ImagePreviews.Provider value={imagePreviews}>{panel}</ImagePreviews.Provider>
+          </div>
         ) : null}
         {/* The entry's own settings (M5-7): beside the text on a wide screen, after it on a phone. */}
         <div className="lg:col-start-2 lg:self-start">
@@ -510,6 +534,8 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
             fields={fields}
             editable={editable && !unsupported.length}
             choices={{ ...choices, terms }}
+            images={imagePreviews}
+            onImagePicked={learn}
             onTermCreated={(term) => {
               setTerms((current) => [...current, term].sort((a, b) => a.name.localeCompare(b.name)));
               setNotice({ tone: "success", text: `${term.taxonomy === "category" ? "Category" : "Tag"} ${term.name} added.` });
@@ -528,6 +554,23 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
       </div>
 
       {editor && editable ? <LinkDialog editor={editor} open={linkOpen} onOpenChange={setLinkOpen} orgSlug={orgSlug} siteSlug={siteSlug} /> : null}
+      {editor && editable ? (
+        <MediaPicker
+          orgSlug={orgSlug}
+          siteSlug={siteSlug}
+          open={imageAt !== null}
+          onOpenChange={(open) => {
+            if (!open) setImageAt(null);
+          }}
+          title="Insert an image"
+          onPick={(picked) => {
+            learn(picked);
+            // Never an image without a media item: the block is inserted only now, with the one chosen.
+            if (imageAt) editor.chain().focus().deleteRange(imageAt).insertContent({ type: "image", attrs: { ...imageBlock.defaults, mediaId: picked.id } }).run();
+            setImageAt(null);
+          }}
+        />
+      ) : null}
       {editor && editable ? (
         <EmbedDialog
           open={embedAt !== null}

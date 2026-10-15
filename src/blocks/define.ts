@@ -9,8 +9,9 @@ import { z } from "zod";
  *
  * Panel hints ride on the schema with Zod's `.meta()`: `title` (the field's
  * label), `description` (help under it), `options` (labels for an enum's
- * values), `widget: "link"` (a link field with the page picker) and `hidden`
- * (kept out of the properties panel).
+ * values), `widget: "link"` (a link field with the page picker), `widget:
+ * "media"` (an image chosen with the media picker, M6-4) and `hidden` (kept
+ * out of the properties panel).
  */
 
 export type Attrs = Record<string, unknown>;
@@ -25,10 +26,7 @@ export type BlockSchema<S extends z.ZodType = z.ZodType> = {
   attrs: S;
   /** What a new block of this type starts with (valid, so a new block never makes the document invalid). */
   defaults: Attrs;
-  /**
-   * Whether the editor can create and edit it. The image block (M6-4) is validated
-   * and stored already, but has no editor or renderer until the media picker exists.
-   */
+  /** Whether the editor can create and edit it (every custom block since M6-4 added the image's editor). */
   editable: boolean;
 };
 
@@ -37,4 +35,4 @@ export const defineBlock = <S extends z.ZodType>(block: BlockSchema<S>): BlockSc
 /** A block's stable id (plan §6.2): a UUID, assigned by the editor (UUIDv7). */
 export const blockId = z.uuid().meta({ hidden: true });
 
-export type PanelMeta = { title?: string; description?: string; options?: Record<string, string>; widget?: "link"; hidden?: boolean };
+export type PanelMeta = { title?: string; description?: string; options?: Record<string, string>; widget?: "link" | "media"; hidden?: boolean };

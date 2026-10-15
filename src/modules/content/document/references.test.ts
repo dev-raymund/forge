@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { editableDocument, ENTRY_ID } from "@/blocks/fixtures";
+import { editableDocument, ENTRY_ID, MEDIA_ID as FIXTURE_MEDIA_ID } from "@/blocks/fixtures";
 import { referencesOf } from "./references";
 
 /** What a document points at (M5-5), for the server to check against the site. */
@@ -8,10 +8,10 @@ const MEDIA = "0192E000-0000-7000-8000-000000000001";
 const OTHER = "0192f000-0000-7000-8000-0000000000aa";
 
 describe("referencesOf", () => {
-  it("finds the entries of links and buttons, nested in columns too, and every embed", () => {
+  it("finds the entries of links and buttons, nested in columns too, every embed, and the image", () => {
     const refs = referencesOf(editableDocument);
     expect([...refs.entryIds]).toEqual([ENTRY_ID]);
-    expect(refs.mediaIds.size).toBe(0);
+    expect([...refs.mediaIds]).toEqual([FIXTURE_MEDIA_ID]);
     expect(refs.embeds.map((embed) => embed.provider).sort()).toEqual(["generic", "youtube"]);
   });
 

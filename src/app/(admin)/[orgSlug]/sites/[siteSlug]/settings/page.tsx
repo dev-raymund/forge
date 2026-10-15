@@ -4,12 +4,18 @@ import { NoAccess, OrganizationSuspended } from "@/components/admin/page-notice"
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { SettingsSection } from "@/components/admin/settings-section";
 import {
-  AnalyticsSettingsForm, canDeleteSite, canManageSiteSettings, canOpenSiteSettings, DeleteSite, GeneralSettingsForm, getSite, getSiteSettings, publicSitePath,
-  ReadingSettingsForm, SiteAddressForm, siteSettingsPath, siteTimeZones,
+  AnalyticsSettingsForm, canDeleteSite, canManageSiteSettings, canOpenSiteSettings, DeleteSite, GeneralSettingsForm, getSite, getSiteImages, getSiteSettings,
+  publicSitePath, ReadingSettingsForm, SiteAddressForm, SiteImageField, siteSettingsPath, siteTimeZones,
 } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Site settings" };
+
+/**
+ * Images uploaded from the media picker (M6-4) complete in this page's function, which processes them (M6-2): a minute
+ * leaves room. It bounds the run only; Vercel's memory is its own, and nothing has been measured there.
+ */
+export const maxDuration = 60;
 
 /**
  * A site's settings (plan §19: `/…/settings`, Admin): general, reading and
@@ -18,6 +24,7 @@ export const metadata: Metadata = { title: "Site settings" };
  *
  *   open the page                         Owner, Admin    canOpenSiteSettings
  *   general, reading, analytics, address  Owner, Admin    canManageSiteSettings   (`site.settings.manage`)
+ *   logo and favicon (M6-4)               Owner, Admin    canManageSiteSettings
  *   delete the site                       Owner           canDeleteSite           (`sites.delete`)
  */
 export default function SiteSettingsPage({ params }: PageProps<"/[orgSlug]/sites/[siteSlug]/settings">) {
@@ -42,7 +49,7 @@ async function SiteSettings({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSl
     );
   }
   const manage = canManageSiteSettings(ctx);
-  const [site, settings] = await Promise.all([getSite(ctx), manage ? getSiteSettings(ctx) : null]);
+  const [site, settings, images] = await Promise.all([getSite(ctx), manage ? getSiteSettings(ctx) : null, manage ? getSiteImages(ctx) : null]);
   const address = site.address ?? site.slug;
   const bound = settings ? { orgSlug: ctx.org.slug, siteSlug: ctx.site.slug, version: settings.version } : null;
 
@@ -64,6 +71,16 @@ async function SiteSettings({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSl
               }}
             />
           </SettingsSection>
+          {images ? (
+            <>
+              <SettingsSection title="Logo" description="An image from the media library, shown in the site's header.">
+                <SiteImageField orgSlug={ctx.org.slug} siteSlug={ctx.site.slug} role="logo" {...images.logo} />
+              </SettingsSection>
+              <SettingsSection title="Favicon" description="The small icon browsers show in the site's tab and bookmarks.">
+                <SiteImageField orgSlug={ctx.org.slug} siteSlug={ctx.site.slug} role="favicon" {...images.favicon} />
+              </SettingsSection>
+            </>
+          ) : null}
           <SettingsSection title="Reading" description="Where the blog lives, and how many posts each page lists.">
             <ReadingSettingsForm {...bound} address={address} values={settings.reading} />
           </SettingsSection>

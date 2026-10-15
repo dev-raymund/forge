@@ -143,7 +143,9 @@ test("posts: new post into its editor; slug, excerpt and a category saved with t
   await expect(settings.getByTestId("entry-path")).toContainText("/blog/rye-is-back");
   await settings.getByLabel("Excerpt").fill("Dark and sour.");
   await settings.getByTestId("category-choices").getByLabel("Bread").check();
-  await expect(settings.getByTestId("featured-image")).toContainText("once the media library is available");
+  // The featured image's slot (wired in M6-4: media-images.spec.ts chooses one).
+  await expect(settings.getByTestId("featured-image")).toContainText("None. The post is shown without one.");
+  await expect(settings.getByTestId("featured-image").getByRole("button", { name: "Choose an image" })).toBeVisible();
   await editor(page).click();
   await page.keyboard.type("Rye is back.");
   await expect.poll(async () => (await draftOf(org.id, id)).slug, { timeout: 15_000 }).toBe("rye-is-back");

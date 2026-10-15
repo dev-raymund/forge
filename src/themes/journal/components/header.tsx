@@ -1,3 +1,4 @@
+import { Brand } from "../../_kit/components/brand";
 import { Container } from "../../_kit/components/container";
 import { Nav } from "../../_kit/components/nav";
 import { homeHref } from "../../_kit/components/theme-frame";
@@ -11,7 +12,7 @@ export function JournalHeader({ context }: { context: ThemeContext }) {
     <header className="journal-header" data-sticky={header.sticky ? "" : undefined}>
       <Container className="journal-header__inner">
         <a href={homeHref(context)} className="journal-brand">
-          {context.site.name}
+          <Brand context={context} />
         </a>
         {context.site.tagline ? <p className="journal-tagline">{context.site.tagline}</p> : null}
         <div className="journal-header__end">

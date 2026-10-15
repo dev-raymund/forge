@@ -42,7 +42,13 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
   // A site's name only where its theme draws the page; never on the platform's answers.
   const title =
     state.kind === "site-not-found" ? "Site not found" : state.kind === "site-unavailable" ? "Site unavailable" : state.kind === "coming-soon" ? site!.name : publicPageTitle(page, site!);
-  return { title: { absolute: title }, robots: robotsFor(state.kind) };
+  // The site's favicon (M6-4), on the pages its theme draws: a 32 px PNG and the 180 px Apple touch icon, from /media.
+  const favicon = state.kind === "live" || state.kind === "coming-soon" ? site!.imagery.favicon : null;
+  return {
+    title: { absolute: title },
+    robots: robotsFor(state.kind),
+    ...(favicon ? { icons: { icon: [{ url: favicon.url32, sizes: "32x32", type: "image/png" }], apple: [{ url: favicon.url180, sizes: "180x180", type: "image/png" }] } } : {}),
+  };
 }
 
 export default async function SitePage({ params }: Props) {

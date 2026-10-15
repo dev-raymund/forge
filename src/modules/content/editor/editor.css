@@ -48,6 +48,9 @@
 .forge-entry-editor .forge-spacer-lg { min-height: 4rem; }
 .forge-entry-editor .forge-spacer-xl { min-height: 6rem; }
 .forge-entry-editor .forge-block--embed { border-style: dashed; }
+.forge-entry-editor .forge-block-thumb { width: 6rem; height: 6rem; flex: none; border-radius: 0.375rem; object-fit: cover; background: var(--muted); }
+.forge-entry-editor .forge-block-action { border: 1px solid var(--border); border-radius: 0.375rem; padding: 0.2rem 0.6rem; font-size: 0.8rem; background: var(--background); cursor: pointer; }
+.forge-entry-editor .forge-block-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .forge-entry-editor .forge-block--columns { display: grid; gap: 0.5rem; }
 .forge-entry-editor .forge-block-select { justify-self: start; border-radius: 0.25rem; padding: 0 0.25rem; }
 .forge-entry-editor .forge-block-select:hover { background: var(--muted); }

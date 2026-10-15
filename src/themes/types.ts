@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import type { z } from "zod";
+import type { ResponsiveImageData } from "./_kit/components/responsive-image";
 import type { FooterVariant, HeaderVariant, KitSettings } from "./_kit/tokens";
 
 /**
@@ -66,6 +67,8 @@ export type ThemeContext = {
     readonly basePath: string;
     /** The site's social links (M4-2), already validated as `https` addresses. Drawn when `settings.footer.showSocial`. */
     readonly social: readonly NavItem[];
+    /** The site's logo (M6-4): its `logo` variant (fitted inside 640 × 240), drawn in place of the name in the header. */
+    readonly logo?: { readonly url: string; readonly width: number; readonly height: number } | null;
   };
   /** The site's settings for this theme, already read through the schema (./_kit/tokens.ts `readThemeSettings`). */
   readonly settings: KitSettings;
@@ -91,7 +94,8 @@ export type TemplateProps = {
   page: PageProps;
   "page-full-width": PageProps;
   "page-landing": PageProps;
-  post: { context: ThemeContext; title: string; date: DateLabel | null; terms: readonly TermLink[]; blogHref: string; children?: ReactNode };
+  /** `featuredImage`: the post's featured image (M6-4), drawn with `<ResponsiveImage>`; none when it has none, or it is trashed. */
+  post: { context: ThemeContext; title: string; date: DateLabel | null; terms: readonly TermLink[]; blogHref: string; featuredImage?: ResponsiveImageData | null; children?: ReactNode };
   "blog-index": { context: ThemeContext; title: string; posts: readonly PostCard[]; pagination: Pagination };
   "term-archive": {
     context: ThemeContext; taxonomy: "category" | "tag"; name: string; description: string; blogHref: string; posts: readonly PostCard[]; pagination: Pagination;

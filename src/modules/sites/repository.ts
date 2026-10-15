@@ -225,3 +225,27 @@ export async function softDeleteSite(tx: TenantTx, organizationId: string, siteI
     .returning({ hostname: domains.hostname });
   return detached.map((row) => row.hostname);
 }
+
+export type SiteImageRole = "logo" | "favicon";
+
+/** The site's logo and favicon media ids (M6-4), the settings row locked when `lock`: one change of them at a time. */
+export async function readSiteImageIds(tx: TenantTx, organizationId: string, siteId: string, lock = false): Promise<{ logo: string | null; favicon: string | null } | null> {
+  const query = tx
+    .select({ logo: siteSettings.logoMediaId, favicon: siteSettings.faviconMediaId })
+    .from(siteSettings)
+    .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId)));
+  const [row] = lock ? await query.for("update") : await query;
+  return row ?? null;
+}
+
+/**
+ * Sets the logo or the favicon. The settings version is not raised: these are columns of their own, set from a picker
+ * at once, and the page's other forms (which carry the version) do not hold them. The composite foreign key keeps the
+ * image in this site whatever the caller checked.
+ */
+export async function updateSiteImage(tx: TenantTx, organizationId: string, siteId: string, role: SiteImageRole, mediaId: string | null, updatedBy: string): Promise<void> {
+  await tx
+    .update(siteSettings)
+    .set(role === "logo" ? { logoMediaId: mediaId, updatedBy } : { faviconMediaId: mediaId, updatedBy })
+    .where(and(eq(siteSettings.organizationId, organizationId), eq(siteSettings.siteId, siteId)));
+}

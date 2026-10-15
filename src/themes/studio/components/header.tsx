@@ -1,3 +1,4 @@
+import { Brand } from "../../_kit/components/brand";
 import { Container } from "../../_kit/components/container";
 import { Nav } from "../../_kit/components/nav";
 import { homeHref } from "../../_kit/components/theme-frame";
@@ -11,7 +12,7 @@ export function StudioHeader({ context }: { context: ThemeContext }) {
     <header className="studio-header" data-sticky={header.sticky ? "" : undefined}>
       <Container wide className="studio-header__inner">
         <a href={homeHref(context)} className="studio-brand">
-          {context.site.name}
+          <Brand context={context} />
         </a>
         <div className="studio-header__end">
           <Nav items={context.menus.header} label="Main" />

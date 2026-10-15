@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { editableDocument, ENTRY_ID } from "@/blocks/fixtures";
+import { editableDocument, ENTRY_ID, fixtureId } from "@/blocks/fixtures";
 
 vi.mock("@/platform/config/env", () => ({ env: () => ({ APP_ORIGIN: "https://cms.forgelinetechnologies.com" }) }));
 
@@ -26,13 +26,14 @@ const site: PublicSite = {
   social: [],
   analytics: { ga4MeasurementId: "G-ABC1234567", plausibleDomain: "acme.example.org" },
   reading: { blogPath: "news", postsPerPage: 2 },
+  imagery: { logo: null, favicon: null },
 };
 const locator = { kind: "address", address: "acme" } as const;
 const TERM_SLUG = "bread";
 const draw = (page: PublicPage, at: PublicSite = site) => renderToStaticMarkup(<PublicPageView page={page} site={at} locator={locator} />);
 const page = (template: string | null, content: unknown = editableDocument, path = "/about"): PublicPage => ({
   kind: "entry",
-  entry: { type: "page", title: "About <us>", path, template, content, publishedAt: "2026-09-30T23:30:00.000Z", terms: [] },
+  entry: { type: "page", title: "About <us>", path, template, content, publishedAt: "2026-09-30T23:30:00.000Z", terms: [], images: {}, featuredImage: null },
   links: { [ENTRY_ID]: "/services" },
 });
 
@@ -66,6 +67,8 @@ describe("a published post, the blog and its archives", () => {
     entry: {
       type: "post", title: "Rye season", path: "/news/rye-season", template: null, content: editableDocument, publishedAt: "2026-09-30T23:30:00.000Z",
       terms: [{ taxonomy: "category", name: "Bread", slug: TERM_SLUG, description: "" }, { taxonomy: "tag", name: "Rye", slug: "rye", description: "" }],
+      images: {},
+      featuredImage: null,
     },
     links: {},
   };
@@ -123,5 +126,67 @@ describe("what a public page never holds", () => {
     const html = draw({ kind: "site-home" });
     expect(html).toMatch(/<h1>Acme &lt;Bakery&gt;<\/h1>/);
     expect(html).toContain("<p>Bread &amp; more</p>");
+  });
+});
+
+describe("images (M6-4)", () => {
+  const MEDIA = "0199a000-0000-7000-8000-0000000000c3";
+  const GONE = "0199a000-0000-7000-8000-0000000000c4";
+  const url = (key: string) => `/media/org/o/site/s/2026/10/${MEDIA}/${key}.webp`;
+  const photo = {
+    alt: "A <loaf> & crumbs", width: 3000, height: 2000,
+    sources: [{ url: url("w800"), width: 800, height: 533 }, { url: url("w1600"), width: 1600, height: 1067 }],
+  };
+  const block = (attrs: Record<string, unknown>) => ({ type: "image", attrs: { id: ENTRY_ID, v: 1, size: "content", alt: null, caption: null, link: null, ...attrs } });
+  const withImages = (content: unknown[], images: Record<string, typeof photo> = { [MEDIA]: photo }): PublicPage => {
+    const shown = page(null, { v: 1, doc: { type: "doc", content } });
+    if (shown.kind !== "entry") throw new Error("an entry");
+    return { ...shown, entry: { ...shown.entry, images } };
+  };
+
+  it("an image block: a figure, every stored width in srcset, its intrinsic size, the image's alt text, a caption", () => {
+    const html = draw(withImages([block({ mediaId: MEDIA, caption: "Fresh <today>" })]));
+    expect(html).toContain('<figure class="forge-image forge-image--content">');
+    expect(html).toContain(`srcSet="${url("w800")} 800w, ${url("w1600")} 1600w"`);
+    expect(html).toContain(`src="${url("w800")}"`);
+    expect(html).toContain('width="3000" height="2000"');
+    expect(html).toContain('alt="A &lt;loaf&gt; &amp; crumbs"');
+    expect(html).toContain('sizes="(min-width: 48rem) 48rem, 100vw"');
+    expect(html).toContain("<figcaption>Fresh &lt;today&gt;</figcaption>");
+    expect(html).toContain('loading="lazy"');
+  });
+
+  it("the block's own alt text wins, empty included (a decorative image); its size; its link resolved under the site's base", () => {
+    expect(draw(withImages([block({ mediaId: MEDIA, alt: "The bakery" })]))).toContain('alt="The bakery"');
+    expect(draw(withImages([block({ mediaId: MEDIA, alt: "" })]))).toContain('alt=""');
+    expect(draw(withImages([block({ mediaId: MEDIA, size: "full" })]))).toContain('<figure class="forge-image forge-image--full">');
+    const linked = draw(withImages([block({ mediaId: MEDIA, link: `entry:${ENTRY_ID}` })]));
+    expect(linked).toContain('<a href="/s/acme/services"><img');
+  });
+
+  it("an image the page does not have (missing, trashed, another site's, a PDF): nothing at all, the rest of the page drawn", () => {
+    const paragraph = (n: number, text: string) => ({ type: "paragraph", attrs: { id: fixtureId(n) }, content: [{ type: "text", text }] });
+    const html = draw(withImages([paragraph(1, "Before"), block({ mediaId: GONE, caption: "Lost" }), paragraph(2, "After")]));
+    expect(html).not.toContain("<figure");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("Lost");
+    expect(html).toMatch(/<p>Before<\/p><p>After<\/p>/);
+  });
+
+  it("a post's featured image, in Studio and in Journal: above the content, loaded at once, never on a page", () => {
+    const post = (themeKey: string) => {
+      const shown = withImages([]);
+      if (shown.kind !== "entry") throw new Error("an entry");
+      return draw({ ...shown, entry: { ...shown.entry, type: "post", path: "/news/rye", featuredImage: photo } }, { ...site, themeKey });
+    };
+    for (const theme of ["studio", "journal"]) {
+      const html = post(theme);
+      expect(html, theme).toContain('<figure class="forge-featured-image">');
+      expect(html, theme).toContain(`srcSet="${url("w800")} 800w, ${url("w1600")} 1600w"`);
+      expect(html, theme).toContain('loading="eager"');
+    }
+    const asPage = withImages([]);
+    if (asPage.kind !== "entry") throw new Error("an entry");
+    expect(draw({ ...asPage, entry: { ...asPage.entry, featuredImage: photo } })).not.toContain("forge-featured-image");
   });
 });

@@ -7,6 +7,12 @@ import { requireSitePage } from "@/modules/tenancy";
 
 export const metadata: Metadata = { title: "Edit page" };
 
+/**
+ * Images uploaded from the media picker (M6-4) complete in this page's function, which processes them (M6-2): a minute
+ * leaves room. It bounds the run only; Vercel's memory is its own, and nothing has been measured there.
+ */
+export const maxDuration = 60;
+
 /** A page's editor (plan §19; M5-4). */
 export default function EditPage({ params }: PageProps<"/[orgSlug]/sites/[siteSlug]/pages/[entryId]">) {
   return (

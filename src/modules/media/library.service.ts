@@ -9,6 +9,7 @@ import { isUniqueViolation, type TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound, validationError } from "@/platform/errors";
 import { LIBRARY_PAGE_SIZE, type LibraryQuery } from "./library-query";
 import { displayName } from "./policy";
+import { isWidthVariant } from "./processing";
 import {
   deleteFolderRow, filesKeepingFolder, findFolder, FOLDER_NAME_KEY, foldersOf, insertFolder, libraryItems, lockLibraryItems, renameFolderRow, updateMediaRow,
   type FolderRow, type MediaRow,
@@ -46,7 +47,7 @@ const assertSees = (ctx: SiteContext) => {
 };
 
 const urlOf = (key: string) => `${mediaPublicBaseUrl()}/${key}`;
-const widest = (row: MediaRow) => [...row.variants].filter((v) => v.key !== "thumb").sort((a, b) => b.width - a.width)[0];
+const widest = (row: MediaRow) => [...row.variants].filter((v) => isWidthVariant(v.key)).sort((a, b) => b.width - a.width)[0];
 
 export type LibraryItem = {
   id: string;
@@ -78,7 +79,7 @@ export type LibraryItem = {
 function itemOf(ctx: SiteContext, row: MediaRow, names: Map<string, string>): LibraryItem {
   const thumb = row.variants.find((v) => v.key === "thumb");
   const largest = widest(row);
-  const preview = [...row.variants].filter((v) => v.key !== "thumb" && v.width <= 1600).sort((a, b) => b.width - a.width)[0] ?? largest;
+  const preview = [...row.variants].filter((v) => isWidthVariant(v.key) && v.width <= 1600).sort((a, b) => b.width - a.width)[0] ?? largest;
   const file = row.kind === "document" ? urlOf(row.storageKey) : null;
   return {
     id: row.id, kind: row.kind, filename: row.originalFilename, title: row.title, altText: row.altText, caption: row.caption, mimeType: row.mimeType,
@@ -160,7 +161,7 @@ export async function updateMediaDetails(ctx: SiteContext, mediaId: unknown, inp
     if (!fields.length) return { changed: false, events: [] };
     await updateMediaRow(tx, ctx.org.id, ctx.site.id, row.id, next);
     await record(tx, { action: "media.updated", resourceType: "media", resourceId: row.id, siteId: ctx.site.id, metadata: { ...auditOf(row), fields } }, ctx);
-    return { changed: true, events: [{ type: "media.updated", mediaId: row.id }] };
+    return { changed: true, events: [{ type: "media.updated", mediaId: row.id, siteId: ctx.site.id }] };
   });
 }
 
@@ -204,7 +205,7 @@ export async function trashMedia(ctx: SiteContext, mediaId: unknown): Promise<{ 
     if (row.deletedAt) return { events: [] }; // already there
     await updateMediaRow(tx, ctx.org.id, ctx.site.id, row.id, { deletedAt: new Date() });
     await record(tx, { action: "media.trashed", resourceType: "media", resourceId: row.id, siteId: ctx.site.id, metadata: auditOf(row) }, ctx);
-    return { events: [{ type: "media.trashed", mediaId: row.id }] };
+    return { events: [{ type: "media.trashed", mediaId: row.id, siteId: ctx.site.id }] };
   });
 }
 
@@ -218,7 +219,7 @@ export async function restoreMedia(ctx: SiteContext, mediaId: unknown): Promise<
     if (!row.deletedAt) return { events: [] };
     await updateMediaRow(tx, ctx.org.id, ctx.site.id, row.id, { deletedAt: null });
     await record(tx, { action: "media.restored", resourceType: "media", resourceId: row.id, siteId: ctx.site.id, metadata: auditOf(row) }, ctx);
-    return { events: [{ type: "media.restored", mediaId: row.id }] };
+    return { events: [{ type: "media.restored", mediaId: row.id, siteId: ctx.site.id }] };
   });
 }
 

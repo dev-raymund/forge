@@ -23,7 +23,7 @@ export { changeSiteAddress, createSite, deleteSite, getSite, listSites, siteAllo
 export type { SiteChange } from "./sites.service";
 export { canCreateSite, canDeleteSite, canManageAppearance, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
 export {
-  SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings,
+  SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateSiteSettings,
 } from "./site-forms";
 export type { SitesNotice } from "./site-forms";
 export { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
@@ -41,6 +41,11 @@ export { SiteOverviewView } from "./ui/site-overview";
 export { getSiteSettings, isSettingsGroup, SETTINGS_GROUPS, updateSiteSettings } from "./settings.service";
 export type { SettingsChange, SettingsGroup, SiteSettingsView } from "./settings.service";
 export { AnalyticsSettingsForm, GeneralSettingsForm, ReadingSettingsForm } from "./ui/site-settings-forms";
+// The logo and favicon (M6-4, ADR 0023).
+export { getSiteImages, isSiteImageRole, setSiteImage, SITE_IMAGE_ROLES } from "./imagery.service";
+export type { SiteImagesView } from "./imagery.service";
+export type { SiteImageRole } from "./repository";
+export { SiteImageField } from "./ui/site-images";
 
 // Publishing (M4-5, ADR 0015): Coming soon ↔ live.
 export { setSiteStatus } from "./publishing.service";

@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
+import { siteImagery, type SiteImagery } from "@/modules/media";
 import { withPlatform, withTenant } from "@/platform/db";
 import { domains, siteSettings, sites } from "@/platform/db/schema";
 import type { SiteLocator } from "@/platform/routing/hosts";
@@ -61,6 +62,8 @@ export type PublicSite = {
   analytics: AnalyticsSettings;
   /** Where the blog lives and how many posts a list shows (M4-2's reading settings; M5-6 routes by them). */
   reading: ReadingSettings;
+  /** The site's logo and favicon (M6-4), when set and still usable images of the site. */
+  imagery: SiteImagery;
 };
 
 /**
@@ -72,8 +75,8 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
   "use cache";
   cacheLife(CMS_CACHE_PROFILE);
   cacheTag(tags.site(siteId), tags.config(siteId));
-  const [row] = await withTenant({ orgId }, (tx) =>
-    tx
+  const found = await withTenant({ orgId }, async (tx) => {
+    const [row] = await tx
       .select({
         id: sites.id,
         name: sites.name,
@@ -85,12 +88,20 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
         analytics: siteSettings.analytics,
         theme: siteSettings.theme,
         reading: siteSettings.reading,
+        logoMediaId: siteSettings.logoMediaId,
+        faviconMediaId: siteSettings.faviconMediaId,
       })
       .from(sites)
       .leftJoin(siteSettings, and(eq(siteSettings.siteId, sites.id), eq(siteSettings.organizationId, sites.organizationId)))
-      .where(and(eq(sites.organizationId, orgId), eq(sites.id, siteId), isNull(sites.deletedAt))),
-  );
-  if (!row) return null;
+      .where(and(eq(sites.organizationId, orgId), eq(sites.id, siteId), isNull(sites.deletedAt)));
+    if (!row) return null;
+    // The logo and favicon are media: their trash or restore flushes this read at once (M6-4).
+    const ids = [row.logoMediaId, row.faviconMediaId].filter((id): id is string => !!id);
+    if (ids.length) cacheTag(...ids.map(tags.media));
+    return { row, imagery: await siteImagery(tx, orgId, siteId, { logo: row.logoMediaId, favicon: row.faviconMediaId }) };
+  });
+  if (!found) return null;
+  const { row, imagery } = found;
   const general = readGeneral(row.general);
   return {
     id: row.id,
@@ -105,5 +116,6 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
     social: socialLinks(general.social).map(({ label, href }) => ({ label, href })),
     analytics: readAnalytics(row.analytics),
     reading: readReading(row.reading),
+    imagery,
   };
 }

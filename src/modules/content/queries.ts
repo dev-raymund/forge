@@ -1,10 +1,12 @@
 import "server-only";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { imagePreviews, type ImagePreview } from "@/modules/media";
 import { inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
 import { forbidden, notFound } from "@/platform/errors";
 import { refOf } from "./entry.service";
 import { POSTS_PAGE_SIZE, type PageListQuery, type PostListQuery } from "./list-query";
+import { referencesOf } from "./document/references";
 import { HOME_PATH } from "./paths";
 import { canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canSeeEntry, canSeePages, canSetHomepage, canUpdateEntry, ownPostsOnly } from "./policies";
 import { findDraft, findEntry, memberName, revisionById, siteFacts } from "./repository";
@@ -29,6 +31,11 @@ export type EditorEntry = {
   draft: { title: string; slug: string; content: unknown; version: number };
   /** The draft version that is live, if the entry is published. */
   publishedDraftVersion: number | null;
+  /**
+   * The images the draft holds (its image blocks and its featured image) that are still usable, as the editor shows
+   * them (M6-4): a thumbnail variant and a name. An id that is not here (trashed, removed) is shown as unavailable.
+   */
+  images: Record<string, ImagePreview>;
   /** What the caller may do: the same policies the services ask (ADR 0016). For the screen only. */
   canEdit: boolean;
   canPublish: boolean;
@@ -68,6 +75,8 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
     const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
     if (!draft || !site) throw notFound();
     const live = entry.publishedRevisionId ? await revisionById(tx, ctx.org.id, ctx.site.id, entry.id, entry.publishedRevisionId) : null;
+    const imageIds = [...referencesOf(draft.content).mediaIds, ...(draft.featuredMediaId ? [draft.featuredMediaId] : [])];
+    const images = await imagePreviews(tx, ctx.org.id, ctx.site.id, imageIds);
     return {
       id: entry.id,
       type: entry.type,
@@ -76,6 +85,7 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
       isHome: entry.path === HOME_PATH,
       draft: { title: draft.title, slug: draft.slug, content: draft.content, version: draft.version },
       publishedDraftVersion: live?.sourceDraftVersion ?? null,
+      images,
       canEdit: canUpdateEntry(ctx, refOf(entry)),
       canPublish: canPublishEntry(ctx, refOf(entry)),
       settings: {

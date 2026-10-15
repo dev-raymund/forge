@@ -3,8 +3,9 @@ import { entryIdOf, isSafeHref } from "./links";
 /**
  * What a block's renderer is told about the site it is drawn for (M5-5; the
  * public renderer gives it, M5-6): where the site's paths live, where an
- * `entry:{id}` link goes now, and which hosts may not be framed (the app's
- * own). Nothing else: a renderer reads no database and no session.
+ * `entry:{id}` link goes now, which hosts may not be framed (the app's own),
+ * and what an image is (M6-4). Nothing else: a renderer reads no database and
+ * no session.
  */
 export type BlockRenderContext = {
   /** The site's base for its own paths: `/s/{address}` in V1, "" on a site's own host later (ADR 0006). */
@@ -12,6 +13,11 @@ export type BlockRenderContext = {
   /** The public address of a live entry of this site, base included; undefined for anything else (a draft, the trash, another site's). */
   resolveEntryHref: (entryId: string) => string | undefined;
   blockedHosts?: readonly string[];
+  /**
+   * A media item as this page may draw it (M6-4): a usable image of this site, with the widths it is stored at.
+   * Undefined for anything else (trashed, missing, a PDF, another site's): the block then draws nothing.
+   */
+  resolveImage?: (mediaId: string) => { alt: string; width: number; height: number; sources: readonly { url: string; width: number; height: number }[] } | undefined;
 };
 
 /** A path of the site under its base: `/` is the site's home (`/s/acme`, not `/s/acme/`). */

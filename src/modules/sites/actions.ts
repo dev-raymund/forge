@@ -3,7 +3,7 @@
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
-import { submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteStatus, submitUpdateSiteSettings } from "./site-forms";
+import { submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateSiteSettings } from "./site-forms";
 
 /**
  * The site forms' Server Actions (M4-1): session → ./site-forms.ts → invalidate → redirect or state.
@@ -40,4 +40,9 @@ export async function setSiteStatusAction(orgSlug: string, siteSlug: string, _pr
 /** `group` is bound by the settings page: which of the site's settings groups the form saves. */
 export async function updateSiteSettingsAction(orgSlug: string, siteSlug: string, group: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitUpdateSiteSettings(await getCurrentActor(), orgSlug, siteSlug, group, formData, await currentRequestMeta()));
+}
+
+/** The logo or the favicon (M6-4): `role` is bound by the settings page; the form sends the chosen image's id, or none. */
+export async function setSiteImageAction(orgSlug: string, siteSlug: string, role: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitSetSiteImage(await getCurrentActor(), orgSlug, siteSlug, role, formData, await currentRequestMeta()));
 }

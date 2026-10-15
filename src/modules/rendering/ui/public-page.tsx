@@ -45,12 +45,14 @@ export function PublicPageView({ page, site, locator }: { page: PublicPage; site
         basePath: base,
         resolveEntryHref: (id) => (Object.hasOwn(links, id) ? sitePath(base, links[id]!) : undefined),
         blockedHosts: [appHost()],
+        // Only images read for this entry (usable images of this site, M6-4): anything else draws nothing.
+        resolveImage: (id) => (Object.hasOwn(entry.images, id) ? entry.images[id] : undefined),
       });
       if (entry.type === "post") {
         const Post = theme.templates.post;
         const terms: TermLink[] = entry.terms.map((term) => ({ taxonomy: term.taxonomy, name: term.name, href: `${blogHref}/${term.taxonomy}/${term.slug}` }));
         return (
-          <Post context={context} title={entry.title} date={date(entry.publishedAt)} terms={terms} blogHref={blogHref}>
+          <Post context={context} title={entry.title} date={date(entry.publishedAt)} terms={terms} blogHref={blogHref} featuredImage={entry.featuredImage}>
             {content}
           </Post>
         );

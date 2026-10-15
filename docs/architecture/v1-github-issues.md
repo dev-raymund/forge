@@ -1237,10 +1237,10 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M6-3, M5-5
 
 **Acceptance criteria:**
-- [ ] Picker modal (library + upload) reused across the admin
-- [ ] `image` block (`mediaId`, alt override, caption, size, link) rendered with `ResponsiveImage`; missing or trashed media renders nothing
-- [ ] Featured image on posts; OG image field (SEO, M8-4); logo and favicon in site settings (favicon sizes generated)
-- [ ] Composite FK prevents using another site's media
+- [x] Picker modal (library + upload) reused across the admin *(ADR 0023 §1: `MediaPicker` over `GET /api/app/media` (`listLibrary`, images only), its upload the M6-3 dropzone; used by the image block, its panel, the featured image, the logo and the favicon)*
+- [x] `image` block (`mediaId`, alt override, caption, size, link) rendered with `ResponsiveImage`; missing or trashed media renders nothing *(§2–3: the registry's block, inserted from the slash menu through the picker; `srcset` from its `w{n}` variants only; every image drawn tagged `media:{id}`, so trash and restore show on the next request)*
+- [x] Featured image on posts; OG image field (SEO, M8-4); logo and favicon in site settings (favicon sizes generated) *(§4–7: featured image through the draft and publish; logo and favicon with variants made at upload (logo inside 640 × 240, favicons 32 and 180 PNG); the OG image field is M8-4's, as the criterion says: the picker and checks it needs are ready, nothing SEO is built)*
+- [x] Composite FK prevents using another site's media *(§10: tested by constraint name for drafts, entries, logo and favicon; ids inside documents are checked by the services)*
 
 **Likely files/modules:** `src/blocks/image/*`, `src/modules/media/ui/picker/*`, settings pages
 
@@ -1254,6 +1254,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Labels:** `area:content` `type:feature`
 
 **Description:** The state machine and its actions.
+
+*From M6-4 (ADR 0023): images in published documents, featured images, and the site's logo and favicon draw nothing once their media is trashed or gone; the public reads are tagged `media:{id}` (or `site:{id}:media` past 50 images), and `media.trashed`/`media.restored` flush them. Purging an image leaves its `mediaId` in documents, drawn as nothing and shown in the editor as "no longer in the media library"; the keyed columns (`entries`/`entry_drafts.featured_media_id`, `site_settings.logo_media_id`/`favicon_media_id`) are set to null by `ON DELETE SET NULL`. Decide whether purging media warns about the pages that still use it.*
 
 *From M6-3 (ADR 0022): `trash.purge` exists (`modules/media/purge.ts`, daily, in `DAILY_JOBS`) and purges media trashed for 30 days. It claims each file first (`failed`, so a concurrent restore loses), then deletes its objects, then the row. Add entries to the same job. Media's trash and restore are done (`trashMedia`, `restoreMedia`, audited, with immediate cache events).*
 
@@ -1405,6 +1407,13 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Labels:** `area:seo` `type:feature`
 
 **Description:** Search-ready output.
+
+*From M6-4 (ADR 0023): the OG image field is here, not built in M6-4.*
+- *Choose it with `MediaPicker` (`@/modules/media/shared`), as the featured image does.*
+- *`seo.ogImageId` (in `entry_drafts.seo`, `site_settings.seo`) is JSON with no foreign key: check a new id with `usableImageIds(tx, org, site, [id])` on save (as `assertUsableImages` does for the featured image), and resolve it at render time with `publicImages`: its widest `w{n}` source is an absolute URL (`MEDIA_PUBLIC_BASE_URL`, default `${APP_ORIGIN}/media`). An unusable one draws no OG tag; tag the read with its `media:{id}`.*
+- *A post's featured image is the natural fallback for its OG image (`PublishedEntry.featuredImage`).*
+- *The site's logo for JSON-LD's `Organization` is `PublicSite.imagery.logo` (the `logo` variant, inside 640 × 240).*
+- *The favicon links are already emitted by the sites page's `generateMetadata` (`icons`); keep them when the SEO metadata is merged in.*
 
 *From M5-8 (ADR 0019): a term's published post count is its `entry_terms` rows (as `termsWithUsage` in `content/term.repository.ts` counts them, for the admin): the sitemap's "non-empty term archives" are those with any, read through a public cached function tagged like the archives (flushed by `term.changed` and publishing).*
 

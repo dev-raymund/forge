@@ -9,7 +9,7 @@ import type { PanelMeta } from "@/blocks/define";
  */
 
 export type Field =
-  | { key: string; kind: "text"; label: string; description?: string; maxLength?: number; widget?: "link" }
+  | { key: string; kind: "text"; label: string; description?: string; maxLength?: number; widget?: "link" | "media" }
   | { key: string; kind: "select"; label: string; description?: string; options: { value: string; label: string }[] }
   | { key: string; kind: "checkbox"; label: string; description?: string };
 
@@ -54,4 +54,14 @@ export function fieldsOf(schema: z.ZodType): Field[] {
 /** The messages a block's schema gives for one key, for the panel to show under that field. */
 export function errorsFor(error: z.ZodError | undefined, key: string): string[] {
   return error ? error.issues.filter((issue) => issue.path[0] === key).map((issue) => issue.message) : [];
+}
+
+/**
+ * What an emptied field holds: nothing (null) where the schema allows it (an image's alt text, caption or link,
+ * M6-4), otherwise the empty text, for the schema to judge. An image's emptied alt text is "the image's own", not "none".
+ */
+export function emptied(schema: z.ZodType, key: string, value: unknown): unknown {
+  if (value !== "") return value;
+  const field = defOf(schema).shape?.[key];
+  return field && field.safeParse(null).success ? null : value;
 }

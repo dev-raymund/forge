@@ -201,10 +201,10 @@ async function deleteObjects(ctx: SiteContext, storage: StorageDriver, keys: str
   return failed.length === 0;
 }
 
-const variantKeyOf = (row: MediaRow, variant: string) => {
+const variantKeyOf = (row: MediaRow, variant: string, ext: "webp" | "png") => {
   // The original's key ends `/original/{name}.{ext}`: a variant keeps the media id, the version and the name.
   const name = row.storageKey.slice(row.storageKey.lastIndexOf("/") + 1).replace(/\.[^.]*$/, "");
-  return mediaObjectKey({ organizationId: row.organizationId, siteId: row.siteId, mediaId: row.id, version: row.version, variant, name, ext: "webp" });
+  return mediaObjectKey({ organizationId: row.organizationId, siteId: row.siteId, mediaId: row.id, version: row.version, variant, name, ext });
 };
 
 export async function completeUpload(ctx: SiteContext, mediaId: unknown, options: { waitMs?: number } = {}): Promise<UploadOutcome> {
@@ -264,7 +264,7 @@ export async function completeUpload(ctx: SiteContext, mediaId: unknown, options
         throw error;
       }
       const variants: MediaVariant[] = processed.variants.map((variant) => ({
-        key: variant.key, format: "webp", width: variant.width, height: variant.height, sizeBytes: variant.data.byteLength, storageKey: variantKeyOf(row, variant.key),
+        key: variant.key, format: variant.format, width: variant.width, height: variant.height, sizeBytes: variant.data.byteLength, storageKey: variantKeyOf(row, variant.key, variant.format),
       }));
       // Write-ahead: the row names each object before it exists. Then they are stored.
       if (!(await inTenant(ctx, (tx) => recordVariants(tx, ctx.org.id, ctx.site.id, id, token, variants)))) {
@@ -274,7 +274,7 @@ export async function completeUpload(ctx: SiteContext, mediaId: unknown, options
       // so the clean-up below cannot run before a write that would then land untracked.
       await storageStep(async () => {
         const writes = await Promise.allSettled(
-          processed.variants.map((variant, i) => storage.put(variants[i]!.storageKey, variant.data, { contentType: "image/webp", cacheControl: "public, max-age=31536000, immutable" })),
+          processed.variants.map((variant, i) => storage.put(variants[i]!.storageKey, variant.data, { contentType: `image/${variant.format}`, cacheControl: "public, max-age=31536000, immutable" })),
         );
         const failure = writes.find((write) => write.status === "rejected");
         if (failure) throw failure.reason;

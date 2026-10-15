@@ -159,6 +159,15 @@ describe("the templates", () => {
     expect(html).toContain("--forge-color-primary:#123456");
   });
 
+  it.each(THEME_KEYS.map((key) => [key] as const))("%s: the site's logo in the header (M6-4), named by the site; its name when there is none", (key) => {
+    const logo = { url: "/media/org/o/site/s/2026/10/x/logo.webp", width: 320, height: 120 };
+    const html = render(key, "page", { logo });
+    expect(html).toContain(`<img src="${logo.url}" alt="Harbor &amp; Pine &lt;Studio&gt;" width="320" height="120" class="forge-logo"`);
+    expect(html.match(/forge-logo/g)).toHaveLength(1);
+    expect(render(key, "page")).not.toContain("forge-logo");
+    expect(render(key, "page", { logo: null })).not.toContain("<img");
+  });
+
   it("a site whose stored theme is unknown is drawn with Studio", () => {
     expect(render("retired-theme", "coming-soon")).toContain('data-theme="studio"');
   });

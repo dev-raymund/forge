@@ -34,4 +34,6 @@ export const tags = {
   list: (siteId: string, type: string) => `site:${siteId}:list:${type}`,
   /** Media metadata used in renders. */
   media: (mediaId: string) => `media:${mediaId}`,
+  /** A render that draws more images than it tags one by one (M6-4): flushed by any of the site's media events. */
+  siteMedia: (siteId: string) => `site:${siteId}:media`,
 } as const;

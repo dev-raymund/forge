@@ -68,17 +68,18 @@ describe.each(DRIVERS)("/media/{key} with the %s driver", (_name, make) => {
     const { ctx } = await siteOf(a);
     const row = await uploaded(ctx, "Beach day.jpg", await phonePhoto(1200, 900), "image/jpeg");
     expect(row.status).toBe("ready");
+    expect(row.variants.map((v) => [v.key, v.format])).toEqual([["thumb", "webp"], ["w800", "webp"], ["logo", "webp"], ["fav32", "png"], ["fav180", "png"]]);
     for (const variant of row.variants) {
       const response = await get(variant.storageKey);
       expect(response.status, variant.key).toBe(200);
       expect(Object.fromEntries(response.headers)).toMatchObject({
-        "content-type": "image/webp",
+        "content-type": `image/${variant.format}`, // the favicons are PNG (M6-4)
         "content-length": String(variant.sizeBytes),
         "cache-control": "public, max-age=31536000, immutable",
         "cdn-cache-control": "public, max-age=31536000, immutable",
         "x-content-type-options": "nosniff",
         "content-security-policy": "default-src 'none'; sandbox",
-        "content-disposition": `attachment; filename="beach-day.webp"`,
+        "content-disposition": `attachment; filename="beach-day.${variant.format}"`,
       });
       expect(response.headers.get("set-cookie")).toBeNull();
       const body = await bytesOf(response);

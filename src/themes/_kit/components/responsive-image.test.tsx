@@ -9,6 +9,10 @@ const variants = [
   { key: "thumb", width: 400, height: 400, storageKey: "o/1/s/2/m/3/v1/thumb/beach.webp" },
   { key: "w800", width: 800, height: 533, storageKey: "o/1/s/2/m/3/v1/w800/beach.webp" },
   { key: "w2400", width: 2400, height: 1600, storageKey: "o/1/s/2/m/3/v1/w2400/beach.webp" },
+  // The site's imagery (M6-4): never a width a page chooses from.
+  { key: "logo", width: 360, height: 240, storageKey: "o/1/s/2/m/3/v1/logo/beach.webp" },
+  { key: "fav32", width: 32, height: 32, storageKey: "o/1/s/2/m/3/v1/fav32/beach.png" },
+  { key: "fav180", width: 180, height: 180, storageKey: "o/1/s/2/m/3/v1/fav180/beach.png" },
 ];
 const urlOf = (key: string) => `https://cms.example.com/media/${key}`;
 

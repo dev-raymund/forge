@@ -249,16 +249,20 @@ test("only this site's entries: another organization's, another site's, the othe
   await Promise.all([other.close(), anonymous.close()]);
 });
 
-test("a page holding blocks this editor cannot edit yet (an image: M6-4's) is not opened for editing, so nothing of them is lost", async ({ page }) => {
+test("a page holding an image the library does not have (M6-4) opens for editing: the block says so, and is kept, id and all, when the page is saved", async ({ page }) => {
   const { org, site } = await withSite(page);
   const id = uuidv7();
   const image = { type: "image", attrs: { id: uuidv7(), v: 1, mediaId: uuidv7(), alt: null, caption: null, size: "content", link: null } };
   await seedEntry(org.id, site.id, { id, type: "page", title: "With an image", slug: "with-an-image", path: "/with-an-image", paragraphId: uuidv7(), extraBlocks: [image] });
-  await page.goto(`/${org.slug}/sites/${site.slug}/pages/${id}`);
-  await expect(page.getByTestId("unsupported-blocks")).toContainText("blocks this editor cannot edit yet (image)", { timeout: 15_000 });
-  await expect(editor(page)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Publish/ })).toHaveCount(0);
-  expect(JSON.stringify((await draftOf(org.id, id)).content)).toContain('"type":"image"');
+  await openEditor(page, `/${org.slug}/sites/${site.slug}/pages/${id}`);
+  await expect(page.getByTestId("unsupported-blocks")).toHaveCount(0);
+  await expect(editor(page).getByTestId("image-unavailable")).toHaveText("This image is no longer in the media library. It is not shown on the site. Choose another one.");
+  await expect(editor(page).getByTestId("block-image").locator("img")).toHaveCount(0); // nothing is loaded for it
+  await editor(page).locator("p").first().click();
+  await page.keyboard.type("Edited around it.");
+  await saved(page);
+  const blocks = (await draftOf(org.id, id)).content.doc.content as { type: string; attrs?: { id?: string; mediaId?: string } }[];
+  expect(blocks.find((block) => block.type === "image")?.attrs).toMatchObject({ id: image.attrs.id, mediaId: image.attrs.mediaId });
 });
 
 test("a site made before Home pages existed says so on its overview; on a phone the editor fits", async ({ page }) => {

@@ -135,7 +135,8 @@ export function responsiveSources(
   urlOf: (key: string) => string,
 ): { url: string; width: number; height: number }[] {
   return variants
-    .filter((variant) => variant.key !== "thumb")
+    // The ladder's widths only: not the square thumbnail, not the site imagery (logo, favicons).
+    .filter((variant) => /^w[1-9][0-9]{0,4}$/.test(variant.key))
     .map((variant) => ({ url: urlOf(variant.storageKey), width: variant.width, height: variant.height }))
     .sort((a, b) => a.width - b.width);
 }

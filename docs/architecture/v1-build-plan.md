@@ -613,6 +613,7 @@ src/themes/
 | Replace file | SHOULD after V1 (`version + 1`, new keys) |
 | Delivery | V1: `https://cms.forgelinetechnologies.com/media/<key>` (`MEDIA_PUBLIC_BASE_URL`, default `${APP_ORIGIN}/media`). A route handler streams the object from storage with `Cache-Control: public, max-age=31536000, immutable` (keys are immutable, so Vercel's CDN caches each one), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and only allow-listed MIME types. PDFs inline; everything else as attachment. Post-V1: a CDN domain via `MEDIA_PUBLIC_BASE_URL` |
 | Abstraction | `StorageDriver` interface (§13 of the long-term doc, ADR 0008). V1 ships two drivers behind one contract: **local filesystem** for development and tests (no account; `.storage/`), and **S3-compatible** for production (Cloudflare R2 by configuration; RustFS in tests). Modules get tenant-scoped storage from `storageFor({ organizationId, siteId })`; keys outside the tenant's prefix are refused |
+| Picker | The same library in a modal, used by the image block, featured image, OG image, logo and favicon |
 
 - **As built (M6-1, ADR 0020):** `requestUploads` and `completeUpload` are Server Actions.
   - **Storage limit:** the declared size is reserved under the organization's lock; failed uploads give it back.
@@ -632,7 +633,12 @@ src/themes/
   - **Library:** grid and list, one level of folders, search over title, file name and alt text, filters, sorts, and the drawer.
   - **Trash and `trash.purge`:** after 30 days, objects included.
   - **Units:** binary throughout (20 MiB, 25 MiB, 1 GiB, 20 GiB) and shown as such.
-| Picker | The same library in a modal, used by the image block, featured image, OG image, logo and favicon |
+- **As built (M6-4, ADR 0023):**
+  - **Picker:** `MediaPicker` over `GET /api/app/media` (the library's query, images only), with the dropzone inside for uploads. Choosing never uploads, uploading never chooses.
+  - **Image block:** inserted from the slash menu through the picker, set in the panel. Drawn from its `w{n}` variants; nothing for an image that is gone. Editor thumbnails load only when asked for ("Show previews").
+  - **Logo and favicon:** variants made for every image at upload (logo inside 640 × 240, WebP; favicons 32 and 180, PNG), counted in storage. Set in site settings by Owners and Admins.
+  - **Cache:** pages tag the images they draw; trash and restore show on the next request. A URL already cached by a CDN or browser is not revoked.
+  - **OG image:** M8-4's.
 
 ---
 

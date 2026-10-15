@@ -15,8 +15,8 @@ import { NODE_ATTRS } from "@/blocks/schemas";
  *
  *   unknown           a node type that does not exist (or one out of place: a column outside columns, a list item outside a list)
  *   invalid           attributes its schema refuses
- *   not drawn         valid, but its renderer drew nothing (a button whose page is not live)
- *   not rendered yet  the image: its renderer is M6-4's (ADR 0003 addendum M5-5)
+ *   not drawn         valid, but its renderer drew nothing (a button whose page is not live, an image that is
+ *                     trashed or gone: M6-4)
  *   too deep / too many   past the limits below
  *
  * The custom blocks are drawn by their registry renderers (`BLOCK_RENDERERS`);
@@ -25,10 +25,10 @@ import { NODE_ATTRS } from "@/blocks/schemas";
 
 export const RENDERED_ELEMENTS = [
   "p", "h2", "h3", "h4", "strong", "em", "u", "s", "code", "a",
-  "blockquote", "figure", "figcaption", "cite", "ul", "ol", "li", "hr", "div", "iframe",
+  "blockquote", "figure", "figcaption", "cite", "ul", "ol", "li", "hr", "div", "iframe", "img",
 ] as const;
 
-export type SkipReason = "unknown" | "invalid" | "not drawn" | "not rendered yet" | "too deep" | "too many";
+export type SkipReason = "unknown" | "invalid" | "not drawn" | "too deep" | "too many";
 
 export type DocumentRenderContext = BlockRenderContext & { onSkip?: (type: string, reason: SkipReason) => void };
 
@@ -36,8 +36,6 @@ export type DocumentRenderContext = BlockRenderContext & { onSkip?: (type: strin
 const MAX_DEPTH = 24;
 /** Above the 2,000 nodes a saved document may have (plan §6.2). */
 const MAX_NODES = 5_000;
-/** In the schema, drawn by a later milestone. */
-const NOT_RENDERED_YET = new Set(["image"]);
 
 type AnyNode = { type?: unknown; attrs?: unknown; content?: unknown; text?: unknown; marks?: unknown };
 type Walk = { context: DocumentRenderContext; nodes: number };
@@ -150,10 +148,6 @@ function renderBlock(node: AnyNode, key: number, depth: number, walk: Walk): Rea
     case "columns":
       return renderColumns(node, key, depth, walk);
     default: {
-      if (NOT_RENDERED_YET.has(type)) {
-        walk.context.onSkip?.(type, "not rendered yet");
-        return null;
-      }
       const renderer = type !== "column" && Object.hasOwn(BLOCK_RENDERERS, type) ? BLOCK_RENDERERS[type]! : null;
       if (!renderer) {
         walk.context.onSkip?.(type, "unknown");

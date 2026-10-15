@@ -123,10 +123,11 @@ describe("the text nodes", () => {
     expect(parseDocument({ v: 1, doc: editor.getJSON() }).ok).toBe(true);
   });
 
-  it("there is no way to hold an image (M6-4), a code block or a line break; the marks are the six of plan §6.1", async () => {
+  it("there is no way to hold a code block or a line break; images are the registry's block (M6-4); the marks are the six of plan §6.1", async () => {
     const editor = await makeEditor({ type: "doc", content: [{ type: "paragraph" }] });
-    for (const name of ["image", "codeBlock", "hardBreak"]) expect(editor.schema.nodes[name], name).toBeUndefined();
-    for (const name of ["button", "columns", "column", "embed", "spacer"]) expect(editor.schema.nodes[name], name).toBeDefined();
+    for (const name of ["codeBlock", "hardBreak"]) expect(editor.schema.nodes[name], name).toBeUndefined();
+    for (const name of ["button", "columns", "column", "embed", "image", "spacer"]) expect(editor.schema.nodes[name], name).toBeDefined();
+    expect(editor.schema.nodes.image!.isAtom).toBe(true); // one image model: the block, never Tiptap's inline image
     expect(Object.keys(editor.schema.marks).sort()).toEqual(["bold", "code", "italic", "link", "strike", "underline"]);
   });
 });

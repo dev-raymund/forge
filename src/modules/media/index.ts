@@ -5,7 +5,7 @@ import "server-only";
  *   M6-1  the upload protocol: request → PUT to storage → complete; the daily `uploads.cleanup` (ADR 0020)
  *   M6-2  image processing in `completeUpload`, delivery at /media/{key}, the account avatar (ADR 0021)
  *   M6-3  the library: dropzone, folders, search, the drawer, the trash and `trash.purge` (ADR 0022)
- * The picker and the image block are M6-4's.
+ *   M6-4  images everywhere: the picker, the image block's data, featured images, the logo and favicon (ADR 0023)
  */
 export * from "./shared";
 export { completeUpload, requestUploads } from "./upload.service";
@@ -35,3 +35,6 @@ export {
 export { purgeTrashedMedia, TRASH_DAYS, trashPurge } from "./purge";
 export type { TrashPurgeResult } from "./purge";
 export { MediaLibrary } from "./ui/media-library";
+export { imagePreviews, publicImages, siteImageRefusal, siteImagery, usableImageIds } from "./images";
+export type { ImagePreview, PublicImage, SiteImagery } from "./images";
+export { FAVICON_SIZES, isWidthVariant, LOGO_BOX } from "./processing";

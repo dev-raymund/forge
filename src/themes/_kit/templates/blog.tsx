@@ -1,4 +1,5 @@
 import { Container } from "../components/container";
+import { FeaturedImage } from "../components/featured-image";
 import { Pagination } from "../components/pagination";
 import { PostList } from "../components/post-list";
 import { Prose } from "../components/prose";
@@ -10,7 +11,7 @@ import type { TemplateProps } from "../../types";
  * has not designed its own. Journal uses them until M8-2 gives it blog templates of its own.
  */
 
-export function KitPost({ title, date, terms, blogHref, children }: TemplateProps["post"]) {
+export function KitPost({ title, date, terms, blogHref, featuredImage, children }: TemplateProps["post"]) {
   return (
     <article className="forge-post">
       <Container>
@@ -25,6 +26,7 @@ export function KitPost({ title, date, terms, blogHref, children }: TemplateProp
             </p>
           ) : null}
         </header>
+        <FeaturedImage image={featuredImage} />
         <Prose>{children}</Prose>
         <TermLinks terms={terms} />
       </Container>

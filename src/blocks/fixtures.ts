@@ -8,6 +8,8 @@ import type { StoredDocument } from "@/modules/content/shared";
  */
 
 export const ENTRY_ID = "0192f000-0000-7000-8000-000000000002";
+/** The image the fixture holds (M6-4): a media id, drawn only where the page resolves it. */
+export const MEDIA_ID = "0192e000-0000-7000-8000-000000000001";
 export const fixtureId = (n: number) => `01920000-0000-7000-8000-${String(n).padStart(12, "0")}`;
 const id = fixtureId;
 
@@ -62,6 +64,7 @@ export const editableDocument: StoredDocument = {
       { type: "embed", attrs: { id: id(14), v: 1, provider: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", aspect: "16:9" } },
       { type: "embed", attrs: { id: id(15), v: 1, provider: "generic", url: "https://www.openstreetmap.org/export/embed.html?layer=mapnik", aspect: "4:3" } },
       { type: "spacer", attrs: { id: id(16), v: 1, size: "lg" } },
+      { type: "image", attrs: { id: id(21), v: 1, mediaId: MEDIA_ID, alt: null, caption: "The team", size: "wide", link: null } },
       { type: "button", attrs: { id: id(17), v: 1, label: "Call us", href: "tel:+15550100", style: "secondary", align: "center", newTab: false } },
       { type: "paragraph", attrs: { id: id(18) }, content: [{ type: "text", text: "Thanks." }] },
     ],

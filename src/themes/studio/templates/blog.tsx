@@ -1,4 +1,5 @@
 import { Container } from "../../_kit/components/container";
+import { FeaturedImage } from "../../_kit/components/featured-image";
 import { Pagination } from "../../_kit/components/pagination";
 import { PostList } from "../../_kit/components/post-list";
 import { Prose } from "../../_kit/components/prose";
@@ -7,7 +8,7 @@ import type { TemplateProps } from "../../types";
 
 /** Studio's blog (M5-6): a post, the blog index and a category's or tag's archive, under Studio's title band. */
 
-export function StudioPost({ title, date, terms, blogHref, children }: TemplateProps["post"]) {
+export function StudioPost({ title, date, terms, blogHref, featuredImage, children }: TemplateProps["post"]) {
   return (
     <article className="studio-page studio-post">
       <header className="studio-page__header">
@@ -24,6 +25,7 @@ export function StudioPost({ title, date, terms, blogHref, children }: TemplateP
         </Container>
       </header>
       <Container>
+        <FeaturedImage image={featuredImage} />
         <Prose>{children}</Prose>
         <TermLinks terms={terms} />
       </Container>

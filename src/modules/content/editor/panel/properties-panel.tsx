@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RATIOS } from "@/blocks/columns/schema";
 import { providerOf } from "@/blocks/embed/schema";
+import { useImagePreview } from "@/blocks/image/preview-context";
 import { blockSchema, EDITABLE_BLOCK_TYPES } from "@/blocks/schemas";
 import { cn } from "@/lib/utils";
+import { MediaPicker, type PickedImage } from "@/modules/media/shared";
 import { useEntrySearch } from "../entry-search";
-import { errorsFor, fieldsOf, type Field } from "./fields";
+import { emptied, errorsFor, fieldsOf, type Field } from "./fields";
 
 /**
  * The properties panel (plan §6.3; M5-5): the selected custom block's
@@ -46,7 +48,16 @@ export function currentBlock(editor: Editor): CurrentBlock | null {
   return null;
 }
 
-export function PropertiesPanel({ editor, block, orgSlug, siteSlug }: { editor: Editor; block: CurrentBlock; orgSlug: string; siteSlug: string }) {
+export function PropertiesPanel({
+  editor, block, orgSlug, siteSlug, onImagePicked,
+}: {
+  editor: Editor;
+  block: CurrentBlock;
+  orgSlug: string;
+  siteSlug: string;
+  /** An image chosen in the picker (M6-4): the editor learns its preview before the block shows it. */
+  onImagePicked?: (image: PickedImage) => void;
+}) {
   const schema = blockSchema(block.type);
   // Only what was typed and does not validate yet; the rest is read from the document.
   const [pending, setPending] = useState<Record<string, unknown>>({});
@@ -61,7 +72,7 @@ export function PropertiesPanel({ editor, block, orgSlug, siteSlug }: { editor: 
   );
 
   function change(key: string, value: unknown) {
-    const typed: Record<string, unknown> = { ...pending, [key]: value };
+    const typed: Record<string, unknown> = { ...pending, [key]: emptied(schema!.attrs, key, value) };
     if (block.type === "embed" && key === "url") typed.provider = providerOf(String(value));
     const next = { ...block.attrs, ...typed };
     const parsed = schema!.attrs.safeParse(block.type === "columns" ? { ...next, count: block.childCount } : next);
@@ -127,6 +138,7 @@ export function PropertiesPanel({ editor, block, orgSlug, siteSlug }: { editor: 
           onChange={(value) => change(field.key, value)}
           orgSlug={orgSlug}
           siteSlug={siteSlug}
+          onImagePicked={onImagePicked}
         />
       ))}
     </aside>
@@ -134,9 +146,12 @@ export function PropertiesPanel({ editor, block, orgSlug, siteSlug }: { editor: 
 }
 
 function FieldControl({
-  field, value, errors, onChange, orgSlug, siteSlug,
-}: { field: Field; value: unknown; errors: string[]; onChange: (value: unknown) => void; orgSlug: string; siteSlug: string }) {
+  field, value, errors, onChange, orgSlug, siteSlug, onImagePicked,
+}: { field: Field; value: unknown; errors: string[]; onChange: (value: unknown) => void; orgSlug: string; siteSlug: string; onImagePicked?: (image: PickedImage) => void }) {
   const id = useId();
+  if (field.kind === "text" && field.widget === "media") {
+    return <MediaFieldControl label={field.label} value={value} errors={errors} onChange={onChange} orgSlug={orgSlug} siteSlug={siteSlug} onImagePicked={onImagePicked} />;
+  }
   const described = [field.description ? `${id}-hint` : null, errors.length ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   const messages = (
     <>
@@ -200,6 +215,44 @@ function FieldControl({
       />
       {messages}
       {field.widget === "link" ? <EntryPicker orgSlug={orgSlug} siteSlug={siteSlug} onPick={(entryId) => onChange(`entry:${entryId}`)} /> : null}
+    </div>
+  );
+}
+
+/** An image field (M6-4): the image chosen, and the picker to choose another. Never typed: a media id comes from a choice. */
+function MediaFieldControl({
+  label, value, errors, onChange, orgSlug, siteSlug, onImagePicked,
+}: { label: string; value: unknown; errors: string[]; onChange: (value: unknown) => void; orgSlug: string; siteSlug: string; onImagePicked?: (image: PickedImage) => void }) {
+  const [open, setOpen] = useState(false);
+  const { preview, shown } = useImagePreview(value);
+  return (
+    <div className="grid gap-2" data-testid="media-field">
+      <p className="text-sm font-medium">{label}</p>
+      <div className="flex items-center gap-2">
+        {preview?.thumbUrl && shown ? (
+          // eslint-disable-next-line @next/next/no-img-element -- the site's own thumbnail variant
+          <img src={preview.thumbUrl} alt="" width={48} height={48} className="size-12 rounded-md object-cover" />
+        ) : null}
+        <span className="min-w-0 truncate text-sm">{preview ? preview.name : "Not in the media library any more"}</span>
+      </div>
+      <Button type="button" variant="outline" className="h-9 justify-self-start px-3" onClick={() => setOpen(true)}>
+        Choose another image
+      </Button>
+      {errors.length ? (
+        <p className="text-sm text-destructive" role="alert">
+          {errors[0]}
+        </p>
+      ) : null}
+      <MediaPicker
+        orgSlug={orgSlug}
+        siteSlug={siteSlug}
+        open={open}
+        onOpenChange={setOpen}
+        onPick={(image) => {
+          onImagePicked?.(image);
+          onChange(image.id);
+        }}
+      />
     </div>
   );
 }

@@ -152,7 +152,7 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
      tests/integration/media-processing.test.ts tests/integration/media-delivery.test.ts tests/integration/avatar-upload.test.ts
    ```
    Until this has passed, R2's handling of the signed `If-None-Match` and of the signed size on a presigned PUT is assumed, not verified (only RustFS has been exercised).
-6. **After the first deployment, verify media on the real platform.** This is separate from local and CI acceptance, which use the local driver and RustFS only (ADR 0020–0022). Use the preview deployment and bucket first. Record what was seen (date, deployment, result) in the issue tracker; until then, these behaviours are unverified.
+6. **After the first deployment, verify media on the real platform.** This is separate from local and CI acceptance, which use the local driver and RustFS only (ADR 0020–0023). Use the preview deployment and bucket first. Record what was seen (date, deployment, result) in the issue tracker; until then, these behaviours are unverified.
    - **R2 CORS and the browser's PUT.** In a real browser on the deployed admin, upload an image and a PDF from a site's media library (`/…/media`).
      - In the network panel, the preflight `OPTIONS` to R2 answers 200 and allows `PUT` with `content-type` and `if-none-match`.
      - The `PUT` answers 200, and the files reach "Ready".
@@ -174,8 +174,14 @@ At the DNS provider of `forgelinetechnologies.com`, add the single record Vercel
      - After it is ready, the same URL answers 200. A cached 404 must never stand in its way (`x-vercel-cache` is not HIT on the 404).
      - Trash the file: its URL answers 404 from the next request on the function. A CDN copy cached before may remain until evicted (ADR 0021).
    - **PDFs in real browsers.** Open a ready PDF's URL in Chrome, Firefox and Safari.
-     - Note whether each displays it inline under the `sandbox` CSP, or downloads it instead (Chrome's viewer may refuse).
-     - M6-4 decides from this how PDFs are linked from content.
+     - Note whether each displays it inline under the `sandbox` CSP, or downloads it instead (Chrome's viewer may refuse). Playwright's headless Chromium downloads it (ADR 0023 §9).
+     - Either way the file must arrive; the drawer's "Download" is the fallback. Do not loosen the CSP for a viewer.
+   - **Images in pages (M6-4).** On a live site with an image block, a post's featured image, a logo and a favicon:
+     - The page's `<img srcset>` lists only `/media/…/w{n}/….webp` URLs, each answering 200 with the immutable headers; the original's URL answers 404.
+     - The favicon `<link rel="icon">` answers `image/png`, 32 × 32; the browser tab shows it.
+     - Trash the image in the library: the page drops it on the next request. Its direct URL may still answer from Vercel's CDN (`x-vercel-cache: HIT`) until evicted, which is the known limit (ADR 0023 §8). Note whether it does, and for how long.
+     - Restore it: the page shows it again on the next request.
+     - On a phone, the page does not scroll sideways and the narrow variant is the one loaded.
    - **Storage unavailable.** On the preview deployment, set `STORAGE_ENDPOINT` to an address that does not answer, and redeploy.
      - Uploading answers "Storage is not answering right now", and nothing is created.
      - Restore the setting: "Try again" then completes the file.

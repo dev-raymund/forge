@@ -162,3 +162,15 @@ What was built, and the decisions it took:
 - **Paste.** `PasteGuard` checks every pasted custom block against its registry schema. A pasted part of a columns block keeps its columns, and its `count` and `ratio` are re-synced (gap 2).
 - **Autosave saves edits only.** A transaction that leaves the stored draft as it is no longer saves a new version. Examples: the empty paragraph Tiptap adds after a final block on the first click, or ids and the trailing paragraph added while the editor is created. Before this, merely opening a page that ended in a block (or a heading) and clicking made a new version, and another open tab's next save became a conflict. The comparison is with what was last handed to autosave, not with what was last saved, so undoing an edit while it is being saved is still saved.
 - **The spike is retired.** Deleted: `spikes/editor/`, `/dev/editor`, `tests/e2e/editor-spike.spec.ts` and the `@spikes` path alias. Its editor tests were ported to `modules/content/editor/blocks.test.ts`. Its whole-document renderer and 31-payload XSS corpus belong to M5-6 and are in git history (`spikes/editor/render.tsx`, `render.test.tsx` at `e55a37d`).
+
+## Addendum (M6-4, 2026-10-15): the image block
+
+ADR 0023 §2 has the details.
+
+- **The block:** the registry's `image` is editable now, with no second model. It has an atom node, a node view, and a renderer with `ResponsiveImage`.
+- **Inserting:** the slash menu's "Image" `asks: "media"`, which opens the picker. The block is inserted only with the image chosen, so no block exists without a `mediaId`.
+- **The panel:**
+  - A new `widget: "media"` shows the chosen image and "Choose another image"; the media id is never typed.
+  - An emptied field the schema allows to be `null` (an image's alt text, caption, link) is stored as `null`, not `""`.
+- **Previews in the editor:** none until the person asks ("Show previews", or choosing an image in the picker). Then only this site's `thumb` variants are loaded. Nothing third-party is ever loaded, as before.
+- **Unavailable images:** a page holding an image the library no longer has opens for editing. The block says the image is unavailable, and saving keeps it, id and all.

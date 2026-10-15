@@ -29,6 +29,8 @@ export type RenderableSite = {
   themeSettings: unknown;
   /** Validated social links (M4-2). */
   social?: readonly NavItem[];
+  /** The site's logo, when it has a usable one (M6-4). */
+  logo?: { url: string; width: number; height: number } | null;
   menus?: { header?: readonly NavItem[]; footer?: readonly NavItem[] };
 };
 
@@ -36,7 +38,7 @@ export type RenderableSite = {
 export function themeFor(site: RenderableSite): { theme: ThemeManifest; context: ThemeContext } {
   const theme = themeManifest(site.themeKey);
   const context: ThemeContext = {
-    site: { name: site.name, tagline: site.tagline ?? "", language: site.language, basePath: site.basePath, social: site.social ?? [] },
+    site: { name: site.name, tagline: site.tagline ?? "", language: site.language, basePath: site.basePath, social: site.social ?? [], logo: site.logo ?? null },
     settings: readThemeSettings(site.themeSettings, theme.defaults),
     options: readThemeOptions(site.themeSettings, theme),
     menus: { header: site.menus?.header ?? [], footer: site.menus?.footer ?? [] },

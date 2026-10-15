@@ -46,7 +46,19 @@ function put(target: Target, file: File, onProgress: (fraction: number) => void)
 
 const noSubscription = () => () => {};
 
-export function UploadDropzone({ orgSlug, siteSlug, folders, folderId }: { orgSlug: string; siteSlug: string; folders: { id: string; name: string }[]; folderId: string | null }) {
+export function UploadDropzone({
+  orgSlug, siteSlug, folders, folderId, imagesOnly = false, refreshOnReady = true, onReady,
+}: {
+  orgSlug: string;
+  siteSlug: string;
+  folders: { id: string; name: string }[];
+  folderId: string | null;
+  /** In the picker (M6-4): only images are offered and accepted here; a PDF belongs in the library. */
+  imagesOnly?: boolean;
+  /** The library page re-renders after files are ready; the picker inside the editor asks its own list instead. */
+  refreshOnReady?: boolean;
+  onReady?: (mediaId: string) => void;
+}) {
   const router = useRouter();
   // Files can be chosen only once this is running: a choice made before the page is interactive would be lost.
   const interactive = useSyncExternalStore(noSubscription, () => true, () => false);
@@ -97,7 +109,10 @@ export function UploadDropzone({ orgSlug, siteSlug, folders, folderId }: { orgSl
       const answer = await completeUploadAction(orgSlug, siteSlug, item.mediaId).catch(() => ({ ok: false as const, code: "Internal", error: "" }));
       const next = late && !answer.ok && answer.code === "Conflict" ? afterLateConflict(item) : afterComplete(item, answer);
       replace([next]);
-      if (next.status === "ready") showNew();
+      if (next.status === "ready") {
+        if (refreshOnReady) showNew();
+        onReady?.(item.mediaId);
+      }
     } finally {
       busy.current.delete(item.key);
     }
@@ -153,7 +168,8 @@ export function UploadDropzone({ orgSlug, siteSlug, folders, folderId }: { orgSl
       const key = `f${++counter.current}`;
       files.current.set(key, file);
       folderOf.current.set(key, folder);
-      added.push(itemOf({ name: file.name, size: file.size, type: file.type }, key));
+      const item = itemOf({ name: file.name, size: file.size, type: file.type }, key);
+      added.push(imagesOnly && item.kind === "document" ? { ...item, status: "refused", message: `${item.name} is a PDF: only images can be chosen here. Upload it in the media library.` } : item);
     }
     setItems((current) => [...added, ...current]);
     const waiting = added.filter((item) => item.status === "waiting");
@@ -195,7 +211,9 @@ export function UploadDropzone({ orgSlug, siteSlug, folders, folderId }: { orgSl
             <Upload aria-hidden="true" className="size-4" />
             Drop files here, or choose them
           </p>
-          <p className="text-muted-foreground">{ACCEPTED_LABEL}: images up to 20 MiB, PDFs up to 25 MiB. Up to 20 are sent at a time.</p>
+          <p className="text-muted-foreground">
+            {imagesOnly ? "JPEG, PNG, WebP or GIF, up to 20 MiB each." : `${ACCEPTED_LABEL}: images up to 20 MiB, PDFs up to 25 MiB.`} Up to 20 are sent at a time.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {folders.length ? (
@@ -227,7 +245,7 @@ export function UploadDropzone({ orgSlug, siteSlug, folders, folderId }: { orgSl
               id={inputId}
               type="file"
               multiple
-              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              accept={imagesOnly ? "image/jpeg,image/png,image/webp,image/gif" : "image/jpeg,image/png,image/webp,image/gif,application/pdf"}
               className="sr-only"
               disabled={!interactive}
               onChange={(event) => {

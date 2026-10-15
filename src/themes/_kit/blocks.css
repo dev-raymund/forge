@@ -141,6 +141,50 @@
   border: 0;
 }
 
+/* ── Images (M6-4) ─────────────────────────────────────────────────────── */
+
+/* Text width is the measure of the text. Wide and full width leave the measure for the width of the page's content
+ * (all of it in the wide templates), never past the screen; full width also loses its corners. */
+.forge-image img,
+.forge-featured-image img {
+  width: 100%;
+  border-radius: var(--forge-radius);
+  background: var(--forge-wash);
+}
+
+.forge-image--wide,
+.forge-image--full {
+  --forge-image-width: min(var(--forge-content-width), 100vw - 2 * var(--forge-gutter));
+
+  width: max(100%, var(--forge-image-width));
+  max-width: none;
+}
+
+.forge-image--full img {
+  border-radius: 0;
+}
+
+.forge-image figcaption {
+  margin-top: 0.5rem;
+  color: var(--forge-muted);
+  font-size: 0.95em;
+}
+
+.forge-image a {
+  display: block;
+}
+
+.forge-featured-image {
+  margin-bottom: calc(var(--forge-gap) * 2.5);
+}
+
+/* The logo in a header: its own proportions, at most the header's height and never wider than the screen. */
+.forge-logo {
+  width: auto;
+  max-width: min(100%, 16rem);
+  max-height: 3rem;
+}
+
 /* ── Spacers ───────────────────────────────────────────────────────────── */
 
 .forge-spacer--sm {

@@ -34,6 +34,7 @@ export function renderableSite(site: PublicSite, locator: SiteLocator): Renderab
     themeKey: site.themeKey,
     themeSettings: site.themeSettings,
     social: site.social,
+    logo: site.imagery.logo,
   };
 }
 

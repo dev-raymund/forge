@@ -7,8 +7,8 @@ import { BLOCK_INSERTS } from "@/blocks/editor";
  * `/` at the start of an empty paragraph, at the top level or in a column,
  * offers the text blocks and the registry's custom blocks (in a column, all
  * but columns), and what follows the slash filters them. Choosing one turns
- * that paragraph into it. A block that `asks` for an address (an embed) is
- * inserted by the editor once it has one. Pure but for `run`, which acts on
+ * that paragraph into it. A block that `asks` for an address (an embed) or a
+ * media item (an image, M6-4) is inserted by the editor once it has one. Pure but for `run`, which acts on
  * the editor.
  */
 
@@ -18,7 +18,7 @@ export type SlashCommand = {
   label: string;
   keywords: readonly string[];
   run: (editor: Editor, range: SlashRange) => boolean;
-  asks?: "address";
+  asks?: "address" | "media";
   /** Columns: not offered inside a column (columns never nest). */
   layout?: true;
 };

@@ -8,7 +8,7 @@ import { publicMediaObject } from "./repository";
  * What `/media/{key}` may serve (M6-2; plan §8, ADR 0006): only an object an authoritative record says is public
  * now, never "any key that exists in storage".
  *
- *   o/{org}/s/{site}/m/{media}/v{n}/{variant}/{name}.webp   a variant of a ready, untrashed image
+ *   o/{org}/s/{site}/m/{media}/v{n}/{variant}/{name}.webp   a variant of a ready, untrashed image (.png: a favicon, M6-4)
  *   o/{org}/s/{site}/m/{media}/v{n}/original/{name}.pdf     the file of a ready, untrashed document
  *   u/{user}/a/{avatar}/thumb/avatar.webp                    a user's current avatar
  *

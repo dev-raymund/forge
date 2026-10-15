@@ -17,6 +17,7 @@ const site: PublicSite = {
   social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
   analytics: { ga4MeasurementId: "G-ABC1234567" },
   reading: { blogPath: "news", postsPerPage: 5 },
+  imagery: { logo: null, favicon: null },
 };
 
 describe("the public context", () => {
@@ -26,9 +27,17 @@ describe("the public context", () => {
       name: "Acme <Bakery>", tagline: "Bread & more", language: "fil", basePath: "/s/acme", themeKey: "journal",
       themeSettings: { tokens: { colors: { primary: "#123456" } } },
       social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
+      logo: null,
     });
     expect(renderable).not.toHaveProperty("analytics"); // the theme never sees the analytics IDs: the layout emits them
     expect(JSON.stringify(renderable)).not.toContain(site.id);
+  });
+
+  it("carries the logo's variant (M6-4), never the favicon: the page's head draws that", () => {
+    const logo = { url: "/media/org/o/site/s/2026/10/m/logo.webp", width: 640, height: 120 };
+    const renderable = renderableSite({ ...site, imagery: { logo, favicon: { url32: "/media/a.png", url180: "/media/b.png" } } }, { kind: "address", address: "acme" });
+    expect(renderable.logo).toEqual(logo);
+    expect(JSON.stringify(renderable)).not.toContain("/media/a.png");
   });
 
   it("links are built from how the site was reached: /s/{address} in V1, its own host later", () => {

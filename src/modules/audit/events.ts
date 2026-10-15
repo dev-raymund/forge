@@ -109,7 +109,7 @@ export const AUDIT_EVENTS = {
   "site.settings_changed": {
     resourceType: "site",
     label: "Site settings changed",
-    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
+    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics", "images"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
   },
   // M4-5 (ADR 0015): publishing, and back to Coming soon.
   "site.status_changed": {
@@ -287,6 +287,8 @@ const article = (label: string) => (/^[AEIOU]/.test(label) ? "an" : "a");
 /** A settings field's key as words: `postsPerPage` → `posts per page`, `ga4MeasurementId` → `GA4 measurement ID`. */
 const FIELD_WORDS: Record<string, string> = {
   ga4MeasurementId: "GA4 measurement ID", plausibleDomain: "Plausible domain",
+  // M6-4: the "images" group.
+  logo: "logo", favicon: "favicon",
   facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
 };
 const fieldWord = (key: string) => FIELD_WORDS[key] ?? key.replace(/([A-Z])/g, " $1").toLowerCase();
@@ -312,7 +314,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.address_changed": (actor, m) => `${actor} moved the site ${m.name} from /s/${m.previousAddress} to /s/${m.newAddress}.`,
   "site.deleted": (actor, m) => `${actor} deleted the site ${m.name}, which was at /s/${m.address}.`,
   "site.theme_changed": (actor, m) => `${actor} changed the theme of ${m.name} from ${word(m.previousTheme)} to ${word(m.newTheme)}.`,
-  "site.settings_changed": (actor, m) => `${actor} changed the ${m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
+  "site.settings_changed": (actor, m) => `${actor} changed the ${m.group === "images" ? "image" : m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
   "site.status_changed": (actor, m) =>
     m.newStatus === "live" ? `${actor} published the site ${m.name}.` : `${actor} switched the site ${m.name} back to Coming soon.`,
   "entry.created": (actor, m) => `${actor} created the ${m.type} ${m.title} at ${m.path}.`,

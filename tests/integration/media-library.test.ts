@@ -267,7 +267,7 @@ describe("changing files", () => {
     const a = await newTenant();
     const { ctx } = await siteOf(a);
     const id = await ready(ctx, { filename: "photo.jpg" });
-    expect(await updateMediaDetails(ctx, id, { title: " Beach ", altText: "Sand and sea", caption: "" })).toEqual({ changed: true, events: [{ type: "media.updated", mediaId: id }] });
+    expect(await updateMediaDetails(ctx, id, { title: " Beach ", altText: "Sand and sea", caption: "" })).toEqual({ changed: true, events: [{ type: "media.updated", mediaId: id, siteId: ctx.site.id }] });
     expect((await rowOf(ctx, id))!).toMatchObject({ title: "Beach", altText: "Sand and sea", caption: "" });
     expect((await events(ctx, "media.updated"))[0]!.metadata).toEqual({ kind: "image", filename: "photo.jpg", fields: ["title", "alt"] });
     expect(await updateMediaDetails(ctx, id, { title: "Beach" })).toEqual({ changed: false, events: [] });
@@ -303,12 +303,12 @@ describe("changing files", () => {
     const { ctx } = await siteOf(a);
     const { folder } = await createFolder(ctx, { name: "Short-lived" });
     const id = await ready(ctx, { filename: "photo.jpg", folderId: folder.id });
-    expect(await trashMedia(ctx, id)).toEqual({ events: [{ type: "media.trashed", mediaId: id }] });
+    expect(await trashMedia(ctx, id)).toEqual({ events: [{ type: "media.trashed", mediaId: id, siteId: ctx.site.id }] });
     expect(await trashMedia(ctx, id)).toEqual({ events: [] }); // already there
     expect((await listLibrary(ctx, query())).items).toHaveLength(0);
     // Only trashed files are left in it: it can be deleted, and they come back in no folder.
     await deleteFolder(ctx, folder.id);
-    expect(await restoreMedia(ctx, id)).toEqual({ events: [{ type: "media.restored", mediaId: id }] });
+    expect(await restoreMedia(ctx, id)).toEqual({ events: [{ type: "media.restored", mediaId: id, siteId: ctx.site.id }] });
     expect((await rowOf(ctx, id))!).toMatchObject({ deletedAt: null, folderId: null });
     expect((await events(ctx, "media.trashed")).length + (await events(ctx, "media.restored")).length).toBe(2);
   });

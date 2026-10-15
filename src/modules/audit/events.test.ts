@@ -200,6 +200,8 @@ describe("an event as a sentence", () => {
     expect(say("site.settings_changed", { name: "Acme Bakery", group: "analytics", fields: ["ga4MeasurementId"] })).toBe(
       "Raymund changed the analytics settings of Acme Bakery: GA4 measurement ID.",
     );
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "images", fields: ["logo"] })).toBe("Raymund changed the image settings of Acme Bakery: logo.");
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "images", fields: ["favicon"] })).toBe("Raymund changed the image settings of Acme Bakery: favicon.");
     expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "coming_soon", newStatus: "live" })).toBe("Raymund published the site Acme Bakery.");
     expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "live", newStatus: "coming_soon" })).toBe(
       "Raymund switched the site Acme Bakery back to Coming soon.",

@@ -81,6 +81,16 @@
   margin-inline: auto;
 }
 
+/* The measure is centred here: a wide image is too. */
+[data-theme="journal"] .forge-prose > :is(.forge-image--wide, .forge-image--full) {
+  margin-inline: min(0px, (100% - var(--forge-image-width)) / 2);
+}
+
+[data-theme="journal"] .forge-logo {
+  max-height: 4.5rem;
+  margin-inline: auto;
+}
+
 [data-theme="journal"] .journal-footer {
   margin-top: auto;
   border-top: 1px solid var(--forge-line);

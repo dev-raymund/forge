@@ -5,6 +5,8 @@ import { FormAlert } from "@/components/admin/form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import type { ImagePreviewState } from "@/blocks/image/preview-context";
+import { MediaPicker, type PickedImage } from "@/modules/media/shared";
 import { IDLE, type FormState } from "@/platform/forms";
 import { changeAuthorAction, createTermAction, setHomepageAction } from "../actions";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "../paths";
@@ -15,17 +17,17 @@ import { ENTRY_EXCERPT_MAX, typedSlug } from "../validation";
 /**
  * The entry's settings, beside the text (M5-7 criterion 4; plan §6.3 "entry sidebar"):
  *
- *   saved with the draft (autosave)    the slug, a page's template, a post's excerpt, categories and tags
+ *   saved with the draft (autosave)    the slug, a page's template, a post's excerpt, categories and tags, a post's
+ *                                      featured image (chosen with the media picker, M6-4; checked again by saveDraft)
  *   done at once (their own action)    a page's parent (movePageAction), the author (changeAuthorAction, Owner–Editor),
  *                                      "Set as home page" (setHomepageAction, Owner and Admin)
- *   not yet                            a post's featured image (the media library, M6-4)
  *
  * A draft field goes into the autosave payload only once it has been changed here, and a slug only once it passes
  * the same rules the server applies (format, length, reserved addresses): a slug being typed never blocks the saving
  * of the text. A slug another entry holds is refused when publishing, with the address it collides on.
  */
 
-export type DraftFields = { slug?: string; template?: string | null; excerpt?: string; termIds?: string[] };
+export type DraftFields = { slug?: string; template?: string | null; excerpt?: string; termIds?: string[]; featuredMediaId?: string | null };
 export type SidebarChoices = { pages: MovablePage[]; members: { userId: string; name: string }[]; terms: TermOption[] };
 /** What the sidebar's immediate actions change, kept by the editor so its header follows. */
 export type EntryPlace = { path: string; parentId: string | null; isHome: boolean; authorId: string | null; authorName: string | null };
@@ -40,8 +42,10 @@ const TEMPLATES = [
 
 const messageOf = (state: FormState, fallback: string) => (state.fieldErrors ? Object.values(state.fieldErrors).flat()[0] : undefined) ?? state.message ?? fallback;
 
+const NO_IMAGES: ImagePreviewState = { images: {}, shown: false, show: () => {} };
+
 export function EntrySettings({
-  orgSlug, siteSlug, entry, title, status, place, fields, onFields, editable, choices, onPlace, onTermCreated,
+  orgSlug, siteSlug, entry, title, status, place, fields, onFields, editable, choices, onPlace, onTermCreated, images = NO_IMAGES, onImagePicked,
 }: {
   orgSlug: string;
   siteSlug: string;
@@ -58,6 +62,9 @@ export function EntrySettings({
   onPlace: (next: Partial<EntryPlace>, message: string) => void;
   /** A term was created here (M5-8): the editor adds it to its list and ticks it, from its latest draft fields (not a copy taken before the request). */
   onTermCreated: (term: TermOption) => void;
+  /** The images the editor knows (M6-4): the featured image's preview comes from here, once previews are asked for. */
+  images?: ImagePreviewState;
+  onImagePicked?: (image: PickedImage) => void;
 }) {
   const { settings } = entry;
   const isPage = entry.type === "page";
@@ -208,10 +215,18 @@ export function EntrySettings({
               ) : null}
             </fieldset>
           ))}
-          <div className="grid gap-1.5" data-testid="featured-image">
-            <p className="text-sm font-medium">Featured image</p>
-            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">A featured image can be chosen once the media library is available.</p>
-          </div>
+          <FeaturedImage
+            orgSlug={orgSlug}
+            siteSlug={siteSlug}
+            mediaId={fields.featuredMediaId !== undefined ? fields.featuredMediaId : settings.featuredMediaId}
+            images={images}
+            editable={editable}
+            onChoose={(picked) => {
+              onImagePicked?.(picked);
+              onFields({ ...fields, featuredMediaId: picked.id });
+            }}
+            onRemove={() => onFields({ ...fields, featuredMediaId: null })}
+          />
         </>
       )}
 
@@ -373,6 +388,59 @@ function AddTerm({ orgSlug, siteSlug, taxonomy, onCreated }: { orgSlug: string; 
           {error}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A post's featured image (M6-4): chosen with the media picker, shown as its thumbnail, removable. Saved with the draft
+ * by autosave (`featuredMediaId`), which the server checks (a usable image of this site); the public post shows it once
+ * it is published.
+ */
+function FeaturedImage({
+  orgSlug, siteSlug, mediaId, images, editable, onChoose, onRemove,
+}: {
+  orgSlug: string;
+  siteSlug: string;
+  mediaId: string | null;
+  images: ImagePreviewState;
+  editable: boolean;
+  onChoose: (picked: PickedImage) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const preview = mediaId && Object.hasOwn(images.images, mediaId) ? images.images[mediaId] : undefined;
+  return (
+    <div className="grid gap-1.5" data-testid="featured-image">
+      <p className="text-sm font-medium">Featured image</p>
+      {mediaId ? (
+        <div className="flex items-center gap-2">
+          {preview?.thumbUrl && images.shown ? (
+            // eslint-disable-next-line @next/next/no-img-element -- the site's own thumbnail variant
+            <img src={preview.thumbUrl} alt="" width={64} height={64} className="size-16 rounded-md object-cover" data-testid="featured-image-preview" />
+          ) : preview?.thumbUrl ? (
+            <Button type="button" variant="ghost" className="h-9 px-2 text-xs" onClick={images.show} data-testid="show-image-previews">
+              Show previews
+            </Button>
+          ) : null}
+          <span className="min-w-0 text-sm wrap-anywhere">{preview ? preview.name : "This image is no longer in the media library. It is not shown on the site."}</span>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">None. The post is shown without one.</p>
+      )}
+      {editable ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className="h-9 px-3" onClick={() => setOpen(true)}>
+            {mediaId ? "Change image" : "Choose an image"}
+          </Button>
+          {mediaId ? (
+            <Button type="button" variant="ghost" className="h-9 px-3" onClick={onRemove}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <MediaPicker orgSlug={orgSlug} siteSlug={siteSlug} open={open} onOpenChange={setOpen} onPick={onChoose} title="Choose a featured image" description="Shown at the top of the post." />
     </div>
   );
 }

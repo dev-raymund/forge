@@ -1,7 +1,8 @@
 import "server-only";
 import { and, count, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
-import { parseDocument } from "@/modules/content/shared";
+import { parseDocument, referencesOf } from "@/modules/content/shared";
+import { publicImages, type PublicImage } from "@/modules/media";
 import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
 import { withTenant } from "@/platform/db";
 import { entries, entryRevisions, entryTerms, terms } from "@/platform/db/schema";
@@ -77,7 +78,18 @@ export type PublishedEntry = {
   content: unknown;
   publishedAt: string | null;
   terms: (PublicTerm & { taxonomy: Taxonomy })[];
+  /** The usable images it draws (its image blocks and its featured image), by media id (M6-4). One that is not here draws nothing. */
+  images: Record<string, PublicImage>;
+  /** A post's featured image, when it has one that is still usable (M6-4). */
+  featuredImage: PublicImage | null;
 };
+
+/**
+ * How many images one entry's render is tagged with, each by its own `media:{id}` (plan §20 "capped"): a trash or a
+ * restore of any of them flushes the entry at once. An entry with more images is tagged with the site's
+ * `site:{id}:media` instead, which those events flush too.
+ */
+export const ENTRY_MEDIA_TAGS_MAX = 50;
 
 /** One published entry, from its published revision. Null if it is not published (anymore), or not this site's. */
 export async function loadEntry(orgId: string, siteId: string, entryId: string): Promise<PublishedEntry | null> {
@@ -89,7 +101,7 @@ export async function loadEntry(orgId: string, siteId: string, entryId: string):
     const [row] = await tx
       .select({
         type: entries.type, path: entries.path, publishedAt: entries.publishedAt,
-        title: entryRevisions.title, template: entryRevisions.template, content: entryRevisions.content,
+        title: entryRevisions.title, template: entryRevisions.template, content: entryRevisions.content, featuredMediaId: entryRevisions.featuredMediaId,
       })
       .from(entries)
       .innerJoin(entryRevisions, and(eq(entryRevisions.id, entries.publishedRevisionId), eq(entryRevisions.entryId, entries.id), eq(entryRevisions.siteId, entries.siteId)))
@@ -103,7 +115,12 @@ export async function loadEntry(orgId: string, siteId: string, entryId: string):
       .orderBy(terms.taxonomy, terms.name);
     const parsed = parseDocument(row.content);
     const content = parsed.ok ? parsed.document : row.content;
-    reportUndrawable(siteId, row.path, content);
+    // Every image it would draw is tagged, drawn or not: a restore must bring a trashed one back, not only a trash remove it.
+    const mediaIds = [...new Set([...referencesOf(content).mediaIds, ...(row.featuredMediaId && row.type === "post" ? [row.featuredMediaId] : [])])];
+    if (mediaIds.length > ENTRY_MEDIA_TAGS_MAX) cacheTag(tags.siteMedia(siteId));
+    else if (mediaIds.length) cacheTag(...mediaIds.map(tags.media));
+    const images = await publicImages(tx, orgId, siteId, mediaIds);
+    reportUndrawable(siteId, row.path, content, images);
     return {
       type: row.type,
       title: row.title,
@@ -112,18 +129,24 @@ export async function loadEntry(orgId: string, siteId: string, entryId: string):
       content,
       publishedAt: row.publishedAt?.toISOString() ?? null,
       terms: assigned,
+      images,
+      featuredImage: row.type === "post" && row.featuredMediaId ? (images[row.featuredMediaId] ?? null) : null,
     };
   });
 }
 
 /**
  * What of a published document a visitor will not see, logged once each time the entry is read into the cache
- * (not on every request): an image (its renderer is M6-4's), or a node that is unknown, invalid or out of place (a
- * damaged or legacy document). A button whose page is not live is not a fault of the document and is not reported.
+ * (not on every request): a node that is unknown, invalid or out of place (a damaged or legacy document). A button
+ * whose page is not live, or an image that was trashed, is not a fault of the document and is not reported.
  */
-function reportUndrawable(siteId: string, path: string, content: unknown): void {
+function reportUndrawable(siteId: string, path: string, content: unknown, images: Record<string, PublicImage>): void {
   const skipped = new Set<string>();
-  renderDocument(content, { resolveEntryHref: () => "/", onSkip: (type, reason) => void (reason !== "not drawn" && skipped.add(`${type}: ${reason}`)) });
+  renderDocument(content, {
+    resolveEntryHref: () => "/",
+    resolveImage: (id) => (Object.hasOwn(images, id) ? images[id] : undefined),
+    onSkip: (type, reason) => void (reason !== "not drawn" && skipped.add(`${type}: ${reason}`)),
+  });
   if (skipped.size) logger.child({ module: "rendering", siteId }).warn("published content has blocks that are not drawn", { path, skipped: [...skipped] });
 }
 

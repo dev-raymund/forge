@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { ImageRejected, MAX_INPUT_PIXELS, planVariants, processImage } from "./processing";
+import { ImageRejected, isWidthVariant, MAX_INPUT_PIXELS, planVariants, processImage } from "./processing";
 
 const solid = (format: "png" | "jpeg" | "webp" | "gif", width: number, height: number) =>
   sharp({ create: { width, height, channels: 3, background: { r: 90, g: 30, b: 160 } } })[format]().toBuffer().then((b) => new Uint8Array(b));
@@ -15,25 +15,40 @@ const reasonOf = async (run: () => Promise<unknown>) => {
 };
 
 describe("the variants of an image (plan §8)", () => {
+  const SITE = [["fav32", 32, 32], ["fav180", 180, 180]];
   it.each([
-    [3000, 2000, [["thumb", 400, 400], ["w800", 800, 533], ["w1600", 1600, 1067], ["w2400", 2400, 1600]]],
-    [2400, 2400, [["thumb", 400, 400], ["w800", 800, 800], ["w1600", 1600, 1600], ["w2400", 2400, 2400]]],
-    [2399, 1000, [["thumb", 400, 400], ["w800", 800, 333], ["w1600", 1600, 667]]],
-    [800, 1200, [["thumb", 400, 400], ["w800", 800, 1200]]],
-    [799, 300, [["thumb", 300, 300], ["w799", 799, 300]]],
-    [120, 4000, [["thumb", 120, 120], ["w120", 120, 4000]]],
-    [1, 1, [["thumb", 1, 1], ["w1", 1, 1]]],
-  ])("%i × %i: a square of 400 (never above the image), each width of the ladder it reaches, or its own", (width, height, expected) => {
-    expect(planVariants(width, height).map((v) => [v.key, v.width, v.height])).toEqual(expected);
-    expect(planVariants(width, height)[0]!.square).toBe(true);
-  });
+    [3000, 2000, [["thumb", 400, 400], ["w800", 800, 533], ["w1600", 1600, 1067], ["w2400", 2400, 1600], ["logo", 360, 240], ...SITE]],
+    [2400, 2400, [["thumb", 400, 400], ["w800", 800, 800], ["w1600", 1600, 1600], ["w2400", 2400, 2400], ["logo", 240, 240], ...SITE]],
+    [2399, 1000, [["thumb", 400, 400], ["w800", 800, 333], ["w1600", 1600, 667], ["logo", 576, 240], ...SITE]],
+    [800, 1200, [["thumb", 400, 400], ["w800", 800, 1200], ["logo", 160, 240], ...SITE]],
+    [799, 300, [["thumb", 300, 300], ["w799", 799, 300], ["logo", 639, 240], ...SITE]],
+    [3000, 200, [["thumb", 200, 200], ["w800", 800, 53], ["w1600", 1600, 107], ["w2400", 2400, 160], ["logo", 640, 43], ...SITE]],
+    [120, 4000, [["thumb", 120, 120], ["w120", 120, 4000], ["logo", 7, 240], ...SITE]],
+    [1, 1, [["thumb", 1, 1], ["w1", 1, 1], ["logo", 1, 1], ...SITE]],
+  ])(
+    "%i × %i: a square of 400 (never above the image), each width of the ladder it reaches or its own, a logo inside 640 × 240, favicons of 32 and 180",
+    (width, height, expected) => {
+      const plan = planVariants(width, height);
+      expect(plan.map((v) => [v.key, v.width, v.height])).toEqual(expected);
+      expect(plan.map((v) => [v.key, v.fit, v.format, v.still])).toEqual(
+        plan.map((v) =>
+          v.key === "thumb" ? ["thumb", "square", "webp", false]
+          : v.key === "logo" ? ["logo", "inside", "webp", true]
+          : v.key.startsWith("fav") ? [v.key, "square", "png", true]
+          : [v.key, "width", "webp", false],
+        ),
+      );
+    },
+  );
 
   it("an avatar is only the square", () => {
-    expect(planVariants(3000, 2000, "avatar")).toEqual([{ key: "thumb", width: 400, height: 400, square: true }]);
+    expect(planVariants(3000, 2000, "avatar")).toEqual([{ key: "thumb", width: 400, height: 400, fit: "square", format: "webp", still: false }]);
   });
 
-  it("every key is a valid variant segment", () => {
+  it("every key is a valid variant segment; only the ladder's are widths a page draws", () => {
     for (const [w, h] of [[3000, 2000], [640, 480], [1, 1]] as const) for (const v of planVariants(w, h)) expect(v.key).toMatch(/^[a-z0-9]{1,32}$/);
+    expect(planVariants(3000, 2000).filter((v) => isWidthVariant(v.key)).map((v) => v.key)).toEqual(["w800", "w1600", "w2400"]);
+    for (const key of ["thumb", "logo", "fav32", "fav180", "w0", "w", "w012", "wide", "w123456"]) expect(isWidthVariant(key), key).toBe(false);
   });
 });
 
@@ -46,11 +61,13 @@ describe("processImage", () => {
       .toBuffer();
     const processed = await processImage(new Uint8Array(photo), "image/jpeg");
     expect([processed.width, processed.height, processed.animated]).toEqual([600, 1000, false]); // turned a quarter
-    expect(processed.variants.map((v) => [v.key, v.width, v.height])).toEqual([["thumb", 400, 400], ["w600", 600, 1000]]);
+    expect(processed.variants.map((v) => [v.key, v.width, v.height, v.format])).toEqual([
+      ["thumb", 400, 400, "webp"], ["w600", 600, 1000, "webp"], ["logo", 144, 240, "webp"], ["fav32", 32, 32, "png"], ["fav180", 180, 180, "png"],
+    ]);
     for (const variant of processed.variants) {
       const meta = await sharp(variant.data).metadata();
-      expect({ format: meta.format, exif: meta.exif, xmp: meta.xmp, icc: meta.icc, orientation: meta.orientation }).toEqual({
-        format: "webp", exif: undefined, xmp: undefined, icc: undefined, orientation: undefined,
+      expect({ format: meta.format, width: meta.width, height: meta.height, exif: meta.exif, xmp: meta.xmp, icc: meta.icc, orientation: meta.orientation }).toEqual({
+        format: variant.format, width: variant.width, height: variant.height, exif: undefined, xmp: undefined, icc: undefined, orientation: undefined,
       });
     }
     expect(processed.durationMs).toBeGreaterThanOrEqual(0);
@@ -77,10 +94,12 @@ describe("processImage", () => {
     const gif = await sharp(frames, { join: { animated: true } }).gif({ delay: [80, 80, 80, 80] }).toBuffer();
     const processed = await processImage(new Uint8Array(gif), "image/gif");
     expect(processed.animated).toBe(true);
+    // The thumbnail and the widths move; a logo and favicons are its first frame (a header or a tab is no place for one).
     for (const variant of processed.variants) {
       const meta = await sharp(variant.data, { animated: true }).metadata();
-      expect([variant.key, meta.pages, meta.pageHeight]).toEqual([variant.key, 4, variant.height]);
+      const still = ["logo", "fav32", "fav180"].includes(variant.key);
+      expect([variant.key, meta.pages ?? 1, still ? meta.height : meta.pageHeight]).toEqual([variant.key, still ? 1 : 4, variant.height]);
     }
-    expect(processed.variants.map((v) => [v.key, v.width, v.height])).toEqual([["thumb", 400, 400], ["w800", 800, 400]]);
+    expect(processed.variants.map((v) => [v.key, v.width, v.height])).toEqual([["thumb", 400, 400], ["w800", 800, 400], ["logo", 480, 240], ["fav32", 32, 32], ["fav180", 180, 180]]);
   });
 });

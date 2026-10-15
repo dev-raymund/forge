@@ -157,9 +157,8 @@ describe("the closed schema in the editor", () => {
     expect(parseDocument(stored(editor)).ok).toBe(true);
   });
 
-  it("an image (M6-4) has no node here: a document holding one is not opened for editing", () => {
-    expect(EDITOR_NODE_TYPES.has("image")).toBe(false);
-    for (const type of ["button", "columns", "column", "embed", "spacer"]) expect(EDITOR_NODE_TYPES.has(type), type).toBe(true);
+  it("every V1 custom block has its node here, the image included (M6-4)", () => {
+    for (const type of ["button", "columns", "column", "embed", "image", "spacer"]) expect(EDITOR_NODE_TYPES.has(type), type).toBe(true);
   });
 });
 
@@ -177,13 +176,17 @@ describe("pasting custom blocks", () => {
       <div data-forge-node="embed" ${data({ v: 1, provider: "generic", url: "http://insecure.org/" })}></div>
       <div data-forge-node="spacer" ${data({ v: 1, size: "huge" })}></div>
       <div data-forge-node="columns" ${data({ v: 1, count: 2, ratio: "9:1" })}><div data-forge-node="column"><p>x</p></div><div data-forge-node="column"><p>y</p></div></div>
-      <div data-forge-node="image" ${data({ v: 1, mediaId: fixtureId(99) })}></div>
+      <div data-forge-node="image" ${data({ v: 1, mediaId: "javascript:alert(1)" })}></div>
+      <div data-forge-node="image" ${data({ v: 1, mediaId: fixtureId(98), size: "huge" })}></div>
+      <div data-forge-node="image" ${data({ v: 1, mediaId: fixtureId(99), alt: "Kept", size: "wide" })}></div>
       <div data-forge-node="button" ${data({ v: 1, label: "Ok", href: "/contact" })}></div>
       <div data-forge-node="spacer" ${data({ v: 1, size: "xl" })}></div>`,
     );
     const json = JSON.stringify(editor.getJSON());
-    expect(json).not.toMatch(/javascript:|evil\.example|localhost|insecure|huge|9:1|mediaId/);
-    expect(topTypes(editor).filter((type) => type !== "paragraph")).toEqual(["button", "spacer"]);
+    expect(json).not.toMatch(/javascript:|evil\.example|localhost|insecure|huge|9:1/);
+    // A valid image keeps its media id: whether this site may use it is the server's to decide when the draft is saved.
+    expect(topTypes(editor).filter((type) => type !== "paragraph")).toEqual(["image", "button", "spacer"]);
+    expect(editor.getJSON().content!.find((node) => node.type === "image")!.attrs).toMatchObject({ mediaId: fixtureId(99), alt: "Kept", size: "wide" });
     expect(editor.getJSON().content!.find((node) => node.type === "button")!.attrs).toMatchObject({ label: "Ok", href: "/contact" });
     const result = parseDocument(stored(editor));
     expect(result.ok, JSON.stringify(result)).toBe(true);

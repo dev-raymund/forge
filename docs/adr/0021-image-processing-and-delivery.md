@@ -224,3 +224,17 @@ The avatar is uploaded and processed like other media, but belongs to the user, 
   - `platform/storage/storage.test.ts` (avatar keys, the user scope);
   - `platform/routing/hosts.test.ts`, `tests/unit/site-addresses.test.ts` (the media surface).
 - `tests/e2e/media.spec.ts` (3), `tests/e2e/account.spec.ts` (the picture's input).
+
+## Addendum (M6-4, 2026-10-15): the site's logo and favicon variants
+
+ADR 0023 §4 has the details.
+
+- **`planVariants("media")`** adds three variants to every image, after the content ones:
+  - `logo`: fitted inside 640 × 240, never enlarged, WebP q90;
+  - `fav32` and `fav180`: squares cropped from the centre, PNG (palette, compression level 9).
+- **Animations:** all three are taken from the first frame.
+- **Recorded the same way:** they are written ahead and counted towards storage like the others. Each variant records its `format`, and its key ends in `.png` or `.webp` to match.
+- **Served the same way:** `/media` serves them with their own type through the existing lookup (`'image/' || format`), with no route change.
+- **Content widths:** `isWidthVariant` (`w{n}`) is the one rule for which variants a content `srcset`, the drawer's preview or a copied URL may use; `responsiveSources` applies it.
+- **The avatar preset** is unchanged (the 400 square only).
+- **Images uploaded before M6-4** do not have these variants, and they are not backfilled.

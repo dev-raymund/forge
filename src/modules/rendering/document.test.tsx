@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { editableDocument, ENTRY_ID } from "@/blocks/fixtures";
+import { editableDocument, ENTRY_ID, MEDIA_ID } from "@/blocks/fixtures";
 import { renderDocument, RENDERED_ELEMENTS, type DocumentRenderContext } from "./document";
 
 /**
@@ -12,9 +12,12 @@ import { renderDocument, RENDERED_ELEMENTS, type DocumentRenderContext } from ".
 
 const ID = "01920000-0000-7000-8000-00000000abcd";
 const OTHER_SITES_ENTRY = "0192f000-0000-7000-8000-00000000beef";
+/** The image the page resolved: as `publicImages` gives it (M6-4), with an alt text that is markup. */
+const MEDIA = { alt: '"><script>alert(1)</script>', width: 1200, height: 800, sources: [{ url: "/media/org/o/site/s/2026/10/m/w800.webp", width: 800, height: 533 }] };
 const context = (skips: string[] = []): DocumentRenderContext => ({
   basePath: "/s/acme",
   resolveEntryHref: (id) => (id === ENTRY_ID ? "/s/acme/services" : undefined),
+  resolveImage: (id) => (id === MEDIA_ID ? MEDIA : undefined),
   blockedHosts: ["cms.forgelinetechnologies.com"],
   onSkip: (type, reason) => skips.push(`${type}: ${reason}`),
 });
@@ -30,7 +33,9 @@ function inventory(markup: string) {
   // Every "<x" must be a tag the pattern understood, or the checks below would be blind to it.
   expect(openTags.length).toBe(markup.match(/<[a-zA-Z]/g)?.length ?? 0);
   const tags = new Set(openTags.map((m) => m[1]!));
-  const attributes = new Set(openTags.flatMap((m) => [...m[2]!.matchAll(/\s([a-zA-Z-:]+)(?==|\s|$)/g)].map((a) => a[1]!.toLowerCase())));
+  // Each attribute with its whole quoted value, so text inside a value (`alt="&quot; onerror=…"`) is not taken for one. A raw
+  // quote in a value would end it, and what follows would be read as attributes.
+  const attributes = new Set(openTags.flatMap((m) => [...m[2]!.matchAll(/\s+([a-zA-Z-:]+)(?:="[^"]*")?/g)].map((a) => a[1]!.toLowerCase())));
   return { tags, attributes };
 }
 
@@ -51,7 +56,9 @@ describe("rendering every block the editor makes", () => {
     expect(out).toContain('<div class="forge-spacer forge-spacer--sm" aria-hidden="true"></div>');
     expect(out).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
     expect(out).toContain('src="https://www.openstreetmap.org/export/embed.html?layer=mapnik"');
-    expect(out.match(/loading="lazy"/g)).toHaveLength(2);
+    expect(out.match(/loading="lazy"/g)).toHaveLength(3); // two frames and the image
+    expect(out).toContain('<figure class="forge-image forge-image--wide"><img src="/media/org/o/site/s/2026/10/m/w800.webp"');
+    expect(out).toContain("<figcaption>The team</figcaption></figure>");
     expect(out.match(/sandbox="allow-scripts allow-same-origin allow-presentation allow-popups/g)).toHaveLength(2);
     expect(out).toContain('<div class="forge-button-row forge-button-row--center"><a href="tel:+15550100" class="forge-button forge-button--secondary">Call us</a></div>');
     expect(out).toContain("<p>Thanks.</p>");
@@ -82,11 +89,20 @@ describe("rendering every block the editor makes", () => {
     expect(skips).toEqual(["button: not drawn"]);
   });
 
-  it("an image is not drawn yet (M6-4), and says so", () => {
+  it("an image (M6-4): the media the page resolved, every width in srcset; one it did not resolve is not drawn, and is no fault", () => {
     const skips: string[] = [];
-    const out = html(wrap(para({ type: "text", text: "a" }), { type: "image", attrs: { id: ID, v: 1, mediaId: "0192e000-0000-7000-8000-000000000001", alt: "x", caption: "Team", size: "wide", link: null } }), skips);
-    expect(out).toBe("<p>a</p>");
-    expect(skips).toEqual(["image: not rendered yet"]);
+    const block = (mediaId: string, extra: Record<string, unknown> = {}) => ({ type: "image", attrs: { id: ID, v: 1, mediaId, alt: null, caption: "Team", size: "wide", link: null, ...extra } });
+    expect(html(wrap(block(MEDIA_ID)), skips)).toBe(
+      '<figure class="forge-image forge-image--wide"><img src="/media/org/o/site/s/2026/10/m/w800.webp" srcSet="/media/org/o/site/s/2026/10/m/w800.webp 800w" ' +
+        'sizes="(min-width: 72rem) 72rem, 100vw" width="1200" height="800" alt="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" loading="lazy" decoding="async"/>' +
+        "<figcaption>Team</figcaption></figure>",
+    );
+    expect(html(wrap(block(MEDIA_ID, { link: `entry:${OTHER_SITES_ENTRY}` })))).not.toContain("<a"); // a link to nothing live: the image, unlinked
+    expect(html(wrap(para({ type: "text", text: "a" }), block("0192e000-0000-7000-8000-000000000002")), skips)).toBe("<p>a</p>");
+    expect(skips).toEqual(["image: not drawn"]); // trashed or gone: not drawn, not logged as a fault of the document
+    const invalid: string[] = [];
+    expect(html(wrap(block("not-an-id")), invalid)).toBe("");
+    expect(invalid).toEqual(["image: invalid"]);
   });
 
   it("skips what is invalid or out of place, reports each, and draws the rest", () => {
@@ -152,6 +168,12 @@ const hostileDocuments: [string, unknown][] = [
   ["button style class injection", wrap({ type: "button", attrs: { id: ID, v: 1, label: "Go", href: "/", style: 'primary" onclick="alert(1)' } })],
   ["image with onerror attr", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: "0192e000-0000-7000-8000-000000000001", onerror: "alert(1)", alt: '"><script>alert(1)</script>' } })],
   ["image with javascript: link", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: "0192e000-0000-7000-8000-000000000001", link: "javascript:alert(1)" } })],
+  // M6-4: images that are drawn (the media resolves): what the block holds is text, whatever it says.
+  ["image with markup in its alt text and caption", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: MEDIA_ID, alt: '" onerror="alert(1)', caption: "<img src=x onerror=alert(1)>", size: "content", link: null } })],
+  ["image with a data: link", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: MEDIA_ID, alt: null, caption: null, size: "content", link: "data:text/html,<script>alert(1)</script>" } })],
+  ["image with a protocol-relative link", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: MEDIA_ID, alt: null, caption: null, size: "full", link: "//evil.example/" } })],
+  ["image size class injection", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: MEDIA_ID, alt: null, caption: null, size: 'full" onload="alert(1)', link: null } })],
+  ["image with a src of its own", wrap({ type: "image", attrs: { id: ID, v: 1, mediaId: MEDIA_ID, alt: null, caption: null, size: "content", link: null, src: "javascript:alert(1)", srcset: "javascript:alert(1) 1w" } })],
   ["embed from an unlisted host", embed("youtube", "https://evil.example/embed/dQw4w9WgXcQ")],
   ["embed with javascript: url", embed("youtube", "javascript:alert(1)//youtube.com/watch?v=dQw4w9WgXcQ")],
   ["embed with a lookalike host", embed("youtube", "https://youtube.com.evil.example/watch?v=dQw4w9WgXcQ")],
@@ -210,5 +232,10 @@ describe("XSS corpus", () => {
 
   it("covers the spike's 31 payloads and more", () => {
     expect(hostileDocuments.length).toBeGreaterThan(31);
+  });
+
+  it("its attribute reading is not blind: a quote that breaks out of a value is seen", () => {
+    expect([...inventory('<img alt="" onerror="x"/>').attributes]).toEqual(["alt", "onerror"]);
+    expect([...inventory('<img alt="&quot; onerror=&quot;x"/>').attributes]).toEqual(["alt"]);
   });
 });

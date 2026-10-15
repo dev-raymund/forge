@@ -19,7 +19,7 @@ const doc = (...content: unknown[]) => ({ v: 1, doc: { type: "doc", content } })
 describe("the registry is complete", () => {
   it("defines exactly the V1 custom blocks", () => {
     expect(CUSTOM_BLOCKS.map((block) => block.type).sort()).toEqual(["button", "column", "columns", "embed", "image", "spacer"]);
-    expect([...EDITABLE_BLOCK_TYPES].sort()).toEqual(["button", "column", "columns", "embed", "spacer"]); // the image is M6-4's
+    expect([...EDITABLE_BLOCK_TYPES].sort()).toEqual(["button", "column", "columns", "embed", "image", "spacer"]); // the image since M6-4
   });
 
   it("every editable block has a schema, an editor node, a NodeView and a renderer (a column is drawn by its columns)", () => {
@@ -31,7 +31,7 @@ describe("the registry is complete", () => {
       expect(editor.view, type).toBeDefined();
       expect(BLOCK_RENDERERS[type], type).toBeTypeOf("function");
     }
-    expect(Object.keys(BLOCK_RENDERERS).sort()).toEqual(["button", "columns", "embed", "spacer"]);
+    expect(Object.keys(BLOCK_RENDERERS).sort()).toEqual(["button", "columns", "embed", "image", "spacer"]);
   });
 
   it("every versioned block carries `v` and a `migrate` table, and its schema accepts only its current `v`", () => {
@@ -59,7 +59,7 @@ describe("the registry is complete", () => {
   it("the editor holds every editable node and nothing else; the slash menu offers every insertable block", () => {
     expect([...EDITOR_NODE_TYPES].sort()).toEqual([...TEXT_NODE_TYPES, ...EDITABLE_BLOCK_TYPES].sort());
     for (const insert of BLOCK_INSERTS) expect(SLASH_COMMANDS.map((command) => command.key)).toContain(insert.key);
-    expect(BLOCK_INSERTS.map((insert) => insert.key)).toEqual(["button", "columns-2", "columns-3", "embed", "spacer"]);
+    expect(BLOCK_INSERTS.map((insert) => insert.key)).toEqual(["button", "columns-2", "columns-3", "embed", "image", "spacer"]);
   });
 
   it("unknown types are not blocks", () => {

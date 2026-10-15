@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ExternalLink, FileText, RotateCcw, Trash2 } from "lucide-react";
+import { Copy, Download, ExternalLink, FileText, RotateCcw, Trash2 } from "lucide-react";
 import { useId, useState, useTransition } from "react";
 import { FormAlert } from "@/components/admin/form";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,13 @@ export function MediaDrawer({
                   <ExternalLink aria-hidden="true" className="size-4" />
                   Open
                 </a>
+                {item.kind === "document" ? (
+                  // A browser may not show a PDF served sandboxed (ADR 0021) in its own viewer: the file itself, always (ADR 0023).
+                  <a href={item.url} download={item.filename} className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-foreground/25">
+                    <Download aria-hidden="true" className="size-4" />
+                    Download
+                  </a>
+                ) : null}
               </div>
             ) : null}
             {!trashed ? (

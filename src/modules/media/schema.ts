@@ -26,13 +26,14 @@ export const mediaFolders = pgTable(
 ).enableRLS();
 
 /**
- * One stored derivative of an image (M6-2): `key` is its name (`thumb`, `w800`, …). While the upload is being
+ * One stored derivative of an image (M6-2): `key` is its name (`thumb`, `w800`, …; M6-4 adds `logo`, `fav32`, `fav180`). While the upload is being
  * processed the list holds the planned objects (`sizeBytes` 0), so every key ever written is on the row before it
  * is written; when the upload is `ready`, their real sizes.
  */
 export type MediaVariant = {
   key: string;
-  format: "webp";
+  /** WebP for every variant but the favicons (PNG, M6-4). */
+  format: "webp" | "png";
   width: number;
   height: number;
   sizeBytes: number;

@@ -76,20 +76,22 @@ describe.each(DRIVERS)("processing images with the %s driver", (_name, make) => 
     expect(outcome).toMatchObject({ status: "ready", media: { width: 2000, height: 3000 } });
     const row = (await rowOf(ctx, issued.mediaId))!;
     expect(row).toMatchObject({ status: "ready", width: 2000, height: 3000, processingToken: null, processingUntil: null });
-    // 2000 wide once turned: the thumbnail, 800 and 1600; never 2400 (above the original).
+    // 2000 wide once turned: the thumbnail, 800 and 1600, never 2400 (above the original); then what a site's logo and
+    // favicon use (M6-4): the logo inside 640 × 240, favicons of 32 and 180 as PNG.
     expect(row.variants.map((v) => [v.key, v.format, v.width, v.height])).toEqual([
       ["thumb", "webp", 400, 400], ["w800", "webp", 800, 1200], ["w1600", "webp", 1600, 2400],
+      ["logo", "webp", 160, 240], ["fav32", "png", 32, 32], ["fav180", "png", 180, 180],
     ]);
     for (const variant of row.variants) {
-      expect(variant.storageKey).toBe(row.storageKey.replace("/original/holiday.jpg", `/${variant.key}/holiday.webp`));
+      expect(variant.storageKey).toBe(row.storageKey.replace("/original/holiday.jpg", `/${variant.key}/holiday.${variant.format}`));
       const bytes = await readAll(variant.storageKey);
       expect(bytes.byteLength).toBe(variant.sizeBytes);
       const meta = await sharp(bytes).metadata();
-      expect({ format: meta.format, width: meta.width, height: meta.height }).toEqual({ format: "webp", width: variant.width, height: variant.height });
+      expect({ format: meta.format, width: meta.width, height: meta.height }).toEqual({ format: variant.format, width: variant.width, height: variant.height });
       expect({ exif: meta.exif, xmp: meta.xmp, icc: meta.icc, iptc: meta.iptc, orientation: meta.orientation }, variant.key).toEqual({
         exif: undefined, xmp: undefined, icc: undefined, iptc: undefined, orientation: undefined,
       });
-      expect(await platformStorage().head(variant.storageKey)).toEqual({ size: variant.sizeBytes, contentType: "image/webp" });
+      expect(await platformStorage().head(variant.storageKey)).toEqual({ size: variant.sizeBytes, contentType: `image/${variant.format}` });
     }
     // The original is kept as uploaded (GPS and all): it is never served (media-delivery.test.ts).
     expect(hasGps((await sharp(await readAll(row.storageKey)).metadata()).exif)).toBe(true);
@@ -105,22 +107,25 @@ describe.each(DRIVERS)("processing images with the %s driver", (_name, make) => 
     const a = await newTenant();
     const { ctx } = await siteOf(a);
     const cases = [
-      ["wide.png", await imageOf("png", 2600, 1300), "image/png", [["thumb", 400, 400], ["w800", 800, 400], ["w1600", 1600, 800], ["w2400", 2400, 1200]]],
-      ["small.webp", await imageOf("webp", 300, 200), "image/webp", [["thumb", 200, 200], ["w300", 300, 200]]],
-      ["still.gif", await imageOf("gif", 900, 600), "image/gif", [["thumb", 400, 400], ["w800", 800, 533]]],
-      ["exact.jpg", await imageOf("jpeg", 800, 800), "image/jpeg", [["thumb", 400, 400], ["w800", 800, 800]]],
+      ["wide.png", await imageOf("png", 2600, 1300), "image/png", [["thumb", 400, 400], ["w800", 800, 400], ["w1600", 1600, 800], ["w2400", 2400, 1200], ["logo", 480, 240]]],
+      ["small.webp", await imageOf("webp", 300, 200), "image/webp", [["thumb", 200, 200], ["w300", 300, 200], ["logo", 300, 200]]], // a logo is never enlarged
+      ["still.gif", await imageOf("gif", 900, 600), "image/gif", [["thumb", 400, 400], ["w800", 800, 533], ["logo", 360, 240]]],
+      ["exact.jpg", await imageOf("jpeg", 800, 800), "image/jpeg", [["thumb", 400, 400], ["w800", 800, 800], ["logo", 240, 240]]],
     ] as const;
     for (const [name, bytes, type, expected] of cases) {
       const issued = await sent(ctx, name, bytes, type);
       expect((await completeUpload(ctx, issued.mediaId)).status, name).toBe("ready");
-      expect((await rowOf(ctx, issued.mediaId))!.variants.map((v) => [v.key, v.width, v.height]), name).toEqual(expected);
+      // Favicons are always 32 and 180: a browser asks for those sizes, whatever the image.
+      expect((await rowOf(ctx, issued.mediaId))!.variants.map((v) => [v.key, v.width, v.height]), name).toEqual([...expected, ["fav32", 32, 32], ["fav180", 180, 180]]);
     }
 
     const issued = await sent(ctx, "loop.gif", await animatedGif(3, 1000, 500), "image/gif");
     expect(await completeUpload(ctx, issued.mediaId)).toMatchObject({ status: "ready", media: { width: 1000, height: 500 } });
+    // The thumbnail and the widths stay animated; a logo and favicons are the first frame.
     for (const variant of (await rowOf(ctx, issued.mediaId))!.variants) {
       const meta = await sharp(await readAll(variant.storageKey), { animated: true }).metadata();
-      expect({ key: variant.key, pages: meta.pages, frameHeight: meta.pageHeight }).toEqual({ key: variant.key, pages: 3, frameHeight: variant.height });
+      const still = ["logo", "fav32", "fav180"].includes(variant.key);
+      expect({ key: variant.key, pages: meta.pages ?? 1, frameHeight: still ? meta.height : meta.pageHeight }).toEqual({ key: variant.key, pages: still ? 1 : 3, frameHeight: variant.height });
     }
   });
 
@@ -246,7 +251,7 @@ describe.each(DRIVERS)("processing images with the %s driver", (_name, make) => 
     expect(outcomes.map((o) => o.status)).toEqual(["ready", "ready", "ready"]);
     expect(await eventsOf(ctx, issued.mediaId)).toHaveLength(1);
     const row = (await rowOf(ctx, issued.mediaId))!;
-    expect(row.variants.map((v) => v.key)).toEqual(["thumb", "w800", "w1600"]);
+    expect(row.variants.map((v) => v.key)).toEqual(["thumb", "w800", "w1600", "logo", "fav32", "fav180"]);
   });
 });
 

@@ -29,6 +29,10 @@ describe("tagsFor (the invalidation map)", () => {
     [{ type: "media.updated", mediaId: E } as const, { immediate: [], stale: [`media:${E}`] }],
     [{ type: "media.trashed", mediaId: E } as const, { immediate: [`media:${E}`], stale: [] }],
     [{ type: "media.restored", mediaId: E } as const, { immediate: [`media:${E}`], stale: [] }],
+    // M6-4: with its site, also every page of the site drawing more images than it tags one by one.
+    [{ type: "media.updated", mediaId: E, siteId: S } as const, { immediate: [], stale: [`media:${E}`, `site:${S}:media`] }],
+    [{ type: "media.trashed", mediaId: E, siteId: S } as const, { immediate: [`media:${E}`, `site:${S}:media`], stale: [] }],
+    [{ type: "media.restored", mediaId: E, siteId: S } as const, { immediate: [`media:${E}`, `site:${S}:media`], stale: [] }],
     // M5-8: a term created, renamed, re-slugged, moved or deleted: its archive's address, the posts that show it, the lists.
     [{ type: "term.changed", siteId: S, entryIds: [] } as const, { immediate: [tags.routes(S)], stale: [tags.list(S, "post")] }],
     [{ type: "term.changed", siteId: S, entryIds: [E] } as const, { immediate: [tags.routes(S), tags.entry(S, E)], stale: [tags.list(S, "post")] }],

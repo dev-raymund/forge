@@ -8,6 +8,8 @@ import { ColumnNode, ColumnsNode, newColumns } from "./columns/extension";
 import { ColumnsView } from "./columns/node-view";
 import { EmbedNode } from "./embed/extension";
 import { EmbedView } from "./embed/node-view";
+import { ImageNode } from "./image/extension";
+import { ImageView } from "./image/node-view";
 import { SpacerNode } from "./spacer/extension";
 import { SpacerView } from "./spacer/node-view";
 import { spacer } from "./spacer/schema";
@@ -22,9 +24,9 @@ export type BlockInsert = {
   key: string;
   label: string;
   keywords: readonly string[];
-  /** The node to insert; `address` blocks (embeds) ask for one first. */
+  /** The node to insert; `address` blocks (embeds) ask for one first, `media` blocks (images) for a media item (M6-4). */
   content: () => JSONContent;
-  asks?: "address";
+  asks?: "address" | "media";
   /** A layout (columns): only at the top level, never inside a column. */
   layout?: true;
 };
@@ -53,6 +55,13 @@ export const BLOCK_EDITORS: readonly BlockEditor[] = [
     node: EmbedNode,
     view: EmbedView,
     inserts: [{ key: "embed", label: "Video or embed", keywords: ["video", "youtube", "vimeo", "embed", "iframe", "map"], content: () => ({ type: "embed" }), asks: "address" }],
+  },
+  {
+    type: "image",
+    node: ImageNode,
+    view: ImageView,
+    // Never inserted without a media item: the editor opens the picker first (M6-4).
+    inserts: [{ key: "image", label: "Image", keywords: ["image", "picture", "photo", "media", "img"], content: () => ({ type: "image" }), asks: "media" }],
   },
   {
     type: "spacer",
