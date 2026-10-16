@@ -27,6 +27,7 @@ import { EmbedDialog } from "./embed-dialog";
 import { EntrySettings, type DraftFields, type EntryPlace, type SidebarChoices } from "./entry-settings";
 import { EDITOR_NODE_TYPES, editorExtensions } from "./extensions";
 import { TrashSection, UnpublishButton } from "./lifecycle-controls";
+import { PreviewButton } from "./preview-pane";
 import { HistoryButton } from "./revision-history";
 import { ScheduleButton, ScheduledControls } from "./schedule-controls";
 import { LinkDialog } from "./link-dialog";
@@ -41,7 +42,8 @@ import { commandsAt, filterCommands, slashMatch, type SlashCommand, type SlashRa
  * menu, the link picker, the properties panel, reordering (drag handle,
  * Alt+↑/↓, the block menu), autosave with its status, the conflict dialog and
  * the Publish button; "Save" and the history, with restore and the conflict
- * dialog's overwrite (M7-3). Client-only and lazy-loaded (./lazy.tsx).
+ * dialog's overwrite (M7-3); the preview of the draft and of a revision
+ * (M7-4). Client-only and lazy-loaded (./lazy.tsx).
  *
  * Everything it writes goes through the M5-3 Server Actions, which decide who
  * may and what is valid: what this screen shows or hides is a convenience, not
@@ -511,6 +513,14 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
           </span>
         ) : null}
         <span className="ml-auto flex flex-wrap items-center gap-2">
+          <PreviewButton
+            orgSlug={orgSlug}
+            siteSlug={siteSlug}
+            entryId={entry.id}
+            // An editor's typing is saved first, so the preview is what they see here; a reader's draft is as it is.
+            beforePreview={canEdit ? readyVersion : async () => null}
+            disabled={publishing || conflict}
+          />
           <HistoryButton
             orgSlug={orgSlug}
             siteSlug={siteSlug}

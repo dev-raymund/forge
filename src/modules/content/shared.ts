@@ -27,6 +27,8 @@ export { CHANGED_AGAIN, DRAFT_CHANGED, NEWER_SAVE, NOT_THE_LATEST } from "./mess
 // M7-3: the history's words, shared by its dialog and the services.
 export { MANUAL_REVISION_KINDS, NO_NOTES, restoredMessage, REVISION_KIND_WORDS, REVISION_LABEL_MAX } from "./revisions";
 export type { RestoreNotes, RevisionKind } from "./revisions";
+// M7-4: who may see an entry, asked of a role (the preview renderer has no request context).
+export { roleMaySeeEntry } from "./visibility";
 export { ENTRY_SEARCH_PATH, entryEditorPath, entryListPath, newEntryPath, termListPath } from "./admin-paths";
 // M5-7: the lists' queries, read from their URLs.
 export {

@@ -686,6 +686,10 @@ src/themes/
     - It is checked as a draft is now. Deleted terms are left out and said so. Images and links that are gone are kept and flagged. A taken or reserved address refuses it.
     - Never published; the status, the live revision and a schedule's frozen revision are untouched.
   - **Conflict overwrite:** the dialog names the newer save; the server keeps exactly that version as a revision, then writes the editor's draft through `saveDraft`'s checks, in one transaction. A version saved after the dialog named one is refused.
+- **As built (M7-4, ADR 0027):**
+  - **Preview:** `/_forge/preview/{token}` (HMAC, 15 minutes, bound to the organization, site, entry, user and, for the history, a revision). The proxy checks the token and sends `private, no-store` and `noindex`, framed by the admin only.
+  - **The page:** the renderer checks the token again and the person's rights as they are now. It reads the draft or the revision uncached, and draws it with the closed renderer and the theme, with a banner saying what it is. It works on Coming soon sites.
+  - **The editor:** "Preview" (what is typed is saved first; a pane and a new tab). In the history, "Preview" for each revision, with "Restore this revision…" as a separate, confirmed step.
 
 ---
 

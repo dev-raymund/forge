@@ -31,6 +31,9 @@ export { formatInZone, offsetLabel, toLocalInput, zonedToUtc } from "./zoned-tim
 // The history (M7-3, ADR 0026): "Save", restoring a revision, the conflict dialog's overwrite.
 export { overwriteDraft, restoreRevision, saveRevision } from "./revisions.service";
 export type { DraftOverwritten, RevisionRestored, RevisionSaved } from "./revisions.service";
+// Previews (M7-4, ADR 0027): a signed link to the draft, or to a revision.
+export { createPreviewLink, PREVIEWS_OFF } from "./preview.service";
+export type { PreviewLink } from "./preview.service";
 
 // Categories and tags (M5-8).
 export { createTerm, deleteTerm, listTermsWithUsage, updateTerm } from "./term.service";
@@ -44,7 +47,7 @@ export {
 } from "./policies";
 export type { EntryRef } from "./policies";
 export {
-  DRAFT_FIELD_MAX, submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitDraftHead, submitMovePage, submitOverwriteDraft, submitPlacePage, submitPublishEntry,
+  DRAFT_FIELD_MAX, submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitDraftHead, submitMovePage, submitOverwriteDraft, submitPreviewLink, submitPlacePage, submitPublishEntry,
   submitPurgeEntry, submitRescheduleEntry, submitRestoreEntry, submitRestoreRevision, submitRevisionHistory, submitSaveDraft, submitSaveRevision, submitScheduleEntry,
   submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";

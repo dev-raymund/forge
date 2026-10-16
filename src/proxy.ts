@@ -3,6 +3,7 @@ import { findSessionCookie, renewedSessionCookie } from "@/modules/auth/shared";
 import { assignRequestId, REQUEST_ID_HEADER } from "@/platform/observability/request-id";
 import { decideAdminAccess, isDocumentNavigation } from "@/platform/routing/admin-access";
 import { decideRoute, forwardedHeaders, normalizeHost } from "@/platform/routing/hosts";
+import { previewSecret, verifyPreviewToken } from "@/platform/routing/preview-token";
 
 /**
  * proxy.ts (Next 16's middleware, Node runtime), plan §19–20, ADR 0006:
@@ -48,6 +49,12 @@ const SURFACE_HEADERS = {
   media: { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" },
 } as const;
 
+/**
+ * A preview (M7-4) is a site page drawn for one person: framed only by the admin (as site pages), never stored by a
+ * browser or a CDN, never indexed, and its address (which holds the token) never sent on as a referrer.
+ */
+const PREVIEW_HEADERS = { "cache-control": "private, no-store", "x-robots-tag": "noindex, nofollow", "referrer-policy": "no-referrer" } as const;
+
 export function proxy(request: NextRequest) {
   const requestId = assignRequestId(request.headers);
   const decision = decideRoute({
@@ -91,6 +98,17 @@ export function proxy(request: NextRequest) {
       response = NextResponse.rewrite(new URL(decision.rewrite, request.url), { request: { headers } });
       for (const [k, v] of Object.entries(SURFACE_HEADERS.site)) response.headers.set(k, v);
       break;
+    case "preview": {
+      // Signed and not expired, checked before anything renders: anything else is a plain 404, never a page.
+      const secret = previewSecret();
+      if (!secret || !verifyPreviewToken(decision.token, secret, Date.now())) {
+        response = new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain", ...PREVIEW_HEADERS } });
+        break;
+      }
+      response = NextResponse.rewrite(new URL(decision.rewrite, request.url), { request: { headers } });
+      for (const [k, v] of Object.entries({ ...SURFACE_HEADERS.site, ...PREVIEW_HEADERS })) response.headers.set(k, v);
+      break;
+    }
     case "media":
       // No session cookie in, none out: a cached public object must never carry one (no renewal here).
       response = NextResponse.next({ request: { headers } });

@@ -5,10 +5,11 @@ import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { ActionResult } from "@/platform/errors";
 import type { FormState } from "@/platform/forms";
 import {
-  submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitDraftHead, submitMovePage, submitOverwriteDraft, submitPlacePage, submitPublishEntry, submitPurgeEntry,
+  submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitDraftHead, submitMovePage, submitPreviewLink, submitOverwriteDraft, submitPlacePage, submitPublishEntry, submitPurgeEntry,
   submitRescheduleEntry, submitRestoreEntry, submitRestoreRevision, submitRevisionHistory, submitSaveDraft, submitSaveRevision, submitScheduleEntry, submitSetHomepage,
   submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";
+import type { PreviewLink } from "./preview.service";
 import type { DraftHeadInfo, RevisionList } from "./queries";
 import { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 
@@ -123,4 +124,11 @@ export async function revisionHistoryAction(orgSlug: string, siteSlug: string, e
 /** Who saved the draft last, and when, for the conflict dialog. Read-only. */
 export async function draftHeadAction(orgSlug: string, siteSlug: string, entryId: string): Promise<ActionResult<DraftHeadInfo>> {
   return submitDraftHead(await getCurrentActor(), orgSlug, siteSlug, entryId, await currentRequestMeta());
+}
+
+// M7-4: previews.
+
+/** A 15-minute preview link for the draft, or for a revision (the history's preview). Read-only. */
+export async function previewLinkAction(orgSlug: string, siteSlug: string, entryId: string, revisionId?: string): Promise<ActionResult<PreviewLink>> {
+  return submitPreviewLink(await getCurrentActor(), orgSlug, siteSlug, entryId, revisionId, await currentRequestMeta());
 }

@@ -5,6 +5,10 @@
 import type { ORGANIZATION_STATUSES, RoleKey } from "./schema";
 
 export { ROLE_KEYS } from "./schema";
+// M7-4: the catalog as a role holds it (pure), for code without a request context that must ask what a role may do
+// (the preview renderer, which re-checks the person a preview token names). Decisions still read permissions, never a role.
+export { permissionsForRole } from "./permissions";
+export type { Permission, PermissionSet } from "./permissions";
 export type { RoleKey } from "./schema";
 export { checkOrgSlug, isReservedOrgSlug, ORG_SLUG_MAX, ORG_SLUG_MIN, RESERVED_ORG_SLUGS, suggestOrgSlug } from "./slugs";
 export { createOrganizationSchema, updateOrganizationSchema } from "./validation";

@@ -12,6 +12,7 @@ import { setHomepage } from "./homepage.service";
 import { purgeEntry, restoreEntry, trashEntry, unpublishEntry } from "./lifecycle.service";
 import { cancelSchedule, rescheduleEntry, scheduleEntry } from "./scheduling";
 import { canSetHomepage } from "./policies";
+import { createPreviewLink, type PreviewLink } from "./preview.service";
 import { publishEntry } from "./publishing.service";
 import { getDraftHead, listRevisions, type DraftHeadInfo, type RevisionList } from "./queries";
 import { restoredMessage } from "./revisions";
@@ -459,6 +460,20 @@ export async function submitDraftHead(actor: Actor, orgSlug: string, siteSlug: s
     const id = entryIdFrom(entryId);
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
     return actionOk(await getDraftHead(ctx, id));
+  } catch (error) {
+    if (!asAppError(error)) reportError(error, { module: MODULE, requestId: meta.requestId });
+    return toActionResult(error, meta.requestId);
+  }
+}
+
+// ── M7-4: previews ───────────────────────────────────────────────────────────
+
+/** A preview link for the draft, or for one of its revisions (`revisionId`). Read-only. */
+export async function submitPreviewLink(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, revisionId: unknown, meta: RequestMeta = {}): Promise<ActionResult<PreviewLink>> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    return actionOk(await createPreviewLink(ctx, id, { revisionId }));
   } catch (error) {
     if (!asAppError(error)) reportError(error, { module: MODULE, requestId: meta.requestId });
     return toActionResult(error, meta.requestId);

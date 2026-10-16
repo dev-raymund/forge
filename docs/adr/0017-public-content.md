@@ -114,3 +114,13 @@ Image rendering (M6-4); the page template picker and creating pages from the adm
 ## Addendum (M5-8, 2026-10-14)
 
 Term changes now have their event (ADR 0019): `term.changed` flushes the routes and each published post carrying the term at once (the site umbrella past 200 posts), and the post lists stale-while-revalidate. Creating, renaming, re-slugging, re-parenting and deleting a category or tag return it. The table in §6 gains this row; nothing else in this ADR changes.
+
+## Addendum (M7-4, 2026-10-16): previews use these pieces
+
+As this ADR handed off, a preview (ADR 0027) draws a draft or a revision with the same pieces as a published page:
+- `renderDocument`, which checks every node again;
+- `PublicPageView`'s templates inside the theme's `Layout`;
+- usable images of the site only (`publicImages`);
+- `entry:` links to live pages only (`livePaths`).
+
+Its private reads (the draft, the revision, the person's role, the terms, the images) are not `'use cache'`: they are made on every request, on a route of their own that is never prerendered or cached. The public reads it shares (the site's settings, live paths) are the public ones, unchanged.

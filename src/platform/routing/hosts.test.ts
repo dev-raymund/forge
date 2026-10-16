@@ -86,6 +86,14 @@ describe("decideRoute — V1 path mode (one host)", () => {
     ["sites work on any host too", { host: "localhost", pathname: "/s/acme" }, { kind: "site", locator: acme, rewrite: "/render/address~acme" }],
     ["no app host needed in path mode", { appHost: null, pathname: "/s/acme" }, { kind: "site", locator: acme, rewrite: "/render/address~acme" }],
     ["?__host= is ignored in path mode", { overrideAllowed: true, search: "?__host=client.com" }, { kind: "app" }],
+    // M7-4: previews. The token's shape here; its signature and expiry in the proxy, and again in the renderer.
+    ["a preview → the internal preview route", { pathname: "/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", search: "?x=1" }, { kind: "preview", token: "eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", rewrite: "/render/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }],
+    ["a preview's token is one segment", { pathname: "/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/more" }, { kind: "not-found", reason: "bad-preview" }],
+    ["not a token → 404", { pathname: "/_forge/preview/hello" }, { kind: "not-found", reason: "bad-preview" }],
+    ["/_forge is nothing else", { pathname: "/_forge/admin" }, { kind: "not-found", reason: "bad-preview" }],
+    ["/_forge alone → 404", { pathname: "/_forge" }, { kind: "not-found", reason: "bad-preview" }],
+    ["a Server Action on a preview → 404", { pathname: "/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", nextAction: true }, { kind: "not-found", reason: "action-on-site" }],
+    ["the internal preview route directly → 404", { pathname: "/render/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }, { kind: "not-found", reason: "render-path" }],
   ])("%s", (_name, input, expected) => expect(route(input)).toEqual(expected));
 });
 
@@ -107,6 +115,9 @@ describe("decideRoute — post-V1 host mode", () => {
     ["missing Host → 404", { host: null }, { kind: "not-found", reason: "bad-host" }],
     ["app host not configured → 503", { appHost: null }, { kind: "unavailable", reason: "app-host-not-configured" }],
     ["…but health still answers", { appHost: null, pathname: "/api/health/ready" }, { kind: "app" }],
+    ["a preview on the app host", { pathname: "/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }, { kind: "preview", token: "eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", rewrite: "/render/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }],
+    ["a tenant's host has no previews (its own path)", { host: "client.com", pathname: "/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+      { kind: "site", locator: { kind: "host", hostname: "client.com" }, rewrite: "/render/host~client.com/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }],
   ])("%s", (_name, input, expected) => expect(hostMode(input)).toEqual(expected));
 
   it("?__host= renders a tenant outside production and drops the parameter", () => {
@@ -141,6 +152,13 @@ describe("forwardedHeaders", () => {
     expect(headers.get("cookie")).toBeNull();
     expect(headers.get("authorization")).toBeNull();
     expect(headers.get("x-request-id")).toBe("req-3");
+  });
+
+  it("removes them from previews too (M7-4): the token, not a session, says who may see one", () => {
+    const preview = decideRoute({ ...pathMode, pathname: "/_forge/preview/eyJ2IjoxLCJvIjoiMDE5MmYwMDAifQ.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
+    const headers = forwardedHeaders(incoming, preview, "req-4", "x-request-id");
+    expect(headers.get("cookie")).toBeNull();
+    expect(headers.get("authorization")).toBeNull();
   });
 
   it("keeps them for the admin and the API", () => {

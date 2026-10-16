@@ -201,3 +201,11 @@ The writer itself is unchanged. The system actor (ADR 0025) is not used: every r
 - **E2E `content-revisions.spec.ts`** (2, production build; 10 of 10 over five repeats):
   - Save and "Already in the history"; the history by keyboard; a labelled save; restore by keyboard; the editor reloaded with the restored draft; visitors keep the published version until "Publish changes"; a Viewer's read-only history.
   - Two tabs: the conflict dialog names the other save; overwrite confirmed; a save in the other tab while the dialog is open is refused, then the overwrite goes through; the replaced version is revision 1; the editor saves on from the new version.
+
+## Addendum (M7-4, 2026-10-16): previewing a revision
+
+ADR 0027 has the details.
+
+- **"Preview"** on each revision in the history draws it as it was saved, in the site's theme, in a frame. Its number, kind, label, who, when and markers are named, with a note that viewing it changes nothing.
+- **"Restore this revision…"** beside it is this ADR's restore, unchanged: confirmed, version-checked, and keeping the draft first.
+- **Viewing writes nothing** (no revision, no record, no flush).

@@ -22,3 +22,7 @@ export { renderDocument, RENDERED_ELEMENTS } from "./document";
 export type { DocumentRenderContext, SkipReason } from "./document";
 export { listPageHref, routeFor } from "./routes";
 export type { RouteCandidate } from "./routes";
+// M7-4: previews of a draft or a revision, for the person a preview token names (ADR 0027).
+export { loadPreview } from "./preview";
+export type { Preview, PreviewGaps, PreviewSubject } from "./preview";
+export { previewLines, PreviewUnavailable, PreviewView } from "./ui/preview-page";

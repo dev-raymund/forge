@@ -161,3 +161,11 @@ Following the M4-5 instructions, no site page carries the GA4 or Plausible code,
 - **Not verified:** whether Vercel's CDN caches these responses (no deployment yet).
 
 See ADR 0021 §5.
+
+## Addendum (M7-4, 2026-10-16): previews, as built
+
+ADR 0027 has the details.
+
+- **`/_forge/preview/{token}`** on the app host. The proxy checks the token's signature and expiry (a 404 otherwise), removes credentials as for site pages, and rewrites to the internal `/render/preview/{token}`. Direct `/render/*` stays a 404.
+- **Headers:** `Cache-Control: private, no-store`, `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`, and the site surface's framing (`SAMEORIGIN`, `frame-ancestors 'self'`): only the admin's preview pane frames it.
+- **The token** (HMAC with `PREVIEW_TOKEN_SECRET`, 15 minutes) names the organization, site, entry, user and, for the history, a revision. The renderer checks it again, with the user's rights as they are then.

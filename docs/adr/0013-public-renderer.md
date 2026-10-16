@@ -121,3 +121,7 @@ Its guarantees are kept by `tests/e2e/renderer.spec.ts` on the real renderer, ex
 ## Addendum (M5-6, 2026-10-13)
 
 A live site now serves its published content (ADR 0017). `renderStateFor` decides from the status alone (`live` replaces `home`); a live site's path is then resolved by `publicPageFor` (`resolveRoute` and the cached content reads), and a path that names nothing is still the theme's not-found page with a real 404. The M4-3 live home (the site's name and tagline) remains what `/` shows while a site has no published Home page. `PublicSite` gained the organization's id (for the content reads; never handed to a theme) and the reading settings. Everything else in this ADR stands.
+
+## Addendum (M7-4, 2026-10-16): previews bypass Coming soon
+
+As planned here: a preview (ADR 0027) shows a draft or a revision of a site that is not live yet, and its banner says that visitors see the Coming soon page. Visitors still do: nothing unpublished is reachable without a valid token. A suspended or deleted site has no previews.

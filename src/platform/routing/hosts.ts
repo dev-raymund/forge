@@ -19,6 +19,12 @@ export const MEDIA_PREFIX = "/media";
 /** The one `[site]` value generateStaticParams returns (Cache Components needs one at build). */
 export const BUILD_PLACEHOLDER_SITE = "__placeholder";
 export const HOST_OVERRIDE_PARAM = "__host";
+/** M7-4: `/_forge/preview/{token}` (ADR 0006), rewritten to this internal route; `/_forge/…` is otherwise nothing. */
+export const FORGE_PREFIX = "/_forge";
+export const PREVIEW_PATH_PREFIX = `${FORGE_PREFIX}/preview`;
+export const PREVIEW_RENDER_PREFIX = `${RENDER_PREFIX}/preview`;
+/** base64url payload, a dot, base64url signature (./preview-token.ts): the only shape a token has. */
+export const PREVIEW_TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,1000}\.[A-Za-z0-9_-]{43}$/;
 
 /** A site's platform address: a DNS-label-shaped slug, so it can become `{address}.sites.example.com` later. */
 const ADDRESS = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -100,7 +106,12 @@ export type RouteDecision =
   /** `/media/{key}` (M6-2): public objects, the same for everyone; credentials never reach it, and none are set. */
   | { kind: "media" }
   | { kind: "site"; locator: SiteLocator; rewrite: string }
-  | { kind: "not-found"; reason: "render-path" | "action-on-site" | "bad-host" | "bad-address" }
+  /**
+   * `/_forge/preview/{token}` (M7-4) on the app host: a draft or a revision, drawn like a site page for the person the
+   * token names. The proxy checks the token's signature and expiry before rewriting; the renderer checks it again.
+   */
+  | { kind: "preview"; token: string; rewrite: string }
+  | { kind: "not-found"; reason: "render-path" | "action-on-site" | "bad-host" | "bad-address" | "bad-preview" }
   | { kind: "unavailable"; reason: "app-host-not-configured" };
 
 const HEALTH = /^\/api\/health(\/|$)/;
@@ -152,6 +163,14 @@ export function decideRoute(input: RouteInput): RouteDecision {
 
   if (input.pathname === MEDIA_PREFIX || input.pathname.startsWith(`${MEDIA_PREFIX}/`)) return { kind: "media" };
 
+  // Previews (M7-4): only on the app host (in host mode, a tenant's host never reaches here). Read-only, like site pages.
+  if (input.pathname === FORGE_PREFIX || input.pathname.startsWith(`${FORGE_PREFIX}/`)) {
+    const token = input.pathname.startsWith(`${PREVIEW_PATH_PREFIX}/`) ? input.pathname.slice(PREVIEW_PATH_PREFIX.length + 1) : "";
+    if (!PREVIEW_TOKEN_SHAPE.test(token)) return { kind: "not-found", reason: "bad-preview" };
+    if (input.nextAction) return { kind: "not-found", reason: "action-on-site" };
+    return { kind: "preview", token, rewrite: `${PREVIEW_RENDER_PREFIX}/${token}` };
+  }
+
   return { kind: "app" };
 }
 
@@ -164,13 +183,13 @@ export function decideRoute(input: RouteInput): RouteDecision {
  * the renderer runs. Site pages therefore cannot act as, or vary by, the
  * signed-in admin, whatever the rendering code does (ADR 0006). Media
  * (`/media/…`, M6-2) is served the same way: public, cached, the same for
- * every visitor.
+ * every visitor. So are previews (M7-4): their token, not a session, says who may see them.
  */
 export const SITE_STRIPPED_HEADERS = ["cookie", "authorization"] as const;
 
 export function forwardedHeaders(incoming: Headers, decision: RouteDecision, requestId: string, requestIdHeader: string): Headers {
   const headers = new Headers(incoming);
   headers.set(requestIdHeader, requestId);
-  if (decision.kind === "site" || decision.kind === "media") for (const name of SITE_STRIPPED_HEADERS) headers.delete(name);
+  if (decision.kind === "site" || decision.kind === "media" || decision.kind === "preview") for (const name of SITE_STRIPPED_HEADERS) headers.delete(name);
   return headers;
 }

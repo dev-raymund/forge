@@ -1,7 +1,7 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  cancelSchedule, canPublishEntry, canUpdateEntry, getDraftHead, listRevisions, overwriteDraft, purgeEntry, rescheduleEntry, restoreEntry, restoreRevision, saveRevision,
-  scheduleEntry, submitCancelSchedule, submitCreateEntry, submitDraftHead, submitOverwriteDraft, submitPublishEntry, submitPurgeEntry, submitRescheduleEntry,
+  cancelSchedule, canPublishEntry, canUpdateEntry, createPreviewLink, getDraftHead, listRevisions, overwriteDraft, purgeEntry, rescheduleEntry, restoreEntry, restoreRevision, saveRevision,
+  scheduleEntry, submitCancelSchedule, submitCreateEntry, submitDraftHead, submitOverwriteDraft, submitPreviewLink, submitPublishEntry, submitPurgeEntry, submitRescheduleEntry,
   submitRestoreEntry, submitRestoreRevision, submitRevisionHistory, submitSaveDraft, submitSaveRevision, submitScheduleEntry, submitSetHomepage, submitTrashEntry,
   submitUnpublishEntry, trashEntry, unpublishEntry,
 } from "@/modules/content";
@@ -149,6 +149,14 @@ export const tenantOperations: TenantOperation[] = [
   { name: "content.submitRevisionHistory(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitRevisionHistory(actor, orgSlug, siteSlug, b.entryId, undefined)) },
   { name: "content.submitDraftHead(B's slug, B's site, B's entry)", run: ({ actor }, b) => refused(submitDraftHead(actor, b.orgSlug, b.siteSlug, b.entryId)) },
   { name: "content.submitDraftHead(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitDraftHead(actor, orgSlug, siteSlug, b.entryId)) },
+  // Previews (M7-4): a link to B's entry (its draft, or a revision), from A's site or B's URL.
+  { name: "content.createPreviewLink(A's site, B's entry)", run: async ({ actor, orgSlug, siteSlug }, b) => createPreviewLink(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId) },
+  {
+    name: "content.createPreviewLink(A's site, B's entry, a revision)",
+    run: async ({ actor, orgSlug, siteSlug }, b) => createPreviewLink(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId, { revisionId: b.entryId }),
+  },
+  { name: "content.submitPreviewLink(B's slug, B's site, B's entry)", run: ({ actor }, b) => refused(submitPreviewLink(actor, b.orgSlug, b.siteSlug, b.entryId, undefined)) },
+  { name: "content.submitPreviewLink(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitPreviewLink(actor, orgSlug, siteSlug, b.entryId, undefined)) },
   // The warning before a file goes to the trash (M7-1): where B's file is used, asked from A's site or B's URL.
   { name: "media.mediaUsage(A's site, B's media)", run: async ({ actor, orgSlug, siteSlug }, b) => mediaUsage(await resolveSiteContext(actor, orgSlug, siteSlug), b.mediaId) },
   { name: "media.submitMediaUsage(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitMediaUsage(actor, orgSlug, siteSlug, b.mediaId)) },

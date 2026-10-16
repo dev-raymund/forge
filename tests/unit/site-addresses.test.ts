@@ -45,8 +45,10 @@ describe("a site's address cannot take a path from the app", () => {
 
   it.each(names.map((name) => [name] as const))("/%s", (name) => {
     // The app's own path is the app's, whatever sites exist. (`/s` and `/render` are the sites' own prefixes; `/media`
-    // is the app's media surface, M6-2: public objects, served by the app without credentials.)
-    if (name !== "render" && name !== "s") expect(route(`/${name}`).kind, `/${name}`).toBe(name === "media" ? "media" : "app");
+    // is the app's media surface, M6-2: public objects, served by the app without credentials; `/_forge` holds only
+    // previews, M7-4: `/_forge/preview/{token}`, and nothing else is anything.)
+    if (name === "_forge") expect(route("/_forge")).toEqual({ kind: "not-found", reason: "bad-preview" });
+    else if (name !== "render" && name !== "s") expect(route(`/${name}`).kind, `/${name}`).toBe(name === "media" ? "media" : "app");
     // The same word as an address: either it is not an address at all, or it is a site, only under /s/.
     const checked = checkSiteAddress(name);
     const atSite = route(`/s/${name}`);

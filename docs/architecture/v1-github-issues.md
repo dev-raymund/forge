@@ -1343,13 +1343,18 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M5-6
 
 **Acceptance criteria:**
-- [ ] `createPreviewToken(entryId)`: HMAC (`PREVIEW_TOKEN_SECRET`), 15 min, bound to site + entry + user
-- [ ] `/_forge/preview/{token}` (V1: `cms.forgelinetechnologies.com/_forge/preview/{token}`, rewritten by the proxy into the site renderer; the token alone identifies site + entry) renders the draft via **uncached** queries, with `Cache-Control: private, no-store` and `X-Robots-Tag: noindex`; `frame-ancestors 'self'`
-- [ ] Editor preview pane (iframe) + "open in new tab"; autosave flushed before preview; works for coming-soon sites
+- [x] `createPreviewToken(entryId)`: HMAC (`PREVIEW_TOKEN_SECRET`), 15 min, bound to site + entry + user *(ADR 0027 §1: `createPreviewLink`, also bound to the organization and, for the history, a revision; whoever may see the entry; a localhost-only development secret; off, and saying so, without one elsewhere)*
+- [x] `/_forge/preview/{token}` (V1: `cms.forgelinetechnologies.com/_forge/preview/{token}`, rewritten by the proxy into the site renderer; the token alone identifies site + entry) renders the draft via **uncached** queries, with `Cache-Control: private, no-store` and `X-Robots-Tag: noindex`; `frame-ancestors 'self'` *(§2–3: the proxy checks the token first, a 404 otherwise; its own route under `/render`, never prerendered or cached; the person's rights checked again on every request; the closed renderer and the theme; `Referrer-Policy: no-referrer`)*
+- [x] Editor preview pane (iframe) + "open in new tab"; autosave flushed before preview; works for coming-soon sites *(§4: a sandboxed frame. Added by the M7-4 brief: "Preview" for each revision in the history, read-only, with "Restore this revision…" as M7-3's separate, confirmed restore)*
 
 **Likely files/modules:** `src/modules/rendering/preview.*`, `src/app/(sites)/render/[site]/…/preview/*`, `src/platform/routing/hosts.ts`
 
 **Testing:** tampered or expired token → 404; response headers asserted; E2E preview shows unpublished changes.
+
+**Hand-off (from M7-4, ADR 0027):**
+- **Post-V1 previews on a site's own host** (ADR 0006): the token already names the site; the proxy accepts previews on the app host only.
+- **M12-1's CSP work** should keep `frame-ancestors 'self'` on previews, and allow the inline scripts Next uses to reveal the streamed preview, or nonce them.
+- **A preview link is a bearer link for 15 minutes.** If previews move to their own origin with a session, bind them to it.
 
 ---
 
