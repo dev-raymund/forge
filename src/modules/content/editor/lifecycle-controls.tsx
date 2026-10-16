@@ -67,13 +67,15 @@ export function UnpublishButton({
 }
 
 export function TrashSection({
-  orgSlug, siteSlug, entry, title, isLive, isHome, beforeTrash, onTrashed,
+  orgSlug, siteSlug, entry, title, isLive, isScheduled = false, isHome, beforeTrash, onTrashed,
 }: {
   orgSlug: string;
   siteSlug: string;
   entry: EditorEntry;
   title: string;
   isLive: boolean;
+  /** Scheduled (M7-2): its schedule is canceled first. */
+  isScheduled?: boolean;
   isHome: boolean;
   /** Saves what is typed; false when it could not be saved (the trash then waits). */
   beforeTrash: () => Promise<string | null>;
@@ -86,7 +88,9 @@ export function TrashSection({
   const { below, liveBelow, homeBelow } = entry.lifecycle;
   const blocker = isLive
     ? `It is published. Unpublish it first, then move it to the trash.`
-    : isHome
+    : isScheduled
+      ? "It is scheduled. Cancel the schedule first, then move it to the trash."
+      : isHome
       ? "This is the home page. Make another page the home page first."
       : homeBelow
         ? "The home page is below it. Make another page the home page first."

@@ -5,11 +5,15 @@ import type { CacheEvent } from "@/platform/cache";
 import type { TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound, validationError } from "@/platform/errors";
 import { documentProblem, parseDocument } from "./document/parse";
+import type { StoredDocument } from "./document/schema";
 import { assertTermsOfSite, contentHashOf, definitionOf, refOf, summaryOf, titleForLog, type EntrySummary } from "./entry.service";
+import { stateOf, transition } from "./lifecycle";
 import { NEWER_SAVE } from "./messages";
 import { HOME_PATH, ParentChainError, parentChain, pathUnder, postPath, reservedPathReason, type PageNode } from "./paths";
 import { canPublishEntry } from "./policies";
-import { ancestorsOf, findDraft, findEntry, insertRevision, nextRevisionNumber, replaceEntryTerms, revisionById, siteFacts, updateEntry } from "./repository";
+import { ancestorsOf, findDraft, findEntry, insertRevision, nextRevisionNumber, replaceEntryTerms, revisionById, siteFacts, updateEntry, type DraftRow, type EntryRow } from "./repository";
+import type { SiteScope } from "./scope";
+import type { ContentTypeDefinition } from "./types/definition";
 import { isEntrySlug } from "./slugs";
 import { assertOwnReferences } from "./references";
 import { moveSubtree, withPathTaken, type MovedEntry } from "./tree";
@@ -41,6 +45,83 @@ import { versionSchema, parseInput } from "./validation";
 
 export type Published = { entry: EntrySummary; revision: number; changed: boolean; moved: MovedEntry[]; events: CacheEvent[] };
 
+/**
+ * What is published (M7-2): the draft, when someone presses Publish or schedules it, or the frozen `scheduled`
+ * revision, when the job publishes it at its time. Both go through the same checks and the same projection.
+ */
+export type Snapshot = {
+  title: string; slug: string; excerpt: string; featuredMediaId: string | null; template: string | null; content: unknown;
+  fields: Record<string, unknown>; seo: Record<string, unknown>; termIds: readonly string[]; sourceDraftVersion: number;
+};
+
+export const snapshotOfDraft = (draft: DraftRow): Snapshot => ({
+  title: draft.title, slug: draft.slug, excerpt: draft.excerpt, featuredMediaId: draft.featuredMediaId, template: draft.template, content: draft.content,
+  fields: draft.fields, seo: draft.seo, termIds: draft.termIds, sourceDraftVersion: draft.version,
+});
+
+export type Prepared = {
+  definition: ContentTypeDefinition; document: StoredDocument; path: string; termIds: string[]; excerpt: string; featuredMediaId: string | null; template: string | null;
+};
+
+/**
+ * A snapshot checked as it would be published now, whatever was stored before (M5-3's rules, run by Publish, by
+ * scheduling, and again by the job at the scheduled time, when the site may have changed): a valid document pointing
+ * at nothing of another site, a valid slug, fields the type has, an address it may have (parent chain, reserved
+ * paths), and terms of this site.
+ */
+export async function prepareForPublish(tx: TenantTx, scope: SiteScope, entry: EntryRow, snapshot: Snapshot): Promise<Prepared> {
+  const definition = definitionOf(entry);
+  const document = parseDocument(snapshot.content);
+  if (!document.ok) throw validationError({ content: [documentProblem(document)] });
+  // Nothing in it may point at another site's images or entries (M5-5).
+  await assertOwnReferences(tx, scope, document.document);
+  if (!isEntrySlug(snapshot.slug)) throw validationError({ slug: ["Use lowercase letters, numbers and single hyphens, like about-us."] });
+  if (!definition.fields.safeParse(snapshot.fields).success) throw validationError({ fields: [`${definition.label.plural} have no such fields.`] });
+  const site = await siteFacts(tx, scope.org.id, scope.site.id);
+  if (!site) throw notFound();
+
+  const path = await pathFor(tx, scope, entry, snapshot.slug, site.blogPath);
+  if (path !== HOME_PATH) {
+    const reserved = reservedPathReason(path, { type: definition.key, blogPath: site.blogPath });
+    if (reserved) throw validationError({ slug: [reserved] });
+  }
+  const termIds = definition.supports.taxonomies.length ? [...snapshot.termIds] : [];
+  await assertTermsOfSite(tx, scope, definition, termIds);
+  return {
+    definition, document: document.document, path, termIds,
+    excerpt: definition.supports.excerpt ? snapshot.excerpt : "",
+    featuredMediaId: definition.supports.featuredImage ? snapshot.featuredMediaId : null,
+    template: definition.supports.templates ? snapshot.template : null,
+  };
+}
+
+/**
+ * The entry made live at a revision (written before it, as the table requires): the projection, the pages below it if
+ * its path changed, and the published terms. `publishedAt` is the entry's date at its first publish (the time it was
+ * scheduled for, for a scheduled one) and is kept after; `first_published_at` is when it really first went live.
+ * Returns what the public site must stop serving.
+ */
+export async function makeLive(
+  tx: TenantTx, scope: SiteScope, entry: EntryRow, prepared: Prepared, snapshot: Snapshot, revision: { id: string }, by: { userId: string | null; publishedAt: Date },
+): Promise<{ path: string; moved: MovedEntry[]; events: CacheEvent[] }> {
+  const { definition, path } = prepared;
+  await withPathTaken(path, () =>
+    updateEntry(tx, scope.org.id, scope.site.id, entry.id, {
+      status: "published", title: snapshot.title, slug: snapshot.slug, path, excerpt: prepared.excerpt, featuredMediaId: prepared.featuredMediaId,
+      publishedRevisionId: revision.id, publishedAt: entry.publishedAt ?? by.publishedAt, firstPublishedAt: entry.firstPublishedAt ?? new Date(), scheduledAt: null,
+      scheduleFailure: null, scheduleFailedAt: null, updatedBy: by.userId,
+    }),
+  );
+  const moved = path !== entry.path && definition.hierarchical ? await moveSubtree(tx, scope, entry.id, path) : [];
+  await replaceEntryTerms(tx, scope.org.id, scope.site.id, entry.id, prepared.termIds);
+  const wasLive = entry.status === "published";
+  const events: CacheEvent[] = [
+    { type: "entry.published", siteId: scope.site.id, entryId: entry.id, contentType: definition.key, pathChanged: wasLive && path !== entry.path },
+    ...movedEvents(scope.site.id, moved),
+  ];
+  return { path, moved, events };
+}
+
 export async function publishEntry(ctx: SiteContext, entryId: string, expectedDraftVersion: number): Promise<Published> {
   const expected = parseInput(versionSchema, expectedDraftVersion);
   return inTenant(ctx, async (tx) => {
@@ -56,70 +137,44 @@ export async function publishEntry(ctx: SiteContext, entryId: string, expectedDr
       const live = await revisionById(tx, ctx.org.id, ctx.site.id, entry.id, entry.publishedRevisionId);
       if (live?.sourceDraftVersion === expected) return { entry: summaryOf(entry), revision: live.number, changed: false, moved: [], events: [] };
     }
+    // A scheduled entry is published by its schedule, or its schedule is canceled first (M7-2, ./lifecycle.ts).
+    const step = transition(stateOf(entry), "publish");
+    if (!step.ok) throw conflict(step.reason);
     if (draft.version !== expected) throw conflict(NEWER_SAVE);
 
-    // What is published must be valid now, whatever was stored before.
-    const definition = definitionOf(entry);
-    const document = parseDocument(draft.content);
-    if (!document.ok) throw validationError({ content: [documentProblem(document)] });
-    // Nothing in it may point at another site's images or entries (M5-5).
-    await assertOwnReferences(tx, ctx, document.document);
-    if (!isEntrySlug(draft.slug)) throw validationError({ slug: ["Use lowercase letters, numbers and single hyphens, like about-us."] });
-    if (!definition.fields.safeParse(draft.fields).success) throw validationError({ fields: [`${definition.label.plural} have no such fields.`] });
-    const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
-    if (!site) throw notFound();
-
-    const path = await pathFor(tx, ctx, entry, draft.slug, site.blogPath);
-    if (path !== HOME_PATH) {
-      const reserved = reservedPathReason(path, { type: definition.key, blogPath: site.blogPath });
-      if (reserved) throw validationError({ slug: [reserved] });
-    }
-    const termIds = definition.supports.taxonomies.length ? draft.termIds : [];
-    await assertTermsOfSite(tx, ctx, definition, termIds);
+    const snapshot = snapshotOfDraft(draft);
+    const prepared = await prepareForPublish(tx, ctx, entry, snapshot);
 
     // 3. The revision, before anything points at it.
     const number = await nextRevisionNumber(tx, ctx.org.id, ctx.site.id, entry.id);
-    const excerpt = definition.supports.excerpt ? draft.excerpt : "";
-    const featuredMediaId = definition.supports.featuredImage ? draft.featuredMediaId : null;
-    const template = definition.supports.templates ? draft.template : null;
-    const revision = await insertRevision(tx, {
-      organizationId: ctx.org.id, siteId: ctx.site.id, entryId: entry.id, number, kind: "publish", title: draft.title, slug: draft.slug, excerpt, featuredMediaId,
-      template, content: document.document, fields: draft.fields, seo: draft.seo, termIds, contentHash: contentHashOf(document.document),
-      sourceDraftVersion: draft.version, createdBy: ctx.actor.userId,
-    });
+    const revision = await insertRevision(tx, revisionValues(ctx, entry, prepared, snapshot, number, "publish", ctx.actor.userId));
 
-    // 4. The projection, and the pages below it if its path changed.
-    const now = new Date();
-    await withPathTaken(path, () =>
-      updateEntry(tx, ctx.org.id, ctx.site.id, entry.id, {
-        status: "published", title: draft.title, slug: draft.slug, path, excerpt, featuredMediaId, publishedRevisionId: revision.id,
-        publishedAt: entry.publishedAt ?? now, firstPublishedAt: entry.firstPublishedAt ?? now, scheduledAt: null, updatedBy: ctx.actor.userId,
-      }),
-    );
-    const moved = path !== entry.path && definition.hierarchical ? await moveSubtree(tx, ctx, entry.id, path) : [];
-
-    // 5. The published terms.
-    await replaceEntryTerms(tx, ctx.org.id, ctx.site.id, entry.id, termIds);
+    // 4–5. The projection, the pages below it if its path changed, the published terms.
+    const { path, moved, events } = await makeLive(tx, ctx, entry, prepared, snapshot, revision, { userId: ctx.actor.userId, publishedAt: new Date() });
 
     // 6. The record.
     await record(
       tx,
       {
         action: "entry.published", resourceType: "entry", resourceId: entry.id, siteId: ctx.site.id,
-        metadata: { type: definition.key, title: titleForLog(draft.title), path, revision: number },
+        metadata: { type: prepared.definition.key, title: titleForLog(snapshot.title), path, revision: number },
       },
       ctx,
     );
 
     // 7. What the public site must stop serving from cache.
-    const wasLive = entry.status === "published";
-    const events: CacheEvent[] = [
-      { type: "entry.published", siteId: ctx.site.id, entryId: entry.id, contentType: definition.key, pathChanged: wasLive && path !== entry.path },
-      ...movedEvents(ctx.site.id, moved),
-    ];
-    return { entry: { ...summaryOf(entry), status: "published", title: draft.title, slug: draft.slug, path }, revision: number, changed: true, moved, events };
+    return { entry: { ...summaryOf(entry), status: "published", title: snapshot.title, slug: snapshot.slug, path }, revision: number, changed: true, moved, events };
   });
 }
+
+/** A revision's row: a snapshot of what is published (or will be, for a `scheduled` one). */
+export const revisionValues = (
+  scope: SiteScope, entry: EntryRow, prepared: Prepared, snapshot: Snapshot, number: number, kind: "publish" | "scheduled", createdBy: string,
+) => ({
+  organizationId: scope.org.id, siteId: scope.site.id, entryId: entry.id, number, kind, title: snapshot.title, slug: snapshot.slug, excerpt: prepared.excerpt,
+  featuredMediaId: prepared.featuredMediaId, template: prepared.template, content: prepared.document, fields: snapshot.fields, seo: snapshot.seo,
+  termIds: prepared.termIds, contentHash: contentHashOf(prepared.document), sourceDraftVersion: snapshot.sourceDraftVersion, createdBy,
+});
 
 /** A moved page that is live changes what visitors get at two addresses. Drafts are not public. */
 export function movedEvents(siteId: string, moved: readonly MovedEntry[]): CacheEvent[] {
@@ -132,7 +187,7 @@ export function movedEvents(siteId: string, moved: readonly MovedEntry[]): Cache
  * the chain of pages above it has been checked: no loop, no missing or trashed
  * page, no post, nothing of another site (the composite key already sees to that).
  */
-async function pathFor(tx: TenantTx, ctx: SiteContext, entry: { type: string; path: string; parentId: string | null }, slug: string, blogPath: string): Promise<string> {
+async function pathFor(tx: TenantTx, ctx: SiteScope, entry: { type: string; path: string; parentId: string | null }, slug: string, blogPath: string): Promise<string> {
   if (entry.path === HOME_PATH) return HOME_PATH;
   if (entry.type === "post") return postPath(slug, blogPath);
   if (!entry.parentId) return pathUnder("", slug);

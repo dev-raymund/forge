@@ -6,7 +6,8 @@ import { uuidv7 } from "uuidv7";
 import { afterAll, describe, expect, it } from "vitest";
 import { AUDIT_ACTIONS, AuditEventError, describeEvent, parseActivityQuery, queryActivity, record, recordPlatformEvent, type AuditEntry } from "@/modules/audit";
 import {
-  changeAuthor, createEntry, createTerm, deleteTerm, movePage, placePage, publishEntry, purgeEntry, restoreEntry, setHomepage, trashEntry, unpublishEntry, updateTerm,
+  cancelSchedule, changeAuthor, createEntry, createTerm, deleteTerm, failDue, movePage, placePage, publishEntry, purgeEntry, restoreEntry, scheduleEntry, setHomepage,
+  trashEntry, unpublishEntry, updateTerm,
 } from "@/modules/content";
 import { completeUpload, createFolder, deleteFolder, moveMedia, renameFolder, requestUploads, restoreMedia, trashMedia, updateMediaDetails } from "@/modules/media";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
@@ -231,7 +232,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3, the lifecycle of M7-1)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3, the lifecycle of M7-1, scheduling of M7-2)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -273,6 +274,14 @@ describe("every change writes its line, in the same transaction", () => {
     await restoreEntry(siteCtx, beside.id);
     await trashEntry(siteCtx, beside.id);
     await purgeEntry(siteCtx, beside.id);
+    // M7-2: scheduling, and what the system records (its own tests are tests/integration/content-scheduling.test.ts).
+    const { entry: timed } = await createEntry(siteCtx, { type: "post", title: "Timed" });
+    const tomorrow = `${new Date(Date.now() + 2 * DAY).toISOString().slice(0, 10)}T09:00`;
+    await scheduleEntry(siteCtx, timed.id, { runAt: tomorrow, version: 1 });
+    await cancelSchedule(siteCtx, timed.id);
+    await scheduleEntry(siteCtx, timed.id, { runAt: tomorrow, version: 1 });
+    const [job] = await withPlatform((tx) => tx.select().from(t.jobs).where(and(eq(t.jobs.dedupeKey, `entry:${timed.id}`), eq(t.jobs.status, "queued"))));
+    await withTenant({ orgId: a.org.id }, (tx) => failDue(tx, a.org.id, job!.payload as { entryId: string; revisionId: string; runAt: string }, "Covered."));
     // M5-8: terms (their own tests are tests/integration/content-terms.test.ts).
     const { term } = await createTerm(siteCtx, { taxonomy: "tag", name: "Covered" });
     await updateTerm(siteCtx, term.id, { name: "Covered again" });
@@ -673,13 +682,13 @@ describe("reading the activity log", () => {
   it("an event this code does not know is listed by its name, not hidden and not an error", async () => {
     const a = await newTenant();
     await withTenant({ orgId: a.org.id, userId: a.user.id }, (tx) =>
-      tx.insert(t.auditLogs).values({ organizationId: a.org.id, actorType: "user", actorId: a.user.id, actorLabel: a.user.email, action: "entry.scheduled", resourceType: "entry", metadata: { type: "post" } }),
+      tx.insert(t.auditLogs).values({ organizationId: a.org.id, actorType: "user", actorId: a.user.id, actorLabel: a.user.email, action: "entry.archived", resourceType: "entry", metadata: { type: "post" } }),
     );
     const { items } = await listActivity(a.ctx);
-    expect(items[0]!.action).toBe("entry.scheduled");
-    expect(describeEvent(items[0]!)).toBe(`${a.user.name} did something Forge cannot describe yet (entry.scheduled).`);
+    expect(items[0]!.action).toBe("entry.archived");
+    expect(describeEvent(items[0]!)).toBe(`${a.user.name} did something Forge cannot describe yet (entry.archived).`);
     // It cannot be asked for by name through the page's filters, which know the catalog only.
-    expect(parseActivityQuery({ action: "entry.scheduled" })).toEqual({});
+    expect(parseActivityQuery({ action: "entry.archived" })).toEqual({});
   });
 });
 

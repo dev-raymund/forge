@@ -15,6 +15,7 @@ import { assertNewReferences, assertUsableImages } from "./references";
 import {
   findDraft, findEntry, insertDraft, insertEntry, isMember, memberName, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, updateEntry, type EntryRow,
 } from "./repository";
+import type { SiteScope } from "./scope";
 import { slugFromTitle } from "./slugs";
 import type { ContentTypeDefinition, ContentTypeKey } from "./types/definition";
 import { contentType } from "./types/registry";
@@ -230,7 +231,7 @@ export async function saveDraft(ctx: SiteContext, entryId: string, expectedVersi
 }
 
 /** Every id a term of this site, of a taxonomy the type uses. `entry_drafts.term_ids` has no foreign key, so this is the only check there is. */
-export async function assertTermsOfSite(tx: TenantTx, ctx: SiteContext, definition: ContentTypeDefinition, termIds: readonly string[]): Promise<void> {
+export async function assertTermsOfSite(tx: TenantTx, ctx: SiteScope, definition: ContentTypeDefinition, termIds: readonly string[]): Promise<void> {
   if (termIds.length === 0) return;
   const found = await termsOfSite(tx, ctx.org.id, ctx.site.id, termIds);
   const allowed = new Set<string>(definition.supports.taxonomies);

@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { OrganizationSuspended } from "@/components/admin/page-notice";
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { activityHref, describeEvent } from "@/modules/audit";
-import { canCreateEntry, canSeePages, canSetHomepage, entryListPath, newEntryPath } from "@/modules/content";
+import { canCreateEntry, canSeePages, canSetHomepage, entryListPath, listScheduled, newEntryPath, ScheduledList } from "@/modules/content";
 import { canManageSiteSettings, getSiteOverview, sitePath, SiteOverviewView } from "@/modules/sites";
 import { canReadActivity, listActivity, orgActivityPath, requireSitePage } from "@/modules/tenancy";
 
@@ -12,7 +12,8 @@ export const metadata: Metadata = { title: "Site" };
 /**
  * A site's overview (plan §19: `/{orgSlug}/sites/{siteSlug}`, every member;
  * M4-2): status and public address, how it is set up, the launch checklist,
- * and, for those who may read the activity log, what was done to it lately.
+ * what is scheduled on it (M7-2), and, for those who may read the activity log,
+ * what was done to it lately.
  * Publishing it, and switching it back to Coming soon, is M4-5's (ADR 0015).
  */
 export default function SitePage({ params }: PageProps<"/[orgSlug]/sites/[siteSlug]">) {
@@ -31,9 +32,10 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
   const { ctx } = access;
   const readsActivity = canReadActivity(ctx);
   const pages = canSeePages(ctx);
-  const [overview, page] = await Promise.all([
+  const [overview, page, scheduled] = await Promise.all([
     getSiteOverview(ctx, { pages: pages ? entryListPath(ctx.org.slug, ctx.site.slug, "page") : null }),
     readsActivity ? listActivity(ctx, { site: ctx.site.id }) : null,
+    listScheduled(ctx),
   ]);
   const activity = page
     ? page.items.slice(0, 5).map((item) => ({ id: item.id, sentence: describeEvent(item), occurredAt: item.occurredAt.toISOString() }))
@@ -51,6 +53,7 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
         edit: pages,
         create: canCreateEntry(ctx, "page") && canSetHomepage(ctx) ? `${newEntryPath(ctx.org.slug, ctx.site.slug, "page")}?home=1` : null,
       }}
+      scheduled={<ScheduledList orgSlug={ctx.org.slug} siteSlug={ctx.site.slug} items={scheduled.items} timeZone={scheduled.timeZone} />}
     />
   );
 }

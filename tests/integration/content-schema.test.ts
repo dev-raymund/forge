@@ -78,7 +78,7 @@ describe("the five tables, as the migrations made them (plan §4.2)", () => {
     const expected: Record<ContentTable, string[]> = {
       entries: [
         "id", "organization_id", "site_id", "type", "locale", "parent_id", "author_id", "status", "title", "slug", "path", "excerpt", "featured_media_id",
-        "published_revision_id", "published_at", "first_published_at", "scheduled_at", "sort_order", "created_by", "updated_by", "deleted_at", "created_at", "updated_at",
+        "published_revision_id", "published_at", "first_published_at", "scheduled_at", "schedule_failure", "schedule_failed_at", "sort_order", "created_by", "updated_by", "deleted_at", "created_at", "updated_at",
       ],
       entry_drafts: [
         "entry_id", "organization_id", "site_id", "title", "slug", "excerpt", "featured_media_id", "template", "content", "fields", "seo", "term_ids", "version",

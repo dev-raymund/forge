@@ -62,6 +62,12 @@ export const entries = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     firstPublishedAt: timestamp("first_published_at", { withTimezone: true }),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    /**
+     * Why the last scheduled publish could not happen, and when (M7-2): the entry went back to being a draft, and the
+     * editor and the site's overview say so until it is scheduled or published again.
+     */
+    scheduleFailure: text("schedule_failure"),
+    scheduleFailedAt: timestamp("schedule_failed_at", { withTimezone: true }),
     sortOrder: integer("sort_order").notNull().default(0),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
@@ -90,6 +96,8 @@ export const entries = pgTable(
     check("entries_published_has_revision", sql`(status = 'published') = (published_revision_id is not null)`),
     check("entries_scheduled_has_time", sql`(status = 'scheduled') = (scheduled_at is not null)`),
     check("entries_trash_not_live", sql`deleted_at is null or status <> 'published'`),
+    // A failure has its time, and the time its failure (M7-2).
+    check("entries_schedule_failure_pair", sql`(schedule_failure is null) = (schedule_failed_at is null)`),
     check("entries_only_pages_nest", sql`parent_id is null or type = 'page'`),
     tenantPolicy("entries"),
   ],

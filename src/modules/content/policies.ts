@@ -1,5 +1,5 @@
 import "server-only";
-import { can, canActOn, type OrgContext } from "@/modules/tenancy";
+import { can, canActOn, permissionsForRole, type OrgContext } from "@/modules/tenancy";
 import { transition, type LifecycleAction, type LifecycleState } from "./lifecycle";
 import type { ContentTypeKey } from "./types/definition";
 
@@ -115,6 +115,20 @@ export function canPurgeEntry(ctx: OrgContext, entry: EntryRef): boolean {
 export function canTransition(ctx: OrgContext, entry: EntryRef, state: LifecycleState, action: LifecycleAction): boolean {
   const step = transition(state, action);
   if (!step.ok) return false;
+  if (step.right === "system") return false; // no member does what only the job does
   if (step.right === "publish") return canPublishEntry(ctx, entry);
   return step.right === "delete" ? canTrashEntry(ctx, entry) : canPurgeEntry(ctx, entry);
+}
+
+// ── M7-2: scheduling ─────────────────────────────────────────────────────────
+
+/**
+ * May a member with this role (now) publish this entry? Asked by the scheduled publish job of the member who scheduled
+ * it, when no request (and so no context) exists: their role as it is at the time, from the same catalog, never the
+ * job's own. The same rule as `canPublishEntry`: pages `entries.page.publish`; posts `.any`, or `.own` for their own.
+ */
+export function roleMayPublish(role: string, userId: string, entry: EntryRef): boolean {
+  const permissions = permissionsForRole(role);
+  if (entry.type === "page") return permissions.has("entries.page.publish");
+  return permissions.has("entries.post.publish.any") || (permissions.has("entries.post.publish.own") && entry.authorId === userId);
 }

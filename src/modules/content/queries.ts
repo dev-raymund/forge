@@ -13,7 +13,7 @@ import { ENTRY_TRASH_DAYS } from "./lifecycle";
 import {
   canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canPurgeEntry, canSeeEntry, canSeePages, canSetHomepage, canTrashEntry, canUpdateEntry, ownPostsOnly,
 } from "./policies";
-import { descendantsOf, findDraft, findEntry, memberName, revisionById, siteFacts } from "./repository";
+import { descendantsOf, findDraft, findEntry, memberName, revisionById, scheduledOfSite, siteFacts } from "./repository";
 import { entries, entryDrafts, entryRevisions, terms } from "./schema";
 import type { ContentTypeKey } from "./types/definition";
 
@@ -48,6 +48,11 @@ export type EditorEntry = {
    * page). The services check all of it again.
    */
   lifecycle: { canUnpublish: boolean; canTrash: boolean; below: number; liveBelow: string[]; homeBelow: boolean; trashPath: string };
+  /**
+   * Scheduling (M7-2): when it is scheduled for (an instant), the site's time zone it is typed and shown in, and why the
+   * last schedule could not be published (until it is scheduled or published again).
+   */
+  schedule: { at: string | null; timeZone: string; failure: { reason: string; at: string } | null };
   canPublish: boolean;
   /** M5-7's sidebar: the draft's other fields, the entry's place and author, and what else the caller may do. */
   settings: {
@@ -106,6 +111,11 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
         liveBelow: below.filter((row) => row.status !== "draft").map((row) => row.title || "Untitled"),
         homeBelow: below.some((row) => row.path === HOME_PATH),
         trashPath: `${entryListPath(ctx.org.slug, ctx.site.slug, entry.type)}?status=trash`,
+      },
+      schedule: {
+        at: entry.scheduledAt?.toISOString() ?? null,
+        timeZone: site.timeZone,
+        failure: entry.scheduleFailure && entry.scheduleFailedAt ? { reason: entry.scheduleFailure, at: entry.scheduleFailedAt.toISOString() } : null,
       },
       settings: {
         slug: draft.slug,
@@ -301,9 +311,11 @@ export type PostListItem = {
   publishedAt: Date | null;
   /** In the trash (the trash filter, M7-1). */
   trash?: TrashInfo;
+  /** When it is scheduled for (M7-2). */
+  scheduledAt: Date | null;
 };
 
-export type PostList = { items: PostListItem[]; total: number; page: number; pages: number; pageSize: number; onlyOwn: boolean };
+export type PostList = { items: PostListItem[]; total: number; page: number; pages: number; pageSize: number; onlyOwn: boolean; /** The site's, for scheduled times (M7-2). */ timeZone: string };
 
 const POST_ORDER = {
   updated: [desc(entryDrafts.updatedAt), desc(entries.id)],
@@ -337,7 +349,7 @@ export async function listPosts(ctx: SiteContext, query: PostListQuery): Promise
       .select({
         id: entries.id, title: entryDrafts.title, liveTitle: entries.title, path: entries.path, status: entries.status, authorId: entries.authorId,
         authorName: t.users.name, termIds: entryDrafts.termIds, changed: changedSincePublished, updatedAt: entryDrafts.updatedAt, publishedAt: entries.publishedAt,
-        deletedAt: entries.deletedAt, organizationId: entries.organizationId,
+        deletedAt: entries.deletedAt, organizationId: entries.organizationId, scheduledAt: entries.scheduledAt,
       })
       .from(entries)
       .innerJoin(entryDrafts, draftOf)
@@ -357,11 +369,13 @@ export async function listPosts(ctx: SiteContext, query: PostListQuery): Promise
           .where(and(eq(terms.organizationId, ctx.org.id), eq(terms.siteId, ctx.site.id), eq(terms.taxonomy, "category"), inArray(terms.id, termIds)))
       : [];
     const nameOf = new Map(categories.map((term) => [term.id, term.name]));
+    const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
     return {
+      timeZone: site?.timeZone ?? "UTC",
       items: rows.map((row) => ({
         id: row.id, title: row.title || row.liveTitle, path: row.path, status: row.status, authorId: row.authorId, authorName: row.authorName,
         categories: row.termIds.flatMap((id) => (nameOf.has(id) ? [nameOf.get(id)!] : [])).sort((a, b) => a.localeCompare(b)),
-        changed: row.changed, updatedAt: row.updatedAt, publishedAt: row.publishedAt,
+        changed: row.changed, updatedAt: row.updatedAt, publishedAt: row.publishedAt, scheduledAt: row.scheduledAt,
         ...(row.deletedAt
           ? {
               trash: (() => {
@@ -392,4 +406,41 @@ export async function listTerms(ctx: SiteContext): Promise<TermOption[]> {
       .where(and(eq(terms.organizationId, ctx.org.id), eq(terms.siteId, ctx.site.id)))
       .orderBy(terms.taxonomy, asc(sql`lower(${terms.name})`), terms.id),
   );
+}
+
+// ── M7-2: what is scheduled ──────────────────────────────────────────────────
+
+export type ScheduledItem = {
+  id: string; type: ContentTypeKey; title: string; path: string;
+  /** Scheduled for this instant; or null, when this is a schedule that failed lately. */
+  scheduledAt: string | null;
+  failure: { reason: string; at: string } | null;
+};
+
+/** Failures stay on the overview this long, unless the entry is scheduled or published again first. */
+const FAILURES_SHOWN_DAYS = 14;
+
+/**
+ * The site's scheduled pages and posts, soonest first, and those whose schedule failed in the last two weeks (M7-2: the
+ * site's overview). Only what the member may see (an Author: their own posts). Times are instants; the screen shows
+ * them in the site's time zone, which comes with them.
+ */
+export async function listScheduled(ctx: SiteContext): Promise<{ items: ScheduledItem[]; timeZone: string }> {
+  requirePermission(ctx, "entries.post.read");
+  return inTenant(ctx, async (tx) => {
+    const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
+    if (!site) throw notFound();
+    const rows = await scheduledOfSite(tx, ctx.org.id, ctx.site.id, new Date(Date.now() - FAILURES_SHOWN_DAYS * 86_400_000), 50);
+    return {
+      timeZone: site.timeZone,
+      items: rows
+        .filter((row) => canSeeEntry(ctx, { type: row.type, organizationId: row.organizationId, authorId: row.authorId }))
+        .slice(0, 20)
+        .map((row) => ({
+          id: row.id, type: row.type, title: row.draftTitle || row.title || "Untitled", path: row.path,
+          scheduledAt: row.status === "scheduled" ? (row.scheduledAt?.toISOString() ?? null) : null,
+          failure: row.status !== "scheduled" && row.scheduleFailure && row.scheduleFailedAt ? { reason: row.scheduleFailure, at: row.scheduleFailedAt.toISOString() } : null,
+        })),
+    };
+  });
 }

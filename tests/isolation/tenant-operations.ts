@@ -1,7 +1,8 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  canPublishEntry, canUpdateEntry, purgeEntry, restoreEntry, submitCreateEntry, submitPublishEntry, submitPurgeEntry, submitRestoreEntry, submitSaveDraft, submitSetHomepage,
-  submitTrashEntry, submitUnpublishEntry, trashEntry, unpublishEntry,
+  cancelSchedule, canPublishEntry, canUpdateEntry, purgeEntry, rescheduleEntry, restoreEntry, scheduleEntry, submitCancelSchedule, submitCreateEntry, submitPublishEntry,
+  submitPurgeEntry, submitRescheduleEntry, submitRestoreEntry, submitSaveDraft, submitScheduleEntry, submitSetHomepage, submitTrashEntry, submitUnpublishEntry, trashEntry,
+  unpublishEntry,
 } from "@/modules/content";
 import {
   completeUpload, deleteFolder, mediaUsage, moveMedia, renameFolder, requestUploads, restoreMedia, submitCompleteUpload, submitDeleteFolder, submitMediaUsage, submitMoveMedia,
@@ -125,6 +126,13 @@ export const tenantOperations: TenantOperation[] = [
     name: `content.${name}(A's site, B's entry)`,
     run: async ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => run(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId),
   })),
+  // Scheduling (M7-2): B's entry named on A's site.
+  {
+    name: "content.scheduleEntry(A's site, B's entry)",
+    run: async ({ actor, orgSlug, siteSlug }, b) => scheduleEntry(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId, { runAt: SOON, version: 1 }),
+  },
+  { name: "content.rescheduleEntry(A's site, B's entry)", run: async ({ actor, orgSlug, siteSlug }, b) => rescheduleEntry(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId, { runAt: SOON }) },
+  { name: "content.cancelSchedule(A's site, B's entry)", run: async ({ actor, orgSlug, siteSlug }, b) => cancelSchedule(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId) },
   // The warning before a file goes to the trash (M7-1): where B's file is used, asked from A's site or B's URL.
   { name: "media.mediaUsage(A's site, B's media)", run: async ({ actor, orgSlug, siteSlug }, b) => mediaUsage(await resolveSiteContext(actor, orgSlug, siteSlug), b.mediaId) },
   { name: "media.submitMediaUsage(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitMediaUsage(actor, orgSlug, siteSlug, b.mediaId)) },
@@ -138,6 +146,8 @@ export const tenantOperations: TenantOperation[] = [
 ];
 
 const UPLOAD = { name: "photo.png", size: 1_024, type: "image/png" };
+/** A wall-clock time well in the future, in any zone (M7-2). */
+const SOON = `${new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)}T09:00`;
 const formOf = (fields: Record<string, string>) => {
   const data = new FormData();
   for (const [name, value] of Object.entries(fields)) data.set(name, value);
@@ -311,6 +321,10 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
     ["submitTrashEntry", (actor: Actor, org: string, site: string, entry: string) => submitTrashEntry(actor, org, site, entry, form({}))],
     ["submitRestoreEntry", (actor: Actor, org: string, site: string, entry: string) => submitRestoreEntry(actor, org, site, entry, form({}))],
     ["submitPurgeEntry", (actor: Actor, org: string, site: string, entry: string) => submitPurgeEntry(actor, org, site, entry, form({}))],
+    // M7-2.
+    ["submitScheduleEntry", (actor: Actor, org: string, site: string, entry: string) => submitScheduleEntry(actor, org, site, entry, form({ runAt: SOON, version: "1" }))],
+    ["submitRescheduleEntry", (actor: Actor, org: string, site: string, entry: string) => submitRescheduleEntry(actor, org, site, entry, form({ runAt: SOON }))],
+    ["submitCancelSchedule", (actor: Actor, org: string, site: string, entry: string) => submitCancelSchedule(actor, org, site, entry, form({}))],
   ] as const).flatMap(([name, submit]) => [
     { name: `content.${name}(B's slug, B's site, B's entry)`, run: ({ actor }: Caller, b: Foreign) => submit(actor, b.orgSlug, b.siteSlug, b.entryId) },
     { name: `content.${name}(A's slug, A's site, B's entry)`, run: ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => submit(actor, orgSlug, siteSlug, b.entryId) },

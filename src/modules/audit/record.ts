@@ -75,3 +75,45 @@ export async function record(tx: TenantTx, entry: AuditEntry, request: AuditRequ
     );
   }
 }
+
+/**
+ * Who acts when no person does (M7-2, ADR 0025): one of Forge's own jobs, from this fixed list, with the name the
+ * activity page shows for it. Typed, never free text: a caller cannot invent an actor.
+ */
+export const SYSTEM_ACTORS = {
+  "entry.publish_scheduled": "Forge (scheduled publishing)",
+  "trash.purge": "Forge (trash cleanup)",
+} as const;
+export type SystemActor = keyof typeof SYSTEM_ACTORS;
+
+/**
+ * `record` for a system actor (M7-2): the same events, checks and transaction rule (the record commits with the change
+ * or neither does), written as `actor_type = 'system'` with no user. The organization is still read from the
+ * transaction's own context (`withTenant({ orgId })`, as a tenant job's is), never passed in; and the transaction must
+ * have no user in it: a person's change is never recorded as the system's, nor the system's as a person's.
+ */
+export async function recordSystem(tx: TenantTx, entry: AuditEntry, actor: SystemActor): Promise<void> {
+  if (!Object.hasOwn(SYSTEM_ACTORS, actor)) throw new AuditEventError(`"${String(actor)}" is not a system actor`);
+  if (!isAuditAction(entry.action)) throw new AuditEventError(`"${String(entry.action)}" is not an audit event (modules/audit/events.ts)`);
+  const event = AUDIT_EVENTS[entry.action];
+  if (entry.resourceType !== event.resourceType) {
+    throw new AuditEventError(`Audit event "${entry.action}" is about a ${event.resourceType}, not a ${String(entry.resourceType)}`);
+  }
+  if (typeof entry.resourceId !== "string" || !UUID.test(entry.resourceId)) throw new AuditEventError(`Audit event "${entry.action}" needs the id of its ${event.resourceType}`);
+  if (entry.siteId !== undefined && (typeof entry.siteId !== "string" || !UUID.test(entry.siteId))) {
+    throw new AuditEventError(`Audit event "${entry.action}" was given a site that is not an id`);
+  }
+  const metadata = sanitizeMetadata(entry.action, entry.metadata);
+  const siteId = entry.siteId ?? null;
+  const written = await tx.execute<{ id: string }>(sql`
+    insert into ${auditLogs} (id, organization_id, site_id, actor_type, actor_id, actor_label, action, resource_type, resource_id, request_id, ip, metadata)
+    select ${uuidv7()}::uuid, app_current_org_id(), ${siteId}::uuid, 'system', null, ${SYSTEM_ACTORS[actor]},
+           ${entry.action}, ${event.resourceType}, ${entry.resourceId}::uuid, ${`job:${actor}`}, '', ${JSON.stringify(metadata)}::jsonb
+    where app_current_org_id() is not null and app_current_user_id() is null
+      and (${siteId}::uuid is null
+           or exists (select 1 from ${sites} where ${sites.id} = ${siteId}::uuid and ${sites.organizationId} = app_current_org_id()))
+    returning id`);
+  if (written.rows.length !== 1) {
+    throw new AuditEventError("audit.recordSystem() must run inside an organization's transaction with no user in its context (a tenant job's withTenant), for a site of that organization");
+  }
+}

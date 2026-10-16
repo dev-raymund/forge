@@ -249,3 +249,11 @@ The integration tests record the tags each public read applies (the entry, the b
   - the posts' trash on a phone.
 
   Repeated 5 times: 25 of 25 passed. The M6-3 and M6-4 specs confirm the media trash in its new dialog.
+
+## Addendum (M7-2, 2026-10-16): the purge is recorded; scheduled entries
+
+ADR 0025 has the details.
+
+- **`trash.purge`** now records each entry it deletes as `entry.deleted` by the system actor "Forge (trash cleanup)", in the batch's transaction. That record carries `below` (the pages deleted with it) and `afterDays`. A record that cannot be written deletes nothing.
+- **A scheduled entry** cannot be unpublished or trashed; its schedule is canceled first. The editor's trash section says so.
+- **Unchanged:** the state machine's M7-1 transitions, two-step unpublish and trash, restore refusing a taken address, and the subtree rules.

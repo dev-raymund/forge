@@ -127,7 +127,8 @@ export const AUDIT_EVENTS = {
   "entry.published": {
     resourceType: "entry",
     label: "Entry published",
-    metadata: z.object({ type: entryType, title: line(), path: entryPath, revision: z.int().min(1) }),
+    // `scheduled`: published by Forge's job at the time it was scheduled for (M7-2), the actor the system.
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, revision: z.int().min(1), scheduled: z.literal(true).optional() }),
   },
   "site.homepage_changed": {
     resourceType: "site",
@@ -170,7 +171,25 @@ export const AUDIT_EVENTS = {
   "entry.deleted": {
     resourceType: "entry",
     label: "Entry deleted for good",
-    metadata: z.object({ type: entryType, title: line(), path: entryPath, below: z.int().min(0).max(100_000) }),
+    // `afterDays`: deleted by `trash.purge` (M7-2), that long after it went to the trash, the actor the system.
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, below: z.int().min(0).max(100_000), afterDays: z.int().min(1).max(3_650).optional() }),
+  },
+  // M7-2 (ADR 0025): scheduling. `runAt` is the instant (UTC); `previousRunAt` when only the time changed.
+  "entry.scheduled": {
+    resourceType: "entry",
+    label: "Entry scheduled",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, runAt: z.iso.datetime(), previousRunAt: z.iso.datetime().optional() }),
+  },
+  "entry.schedule_canceled": {
+    resourceType: "entry",
+    label: "Schedule canceled",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, runAt: z.iso.datetime() }),
+  },
+  "entry.schedule_failed": {
+    resourceType: "entry",
+    label: "Scheduled publishing failed",
+    // Why, in the words the editor shows: never the content.
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, runAt: z.iso.datetime(), reason: line(500) }),
   },
   // M5-8: categories and tags.
   "term.created": {
@@ -312,6 +331,8 @@ const FIELD_WORDS: Record<string, string> = {
   logo: "logo", favicon: "favicon",
   facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
 };
+/** An instant in a sentence: the activity log names it in UTC (the site's zone is the editor's; the log is the organization's). */
+const utc = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 const withBelow = (below: number) => (below ? `, with ${below} ${below === 1 ? "page" : "pages"} below it` : "");
 const fieldWord = (key: string) => FIELD_WORDS[key] ?? key.replace(/([A-Z])/g, " $1").toLowerCase();
 
@@ -340,7 +361,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.status_changed": (actor, m) =>
     m.newStatus === "live" ? `${actor} published the site ${m.name}.` : `${actor} switched the site ${m.name} back to Coming soon.`,
   "entry.created": (actor, m) => `${actor} created the ${m.type} ${m.title} at ${m.path}.`,
-  "entry.published": (actor, m) => `${actor} published the ${m.type} ${m.title} at ${m.path}.`,
+  "entry.published": (actor, m) => `${actor} published the ${m.type} ${m.title} at ${m.path}${m.scheduled ? ", as scheduled" : ""}.`,
   "site.homepage_changed": (actor, m) =>
     m.previousTitle ? `${actor} made ${m.title} the home page of ${m.name}, in place of ${m.previousTitle}.` : `${actor} made ${m.title} the home page of ${m.name}.`,
   "entry.moved": (actor, m) =>
@@ -351,7 +372,12 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "entry.unpublished": (actor, m) => `${actor} unpublished the ${m.type} ${m.title}, which was at ${m.path}.`,
   "entry.trashed": (actor, m) => `${actor} moved the ${m.type} ${m.title} to the trash${withBelow(m.below)}.`,
   "entry.restored": (actor, m) => `${actor} restored the ${m.type} ${m.title} from the trash, at ${m.path}${withBelow(m.below)}.`,
-  "entry.deleted": (actor, m) => `${actor} deleted the ${m.type} ${m.title} for good${withBelow(m.below)}.`,
+  "entry.deleted": (actor, m) =>
+    `${actor} deleted the ${m.type} ${m.title} for good${withBelow(m.below)}${m.afterDays ? `, ${m.afterDays} days after it went to the trash` : ""}.`,
+  "entry.scheduled": (actor, m) =>
+    `${actor} ${m.previousRunAt ? "moved the schedule of" : "scheduled"} the ${m.type} ${m.title} ${m.previousRunAt ? "to" : "for"} ${utc(m.runAt)}.`,
+  "entry.schedule_canceled": (actor, m) => `${actor} canceled the schedule of the ${m.type} ${m.title} (it was for ${utc(m.runAt)}).`,
+  "entry.schedule_failed": (actor, m) => `${actor} could not publish the ${m.type} ${m.title} as scheduled for ${utc(m.runAt)}: ${m.reason} It is a draft again.`,
   "term.created": (actor, m) => `${actor} created the ${m.taxonomy} ${m.name}.`,
   "term.updated": (actor, m) =>
     m.previousName && m.previousName !== m.name
@@ -397,6 +423,9 @@ const PLAIN: Record<AuditAction, string> = {
   "entry.trashed": "moved a page or post to the trash",
   "entry.restored": "restored a page or post",
   "entry.deleted": "deleted a page or post for good",
+  "entry.scheduled": "scheduled a page or post",
+  "entry.schedule_canceled": "canceled a schedule",
+  "entry.schedule_failed": "a scheduled publish failed",
   "term.created": "created a category or tag",
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",

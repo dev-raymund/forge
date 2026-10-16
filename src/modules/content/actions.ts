@@ -4,8 +4,8 @@ import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { FormState } from "@/platform/forms";
 import {
-  submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry, submitRestoreEntry, submitSaveDraft, submitSetHomepage,
-  submitTrashEntry, submitUnpublishEntry,
+  submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry, submitRescheduleEntry,
+  submitRestoreEntry, submitSaveDraft, submitScheduleEntry, submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";
 import { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 
@@ -82,4 +82,18 @@ export async function restoreEntryAction(orgSlug: string, siteSlug: string, entr
 
 export async function purgeEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitPurgeEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+// M7-2: scheduling.
+
+export async function scheduleEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitScheduleEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function rescheduleEntryAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitRescheduleEntry(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function cancelScheduleAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitCancelSchedule(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
 }

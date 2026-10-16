@@ -149,7 +149,11 @@ describe("migration 0005 on a database that already has content", () => {
         await runMigrations(ownerUrl(database));
         const applied = async () => (await db.query("select count(*)::int as n from drizzle.__drizzle_migrations")).rows[0].n;
         expect(await applied()).toBe(journal.entries.length);
-        expect((await db.query("select row_to_json(e)::text as row from entries e order by path")).rows).toEqual(rowsBefore);
+        // Every row as it was, column for column. Columns added by later migrations (M7-2's schedule failure) arrive empty.
+        const before = rowsBefore.map((r: { row: string }) => JSON.parse(r.row) as Record<string, unknown>);
+        const after = (await db.query("select row_to_json(e)::text as row from entries e order by path")).rows.map((r: { row: string }) => JSON.parse(r.row) as Record<string, unknown>);
+        expect(after.map((row: Record<string, unknown>, i: number) => Object.fromEntries(Object.keys(before[i]!).map((key) => [key, row[key]])))).toEqual(before);
+        for (const [i, row] of after.entries()) for (const key of Object.keys(row).filter((key) => !(key in before[i]!))) expect(row[key], key).toBeNull();
 
         await db.query("insert into entries (id, organization_id, site_id, type, locale, slug, path) values ($1, $2, $3, 'page', 'en', 'home', '/')", [uuidv7(), org, site]);
         await expect(db.query("insert into entries (id, organization_id, site_id, type, locale, slug, path) values ($1, $2, $3, 'page', 'en', 'again', '/')", [uuidv7(), org, site])).rejects.toMatchObject({

@@ -24,6 +24,10 @@ export { purgeEntry, restoreEntry, trashEntry, unpublishEntry } from "./lifecycl
 export type { Purged, Restored, Trashed, Unpublished } from "./lifecycle.service";
 export { purgeTrashedEntries, trashPurge } from "./purge";
 export type { EntryPurgeResult } from "./purge";
+// Scheduling (M7-2, ADR 0025): schedule, move, cancel; the job that publishes at the time; times in the site's zone.
+export { cancelSchedule, failDue, publishDue, publishScheduled, rescheduleEntry, runAtFrom, scheduleEntry, SCHEDULE_HORIZON_DAYS, SCHEDULE_LEAD_MS } from "./scheduling";
+export type { DueOutcome, DuePayload, Scheduled } from "./scheduling";
+export { formatInZone, offsetLabel, toLocalInput, zonedToUtc } from "./zoned-time";
 // Categories and tags (M5-8).
 export { createTerm, deleteTerm, listTermsWithUsage, updateTerm } from "./term.service";
 export type { TermSummary } from "./term.service";
@@ -32,20 +36,21 @@ export { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-for
 export type { MovedEntry } from "./tree";
 export {
   canArrangePage, canAssignTerms, canChangeAuthor, canCreateEntry, canCreateTerm, canCreditOthers, canManageTerms, canPublishEntry, canPurgeEntry, canSeeEntry, canSeePages,
-  canSetHomepage, canTransition, canTrashEntry, canUpdateEntry, ownPostsOnly,
+  canSetHomepage, canTransition, canTrashEntry, canUpdateEntry, ownPostsOnly, roleMayPublish,
 } from "./policies";
 export type { EntryRef } from "./policies";
 export {
-  DRAFT_FIELD_MAX, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry, submitRestoreEntry, submitSaveDraft,
-  submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
+  DRAFT_FIELD_MAX, submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry,
+  submitRescheduleEntry, submitRestoreEntry, submitSaveDraft, submitScheduleEntry, submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";
 
 // The editor and its link picker (M5-4).
-export { ENTRY_SEARCH_LIMIT, getEntryForEditor, listPages, listPosts, listTerms, PAGE_TREE_LIMIT, searchEntries } from "./queries";
-export type { EditorEntry, EntryMatch, PageListItem, PostList, PostListItem, TermOption } from "./queries";
+export { ENTRY_SEARCH_LIMIT, getEntryForEditor, listPages, listPosts, listScheduled, listTerms, PAGE_TREE_LIMIT, searchEntries } from "./queries";
+export type { EditorEntry, EntryMatch, PageListItem, PostList, PostListItem, ScheduledItem, TermOption } from "./queries";
 export { EntryEditorPage } from "./ui/entry-editor-page";
 // The lists and the new forms (M5-7).
 export { NewEntryForm } from "./ui/new-entry-form";
 export { PagesView } from "./ui/pages-view";
 export { PostsView } from "./ui/posts-view";
+export { ScheduledList } from "./ui/scheduled-list";
 export { TermsView } from "./ui/terms-view";

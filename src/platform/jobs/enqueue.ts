@@ -68,3 +68,34 @@ export async function enqueuePlatformJob<P>(
   if (job.scope === "tenant") throw new Error(`"${job.type}" is a tenant job; enqueue it inside withTenant()`);
   return withPlatform((tx) => enqueue(tx, job, payload, options));
 }
+
+/**
+ * A queued job, found by its natural key in the transaction's own organization (`app_current_org_id()`, never a
+ * parameter: `jobs` has no RLS, so this is its only scope), moved to a new time and payload (M7-2: a schedule changed).
+ * `running` when that job is being run right now (it cannot be moved under its runner); `none` when there is none.
+ */
+export async function moveQueuedJob<P>(tx: Tx, job: JobDefinition<P>, dedupeKey: string, payload: P, runAt: Date): Promise<"moved" | "running" | "none"> {
+  const data = job.payload.parse(payload);
+  const { rows } = await tx.execute<{ status: string }>(sql`
+    with found as (
+      select id, status from jobs
+       where type = ${job.type} and dedupe_key = ${dedupeKey} and organization_id = app_current_org_id() and status in ('queued', 'running')
+       for update
+    ), moved as (
+      update jobs set run_at = ${runAt.toISOString()}::timestamptz, payload = ${JSON.stringify(data)}::jsonb, attempts = 0, last_error = null, updated_at = now()
+        from found where jobs.id = found.id and found.status = 'queued'
+      returning jobs.id
+    )
+    select status from found`);
+  const status = rows[0]?.status;
+  return status === "queued" ? "moved" : status === "running" ? "running" : "none";
+}
+
+/** Cancels the queued job with this natural key in the transaction's own organization. Returns how many were canceled. */
+export async function cancelQueuedJob(tx: Tx, job: JobDefinition<unknown>, dedupeKey: string): Promise<number> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    update jobs set status = 'canceled', finished_at = now(), updated_at = now()
+     where type = ${job.type} and dedupe_key = ${dedupeKey} and organization_id = app_current_org_id() and status = 'queued'
+    returning id`);
+  return rows.length;
+}

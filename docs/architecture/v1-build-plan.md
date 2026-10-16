@@ -673,6 +673,12 @@ src/themes/
   - **Purge:** by hand ("Delete permanently", `delete.any`), or by `trash.purge` after 30 days. One job: entries, then media. Not recorded (no system actor until M7-2).
   - **No redirects:** the redirect prompt is M8-5's.
   - **Media warning:** trashing an image says which published pages and posts stop showing it.
+- **As built (M7-2, ADR 0025):**
+  - **Schedule:** typed in the site's time zone and stored in UTC; at least a minute and at most two years ahead. DST gaps and overlaps are refused.
+  - **The frozen revision:** the `scheduled` revision is the one published at the time. Later edits stay in the draft.
+  - **The job:** `entry.publish_scheduled` checks the schedule again (still this one; its author may still publish; still valid) and publishes through the same steps as Publish. It is recorded by the system actor and flushed with `revalidateTag(…, { expire: 0 })`.
+  - **Failures:** a permanent one returns the entry to draft, with a banner, an overview line and an email. A transient one is retried.
+  - **When it runs:** when the runner is next called after its time, so up to a day late on Hobby without an external scheduler (runbook §6).
 
 ---
 

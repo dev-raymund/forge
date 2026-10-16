@@ -33,6 +33,8 @@ export type SiteOverviewProps = {
    * page form that makes one, for those who may create pages and set the homepage. Null: no link.
    */
   homeLinks?: { edit: boolean; create: string | null };
+  /** What is scheduled on the site (M7-2): the content module's list, composed by the page. */
+  scheduled?: React.ReactNode;
 };
 
 function Card({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
@@ -47,7 +49,7 @@ function Card({ title, children, action }: { title: string; children: React.Reac
   );
 }
 
-export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, activity, activityHref, homeLinks = { edit: true, create: null } }: SiteOverviewProps) {
+export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, activity, activityHref, homeLinks = { edit: true, create: null }, scheduled }: SiteOverviewProps) {
   const { site, publicUrl, theme, reading, analytics, checklist } = overview;
   const settings = siteSettingsPath(orgSlug, site.slug);
   const edit = (href: string, label: string) => (canManage ? <Link href={href} className={cn(LINK, "text-sm")} aria-label={label}>Change</Link> : null);
@@ -178,6 +180,7 @@ export function SiteOverviewView({ orgSlug, overview, canManage, emailVerified, 
         </ol>
       </section>
 
+      {scheduled}
       {activity ? (
         <section aria-labelledby="activity-heading" className="mt-10">
           <div className="flex items-baseline justify-between gap-3">

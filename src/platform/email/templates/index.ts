@@ -4,6 +4,7 @@ import { OrganizationInvitation, organizationInvitationSubject, type Organizatio
 import { PasswordChanged, passwordChangedSubject, type PasswordChangedProps } from "./password-changed";
 import { PaymentFailed, paymentFailedSubject, type PaymentFailedProps } from "./payment-failed";
 import { ResetPassword, resetPasswordSubject, type ResetPasswordProps } from "./reset-password";
+import { ScheduledPublishFailed, scheduledPublishFailedSubject, type ScheduledPublishFailedProps } from "./scheduled-publish-failed";
 import { TrialEnding, trialEndingSubject, type TrialEndingProps } from "./trial-ending";
 import { VerifyEmail, verifyEmailSubject, type VerifyEmailProps } from "./verify-email";
 
@@ -15,6 +16,7 @@ export type TemplateProps = {
   "organization-invitation": OrganizationInvitationProps;
   "trial-ending": TrialEndingProps;
   "payment-failed": PaymentFailedProps;
+  "scheduled-publish-failed": ScheduledPublishFailedProps;
 };
 export type TemplateName = keyof TemplateProps;
 
@@ -25,6 +27,7 @@ const TEMPLATES: { [K in TemplateName]: { component: FunctionComponent<TemplateP
   "organization-invitation": { component: OrganizationInvitation, subject: organizationInvitationSubject },
   "trial-ending": { component: TrialEnding, subject: trialEndingSubject },
   "payment-failed": { component: PaymentFailed, subject: paymentFailedSubject },
+  "scheduled-publish-failed": { component: ScheduledPublishFailed, subject: scheduledPublishFailedSubject },
 };
 
 /** Subjects are plain header text: no line breaks (header injection), bounded length. */

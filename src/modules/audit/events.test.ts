@@ -31,6 +31,9 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "entry.trashed": { type: "page", title: "About us", path: "/about-us", below: 2 },
   "entry.restored": { type: "page", title: "About us", path: "/about-us", below: 2 },
   "entry.deleted": { type: "post", title: "Hello", path: "/blog/hello", below: 0 },
+  "entry.scheduled": { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-20T01:30:00.000Z" },
+  "entry.schedule_canceled": { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-20T01:30:00.000Z" },
+  "entry.schedule_failed": { type: "page", title: "About", path: "/about", runAt: "2026-10-20T01:30:00.000Z", reason: "The address /about is already used by another page or post." },
   "term.created": { taxonomy: "category", name: "Bread", slug: "bread" },
   "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
   "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
@@ -45,7 +48,7 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1, the seven of M6-3 and the four of M7-1, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1, the seven of M6-3, the four of M7-1 and the three of M7-2, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -55,6 +58,7 @@ describe("the audit vocabulary", () => {
         "entry.created", "entry.published", "site.homepage_changed",
         "entry.moved", "entry.reordered", "entry.author_changed",
         "entry.unpublished", "entry.trashed", "entry.restored", "entry.deleted",
+        "entry.scheduled", "entry.schedule_canceled", "entry.schedule_failed",
         "term.created", "term.updated", "term.deleted",
         "media.uploaded",
         "media.updated", "media.moved", "media.trashed", "media.restored", "media.folder_created", "media.folder_renamed", "media.folder_deleted",
@@ -69,12 +73,12 @@ describe("the audit vocabulary", () => {
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
-    expect(eventLabel("entry.scheduled")).toBe("entry.scheduled"); // an event from elsewhere keeps its own name
+    expect(eventLabel("entry.archived")).toBe("entry.archived"); // an event from elsewhere keeps its own name
   });
 
   it("knows an event from something that is not one", () => {
     for (const action of AUDIT_ACTIONS) expect(isAuditAction(action)).toBe(true);
-    for (const junk of ["", "member", "member.", "MEMBER.INVITED", "member.invited ", "entry.scheduled", "toString", "__proto__", "constructor", null, undefined, 1, {}, ["member.invited"]]) {
+    for (const junk of ["", "member", "member.", "MEMBER.INVITED", "member.invited ", "entry.archived", "toString", "__proto__", "constructor", null, undefined, 1, {}, ["member.invited"]]) {
       expect(isAuditAction(junk), String(junk)).toBe(false);
     }
   });
@@ -148,6 +152,11 @@ describe("what is stored with an event", () => {
       ["entry.trashed", { type: "page", title: "X", path: "/x", below: -1 }],
       ["entry.restored", { type: "page", title: "X", path: "/x" }],
       ["entry.deleted", { type: "custom", title: "X", path: "/x", below: 0 }],
+      ["entry.deleted", { type: "post", title: "X", path: "/x", below: 0, afterDays: 0 }],
+      ["entry.scheduled", { type: "post", title: "X", path: "/x", runAt: "tomorrow" }],
+      ["entry.schedule_canceled", { type: "post", title: "X", path: "/x" }],
+      ["entry.schedule_failed", { type: "post", title: "X", path: "/x", runAt: "2026-10-20T01:30:00.000Z", reason: "" }],
+      ["entry.published", { type: "post", title: "X", path: "/x", revision: 1, scheduled: false }],
       ["term.created", { taxonomy: "section", name: "X", slug: "x" }],
       ["term.created", { taxonomy: "tag", name: "X", slug: "X Y" }],
       ["term.updated", { taxonomy: "tag", name: "X", slug: "x", fields: [] }],
@@ -166,7 +175,7 @@ describe("what is stored with an event", () => {
   });
 
   it("refuses an event that is not in the vocabulary, including names an object would answer to", () => {
-    for (const action of ["member.promoted", "entry.scheduled", "", "toString", "__proto__", "constructor", "hasOwnProperty", null, undefined, 7]) {
+    for (const action of ["member.promoted", "entry.archived", "", "toString", "__proto__", "constructor", "hasOwnProperty", null, undefined, 7]) {
       expect(() => sanitizeMetadata(action, {}), String(action)).toThrow(/is not an audit event/);
     }
   });
@@ -236,6 +245,23 @@ describe("an event as a sentence", () => {
       "Raymund restored the page About us from the trash, at /about-us, with 1 page below it.",
     );
     expect(say("entry.deleted", { type: "post", title: "Hello", path: "/blog/hello", below: 0 })).toBe("Raymund deleted the post Hello for good.");
+    // M7-2: scheduling, and what Forge's own jobs do (the actor's name is the system actor's label).
+    expect(say("entry.scheduled", { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-20T01:30:00.000Z" })).toBe("Raymund scheduled the post Hello for 2026-10-20 01:30 UTC.");
+    expect(say("entry.scheduled", { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-21T01:30:00.000Z", previousRunAt: "2026-10-20T01:30:00.000Z" })).toBe(
+      "Raymund moved the schedule of the post Hello to 2026-10-21 01:30 UTC.",
+    );
+    expect(say("entry.schedule_canceled", { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-20T01:30:00.000Z" })).toBe(
+      "Raymund canceled the schedule of the post Hello (it was for 2026-10-20 01:30 UTC).",
+    );
+    expect(describeEvent({ action: "entry.published", actorName: "Forge (scheduled publishing)", metadata: { type: "post", title: "Hello", path: "/blog/hello", revision: 2, scheduled: true } })).toBe(
+      "Forge (scheduled publishing) published the post Hello at /blog/hello, as scheduled.",
+    );
+    expect(
+      describeEvent({ action: "entry.schedule_failed", actorName: "Forge (scheduled publishing)", metadata: { type: "page", title: "About", path: "/about", runAt: "2026-10-20T01:30:00.000Z", reason: "The address /about is already used by another page or post." } }),
+    ).toBe("Forge (scheduled publishing) could not publish the page About as scheduled for 2026-10-20 01:30 UTC: The address /about is already used by another page or post. It is a draft again.");
+    expect(describeEvent({ action: "entry.deleted", actorName: "Forge (trash cleanup)", metadata: { type: "page", title: "Old", path: "/old", below: 1, afterDays: 30 } })).toBe(
+      "Forge (trash cleanup) deleted the page Old for good, with 1 page below it, 30 days after it went to the trash.",
+    );
     expect(say("term.created", { taxonomy: "category", name: "Bread", slug: "bread" })).toBe("Raymund created the category Bread.");
     expect(say("term.updated", { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" })).toBe(
       "Raymund renamed the tag Rye to Sourdough, with the slug sourdough instead of rye.",
@@ -272,7 +298,7 @@ describe("an event as a sentence", () => {
   });
 
   it("an event this code does not know is named, not hidden; an actor with no name is 'Someone'", () => {
-    expect(say("entry.scheduled", { type: "post" })).toBe("Raymund did something Forge cannot describe yet (entry.scheduled).");
+    expect(say("entry.archived", { type: "post" })).toBe("Raymund did something Forge cannot describe yet (entry.archived).");
     expect(say("member.left", { role: "viewer" }, "")).toBe("Someone left the organization.");
     expect(say("member.left", { role: "viewer" }, "   ")).toBe("Someone left the organization.");
   });

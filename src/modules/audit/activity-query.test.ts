@@ -15,7 +15,7 @@ describe("the activity page's URL", () => {
 
   it("drops what is not a filter value, one by one, and keeps the rest", () => {
     const junk: Record<string, (string | string[] | undefined)[]> = {
-      action: ["", "entry.scheduled", "member", "MEMBER.INVITED", "toString", "' or 1=1 --", "member.invited "],
+      action: ["", "entry.archived", "member", "MEMBER.INVITED", "toString", "' or 1=1 --", "member.invited "],
       member: ["", "me", "not-a-uuid", `${MEMBER}x`, "' or 1=1 --", "../../etc/passwd"],
       site: ["", "all", "not-a-uuid"],
       from: ["", "yesterday", "2026-13-01", "2026-02-30", "2026-1-1", "01/02/2026", "2026-01-10T00:00:00Z", "' or 1=1 --"],

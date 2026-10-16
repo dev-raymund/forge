@@ -42,6 +42,16 @@ export const emailPayload = z.discriminatedUnion("template", [
   z.object({ template: z.literal("organization-invitation"), invitationId: z.uuid(), url: appLink }),
   z.object({ template: z.literal("trial-ending"), trialEndsAt: z.iso.datetime(), url: appLink }),
   z.object({ template: z.literal("payment-failed"), url: appLink }),
+  // M7-2: to the person who scheduled it, while they are a member of the organization the email was queued in.
+  z.object({
+    template: z.literal("scheduled-publish-failed"),
+    userId: z.uuid(),
+    url: appLink,
+    title: z.string().trim().min(1).max(200),
+    siteName: z.string().trim().min(1).max(200),
+    when: z.string().trim().min(1).max(100),
+    reason: z.string().trim().min(1).max(500),
+  }),
 ]);
 export type EmailPayload = z.input<typeof emailPayload>;
 type ParsedPayload = z.output<typeof emailPayload>;
@@ -134,6 +144,15 @@ async function deliveries(payload: ParsedPayload, ctx: JobContext): Promise<Deli
           },
         },
       ];
+    }
+    case "scheduled-publish-failed": {
+      if (!ctx.orgId) throw new PermanentJobError("A scheduling email must be queued inside its organization's transaction");
+      // Only while they are still a member: RLS confines the lookup to the job's organization.
+      const [member] = await ctx.withTenant((tx) => tx.select({ id: organizationMembers.id }).from(organizationMembers).where(eq(organizationMembers.userId, payload.userId)));
+      if (!member) return [];
+      const user = await userRecipient(payload.userId);
+      const props = { name: user.name, title: payload.title, siteName: payload.siteName, when: payload.when, reason: payload.reason, url: payload.url };
+      return [{ to: user.email, key: id, template: "scheduled-publish-failed", props }];
     }
     case "trial-ending":
     case "payment-failed": {

@@ -8,8 +8,10 @@
  *   draft                publish           published           publish
  *   published            publish           published           publish     (publish changes)
  *   published            unpublish         draft               publish
- *   draft                schedule          scheduled           publish     (M7-2)
+ *   draft                schedule          scheduled           publish     (M7-2: a frozen revision, published at its time)
+ *   scheduled            reschedule        scheduled           publish     (M7-2: the same revision, another time)
  *   scheduled            cancel_schedule   draft               publish     (M7-2)
+ *   scheduled            publish_scheduled published           system      (M7-2: the job, at its time; never a member)
  *   draft                trash             draft, trashed      delete
  *   trashed              restore           draft               delete      (never republished)
  *   trashed              purge             (gone)              delete_any  (by hand; the daily job purges after 30 days)
@@ -22,11 +24,14 @@ export const LIFECYCLE_STATUSES = ["draft", "scheduled", "published"] as const;
 export type LifecycleStatus = (typeof LIFECYCLE_STATUSES)[number];
 export type LifecycleState = { status: LifecycleStatus; trashed: boolean };
 
-export const LIFECYCLE_ACTIONS = ["publish", "unpublish", "schedule", "cancel_schedule", "trash", "restore", "purge"] as const;
+export const LIFECYCLE_ACTIONS = ["publish", "unpublish", "schedule", "reschedule", "cancel_schedule", "publish_scheduled", "trash", "restore", "purge"] as const;
 export type LifecycleAction = (typeof LIFECYCLE_ACTIONS)[number];
 
-/** The right an action takes: the type's publish right, its delete right (own or any), or its delete-any right. */
-export type LifecycleRight = "publish" | "delete" | "delete_any";
+/**
+ * The right an action takes: the type's publish right, its delete right (own or any), its delete-any right, or none a
+ * member holds (`system`: only Forge's own job does it, M7-2).
+ */
+export type LifecycleRight = "publish" | "delete" | "delete_any" | "system";
 
 export type Transition = { ok: true; to: LifecycleState | null; right: LifecycleRight } | { ok: false; reason: string };
 
@@ -34,7 +39,9 @@ const RIGHTS: Record<LifecycleAction, LifecycleRight> = {
   publish: "publish",
   unpublish: "publish",
   schedule: "publish",
+  reschedule: "publish",
   cancel_schedule: "publish",
+  publish_scheduled: "system",
   trash: "delete",
   restore: "delete",
   purge: "delete_any",
@@ -63,8 +70,11 @@ export function transition(from: LifecycleState, action: LifecycleAction): Trans
       return from.status === "published" ? ok(draft, action) : no(NOT_PUBLISHED);
     case "schedule":
       return from.status === "draft" ? ok({ status: "scheduled", trashed: false }, action) : no(from.status === "published" ? "It is published." : "It is already scheduled.");
+    case "reschedule":
     case "cancel_schedule":
-      return from.status === "scheduled" ? ok(draft, action) : no("It is not scheduled.");
+      return from.status === "scheduled" ? ok(action === "reschedule" ? from : draft, action) : no("It is not scheduled.");
+    case "publish_scheduled":
+      return from.status === "scheduled" ? ok({ status: "published", trashed: false }, action) : no("It is not scheduled.");
     case "trash":
       if (from.status === "published") return no(PUBLISHED_TO_TRASH);
       if (from.status === "scheduled") return no(SCHEDULED_TO_TRASH);

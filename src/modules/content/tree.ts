@@ -1,10 +1,10 @@
 import "server-only";
-import type { SiteContext } from "@/modules/tenancy";
 import type { TenantTx } from "@/platform/db";
 import { isUniqueViolation } from "@/platform/db";
 import { conflict } from "@/platform/errors";
 import { HOME_PATH, pathUnder } from "./paths";
 import { descendantsOf, updateEntry } from "./repository";
+import type { SiteScope } from "./scope";
 import { ENTRY_PATH_KEY } from "./unique-slug";
 
 /**
@@ -26,7 +26,7 @@ export type MovedEntry = { id: string; type: string; status: string; title: stri
  * the request fails with a Conflict naming the path: the transaction is not
  * committed, so no page has moved.
  */
-export async function moveSubtree(tx: TenantTx, ctx: SiteContext, rootId: string, rootPath: string): Promise<MovedEntry[]> {
+export async function moveSubtree(tx: TenantTx, ctx: SiteScope, rootId: string, rootPath: string): Promise<MovedEntry[]> {
   const rows = await descendantsOf(tx, ctx.org.id, ctx.site.id, rootId);
   const pathOf = new Map<string, string>([[rootId, rootPath]]);
   const moved: MovedEntry[] = [];

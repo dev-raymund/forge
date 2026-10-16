@@ -1296,9 +1296,9 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M7-1, M1-3
 
 **Acceptance criteria:**
-- [ ] `scheduleEntry(entryId, runAt, expectedVersion)`: validates as for publish, creates a `scheduled` revision, enqueues `entry.publish_scheduled` (`dedupe_key = entry:{id}`), status `scheduled`
-- [ ] `cancelSchedule`; the job publishes the frozen revision through the same function and invalidates with `revalidateTag(..., { expire: 0 })`
-- [ ] Schedule dialog in the site timezone; scheduled list on the site overview; failed job → email to the scheduler + banner
+- [x] `scheduleEntry(entryId, runAt, expectedVersion)`: validates as for publish, creates a `scheduled` revision, enqueues `entry.publish_scheduled` (`dedupe_key = entry:{id}`), status `scheduled` *(ADR 0025 §3; `runAt` is a wall-clock time in the site's zone, stored in UTC, at least a minute and at most two years ahead; `rescheduleEntry` moves the time, same revision)*
+- [x] `cancelSchedule`; the job publishes the frozen revision through the same function and invalidates with `revalidateTag(..., { expire: 0 })` *(§4: `prepareForPublish` + `makeLive`, shared with Publish; the scheduler's right checked again; recorded by the system actor; idempotent)*
+- [x] Schedule dialog in the site timezone; scheduled list on the site overview; failed job → email to the scheduler + banner *(§2, §5: a permanent failure returns it to draft with the reason (editor banner, overview line, email, `entry.schedule_failed`); a transient one is retried, and on the last attempt treated the same. §6–7: the system actor; `trash.purge` recorded)*
 
 **Likely files/modules:** `src/modules/content/scheduling.*`, `src/platform/jobs/registry.ts`
 
@@ -1308,6 +1308,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Labels:** `area:content` `type:feature`
 
 **Description:** Snapshot history.
+
+*From M7-2 (ADR 0025): revisions now include `scheduled` ones (a frozen draft, created by whoever scheduled it). A scheduled revision that went live is the entry's `published_revision_id` (no `publish` copy is made), and a canceled schedule leaves its `scheduled` revision in the history. List them with their kind; restoring one copies it into the draft like any other. The system actor exists (`audit.recordSystem`, ADR 0025 §6) if a restore ever runs in the background.*
 
 *From M7-1 (ADR 0024): restoring from the trash is not restoring a revision: it brings the entry back as the draft it was. Unpublishing keeps every revision; deleting for good deletes them with the entry. A trashed entry's editor is not found: its history is reachable once it is restored.*
 

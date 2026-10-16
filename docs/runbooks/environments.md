@@ -215,6 +215,12 @@ Vercel Hobby runs the job runner only daily; `after()` kicks cover jobs enqueued
 
 Any free cron service works, e.g. cron-job.org. Alternatively, use a GitHub Actions `schedule` workflow, which is free for this public repository but only runs every 5 minutes at best, and often late. The endpoint returns 404 without the secret. Nothing in the app changes; on a paid plan, replace it with a per-minute Vercel cron.
 
+**Scheduled publishing depends on it (M7-2, ADR 0025 §9).** A scheduled page or post is published by the first runner call after its time:
+- **Daily cron only (as configured):** up to a day late, at 03:00 UTC ±59 min. Its date is the scheduled time; visitors see it only after the run.
+- **With an external scheduler:** within its interval, when the scheduler calls on time. Free services do not promise that.
+- Nothing has been measured on a deployment. After setting the scheduler up, schedule a test post a few minutes ahead on the preview site and note when it appeared (`entry.published … as scheduled` in the activity log has the exact time). Record it with the date.
+- A schedule that cannot be published goes back to draft with the reason and emails whoever scheduled it. Jobs that failed five times are `dead` in the `jobs` table (`select type, last_error, finished_at from jobs where status = 'dead' order by finished_at desc`).
+
 ## 7. Confirm the spikes on the deployment
 
 Once the deployment exists, run the remaining checks. Each result goes into its ADR:

@@ -25,6 +25,7 @@ import { EmbedDialog } from "./embed-dialog";
 import { EntrySettings, type DraftFields, type EntryPlace, type SidebarChoices } from "./entry-settings";
 import { EDITOR_NODE_TYPES, editorExtensions } from "./extensions";
 import { TrashSection, UnpublishButton } from "./lifecycle-controls";
+import { ScheduleButton, ScheduledControls } from "./schedule-controls";
 import { LinkDialog } from "./link-dialog";
 import { currentBlock, PropertiesPanel, type CurrentBlock } from "./panel/properties-panel";
 import { runBlockAction, topLevelIndexAt, type BlockAction } from "./reorder";
@@ -131,6 +132,9 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
   const [copied, setCopied] = useState<string | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [live, setLive] = useState({ status: entry.status, version: entry.publishedDraftVersion, path: entry.path });
+  // Scheduling (M7-2): when it publishes, and why the last schedule failed (until it is scheduled or published again).
+  const [scheduledAt, setScheduledAt] = useState<string | null>(entry.schedule.at);
+  const [scheduleFailure, setScheduleFailure] = useState(entry.schedule.failure);
   // The sidebar (M5-7): draft fields changed here, and what its immediate actions changed.
   const [fields, setFields] = useState<DraftFields>(restored?.fields ?? {});
   const fieldsRef = useRef(fields);
@@ -332,6 +336,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
       const result = await publishEntryAction(orgSlug, siteSlug, entry.id, IDLE, data);
       if (result.status === "success") {
         setLive({ status: "published", version: autosave.version, path: result.values?.path ?? live.path });
+        setScheduleFailure(null);
         setNotice({ tone: "success", text: result.message ?? "Published." });
       } else {
         setNotice({ tone: "error", text: result.message ?? Object.values(result.fieldErrors ?? {}).flat()[0] ?? "Not published." });
@@ -362,6 +367,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
   const conflict = status.state === "conflict";
   const editable = canEdit && !conflict;
   const isLive = live.status === "published";
+  const isScheduled = live.status === "scheduled" && scheduledAt !== null;
   const upToDate = isLive && live.version === savedVersion && (status.state === "idle" || status.state === "saved");
   const address = publicPrefix ? `${publicPrefix}${live.path === "/" ? "" : live.path}` : live.path;
   const items = slash ? filterCommands(slash.query, commandsAt(slash.inColumn)) : [];
@@ -378,10 +384,14 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
           data-testid="entry-status"
           className={cn(
             "inline-flex h-6 items-center rounded-full border px-2.5 text-xs font-medium",
-            isLive ? "border-emerald-700/30 bg-emerald-50 text-emerald-900" : "border-amber-700/30 bg-amber-50 text-amber-900",
+            isLive
+              ? "border-emerald-700/30 bg-emerald-50 text-emerald-900"
+              : isScheduled
+                ? "border-sky-700/30 bg-sky-50 text-sky-900"
+                : "border-amber-700/30 bg-amber-50 text-amber-900",
           )}
         >
-          {isLive ? (upToDate ? "Published" : "Published, with unpublished changes") : "Draft"}
+          {isLive ? (upToDate ? "Published" : "Published, with unpublished changes") : isScheduled ? "Scheduled" : "Draft"}
         </span>
         {place.isHome ? <span className="text-sm text-muted-foreground">Home page</span> : null}
         {canEdit ? (
@@ -408,7 +418,52 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               }}
             />
           ) : null}
-          {canEdit && entry.canPublish ? (
+          {isScheduled ? (
+            <ScheduledControls
+              orgSlug={orgSlug}
+              siteSlug={siteSlug}
+              entryId={entry.id}
+              timeZone={entry.schedule.timeZone}
+              scheduledAt={scheduledAt!}
+              canChange={entry.canPublish}
+              onChanged={(next, text) => {
+                setScheduledAt(next);
+                setNotice({ tone: "success", text });
+              }}
+              onCanceled={(text) => {
+                setLive((current) => ({ ...current, status: "draft" }));
+                setScheduledAt(null);
+                setNotice({ tone: "success", text });
+              }}
+              onError={(text) => setNotice({ tone: "error", text })}
+            />
+          ) : null}
+          {!isLive && !isScheduled && canEdit && entry.canPublish ? (
+            <ScheduleButton
+              orgSlug={orgSlug}
+              siteSlug={siteSlug}
+              entryId={entry.id}
+              timeZone={entry.schedule.timeZone}
+              disabled={publishing || conflict}
+              beforeSchedule={async () => {
+                // What is typed is saved first: the schedule freezes the version that is saved.
+                const autosave = autosaveRef.current;
+                if (!autosave) return { error: "The editor is not ready yet." };
+                await autosave.flush();
+                const state = statusRef.current.state;
+                if (state === "conflict") return { error: "Not scheduled: the draft was changed somewhere else." };
+                if (state === "invalid" || state === "error" || state === "pending") return { error: "Not scheduled: the latest changes are not saved yet." };
+                return { version: autosave.version };
+              }}
+              onScheduled={(at, text) => {
+                setLive((current) => ({ ...current, status: "scheduled" }));
+                setScheduledAt(at);
+                setScheduleFailure(null);
+                setNotice({ tone: "success", text });
+              }}
+            />
+          ) : null}
+          {canEdit && entry.canPublish && !isScheduled ? (
             <Button type="button" className="h-9 px-4" onClick={publish} aria-busy={publishing || undefined} disabled={publishing || conflict}>
               {publishing ? "Publishing…" : isLive ? "Publish changes" : "Publish"}
             </Button>
@@ -417,6 +472,19 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
       </div>
 
       {notice ? <FormAlert tone={notice.tone}>{notice.text}</FormAlert> : null}
+      {scheduleFailure && !isLive && !isScheduled ? (
+        <FormAlert tone="error">
+          <span data-testid="schedule-failure">
+            It was not published as scheduled ({new Date(scheduleFailure.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}): {scheduleFailure.reason} It is a draft
+            again: publish it, or schedule it again.
+          </span>
+        </FormAlert>
+      ) : null}
+      {isScheduled && canEdit ? (
+        <p className="text-sm text-muted-foreground" data-testid="scheduled-note">
+          Changes you make now are saved to the draft, but are not part of the scheduled version. Cancel the schedule and schedule it again to include them.
+        </p>
+      ) : null}
       {isLive ? (
         <p className="text-sm text-muted-foreground" data-testid="entry-address">
           Address: <span className="font-medium text-foreground">{address}</span>
@@ -571,6 +639,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               entry={entry}
               title={title}
               isLive={isLive}
+              isScheduled={isScheduled}
               isHome={place.isHome}
               beforeTrash={async () => {
                 // What is typed is saved first, so the trash keeps it; a draft that cannot be saved is not trashed.

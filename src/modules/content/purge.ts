@@ -1,9 +1,11 @@
 import "server-only";
 import { z } from "zod";
+import { recordSystem } from "@/modules/audit";
 import { purgeTrashedMedia } from "@/modules/media";
 import { withPlatform, withTenant } from "@/platform/db";
 import { defineJob } from "@/platform/jobs";
 import { logger, type Logger } from "@/platform/observability";
+import { titleForLog } from "./entry.service";
 import { ENTRY_TRASH_DAYS } from "./lifecycle";
 import { childrenOf, deleteTrashed, lockSiteSettings, organizationsWithPurgeableEntries, purgeCandidates, sitesWithPurgeableEntries } from "./repository";
 
@@ -23,8 +25,8 @@ import { childrenOf, deleteTrashed, lockSiteSettings, organizationsWithPurgeable
  *      revisions and published term links go with them; media they used, and other entries, do not.
  * A batch that fails rolls back whole and is tried again on the next run: nothing is half-deleted.
  *
- * No audit record, as for media (ADR 0022): no one did this, and the trashing was recorded. The audit writer has no
- * system actor yet (M7-2).
+ * Recorded (M7-2, ADR 0025): each entry deleted, with the pages that went below it, as `entry.deleted` by the system
+ * actor "Forge (trash cleanup)", in the batch's own transaction. Media purges are still not recorded (ADR 0022).
  */
 
 const ORGANIZATIONS_PER_RUN = 500;
@@ -34,7 +36,7 @@ const BUDGET_MS = 30_000;
 export type EntryPurgeResult = { organizations: number; purged: number; blocked: number; unfinished: boolean };
 
 /** One batch of one site. `blocked`: entries kept back because something below them would be orphaned, or the Home page. */
-async function purgeBatch(orgId: string, siteId: string, before: Date, log: Logger): Promise<{ candidates: number; purged: number; blocked: number }> {
+async function purgeBatch(orgId: string, siteId: string, before: Date, now: Date, log: Logger): Promise<{ candidates: number; purged: number; blocked: number }> {
   return withTenant({ orgId }, async (tx) => {
     const settings = await lockSiteSettings(tx, orgId, siteId);
     const candidates = await purgeCandidates(tx, orgId, siteId, before, BATCH);
@@ -64,6 +66,33 @@ async function purgeBatch(orgId: string, siteId: string, before: Date, log: Logg
       log.warn("trash.purge kept back the site's home page", { siteId, entryId: settings.homepageEntryId });
     }
     const purged = await deleteTrashed(tx, orgId, siteId, [...going], before);
+    // Recorded by the system (M7-2), in this transaction: a record that cannot be written deletes nothing. One line for
+    // each entry deleted whose parent was not deleted with it, with how many pages went below it; the log has no
+    // foreign key to entries, so these lines outlive the rows.
+    const deleted = new Set(purged);
+    const byId = new Map(candidates.map((row) => [row.id, row]));
+    const rootOf = (id: string): string => {
+      const parent = byId.get(id)?.parentId;
+      return parent && deleted.has(parent) ? rootOf(parent) : id;
+    };
+    const below = new Map<string, number>();
+    for (const id of deleted) {
+      const root = rootOf(id);
+      if (root !== id) below.set(root, (below.get(root) ?? 0) + 1);
+    }
+    for (const id of deleted) {
+      const row = byId.get(id)!;
+      if (rootOf(id) !== id) continue;
+      const days = row.deletedAt ? Math.max(1, Math.floor((now.getTime() - row.deletedAt.getTime()) / 86_400_000)) : ENTRY_TRASH_DAYS;
+      await recordSystem(
+        tx,
+        {
+          action: "entry.deleted", resourceType: "entry", resourceId: row.id, siteId,
+          metadata: { type: row.type, title: titleForLog(row.title), path: row.path, below: below.get(id) ?? 0, afterDays: days },
+        },
+        "trash.purge",
+      );
+    }
     return { candidates: candidates.length, purged: purged.length, blocked };
   });
 }
@@ -85,7 +114,7 @@ export async function purgeTrashedEntries(options: { now?: Date; budgetMs?: numb
     const sites = await withTenant({ orgId }, (tx) => sitesWithPurgeableEntries(tx, orgId, before));
     for (const siteId of sites) {
       for (;;) {
-        const batch = await purgeBatch(orgId, siteId, before, log);
+        const batch = await purgeBatch(orgId, siteId, before, now, log);
         result.purged += batch.purged;
         result.blocked += batch.blocked;
         // Done with the site when a batch was not full, or deleted nothing (what is left is kept back).

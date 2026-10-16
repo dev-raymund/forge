@@ -55,14 +55,17 @@ export async function findDraft(tx: TenantTx, organizationId: string, siteId: st
   return row ?? null;
 }
 
-/** What the entry services need of the site: its language (new entries') and its blog path (posts', and the path pages may not take). */
-export async function siteFacts(tx: TenantTx, organizationId: string, siteId: string): Promise<{ name: string; locale: string; blogPath: string } | null> {
+/**
+ * What the entry services need of the site: its language (new entries'), its blog path (posts', and the path pages may
+ * not take), and its time zone (M7-2: schedules are typed and shown in it).
+ */
+export async function siteFacts(tx: TenantTx, organizationId: string, siteId: string): Promise<{ name: string; locale: string; blogPath: string; timeZone: string } | null> {
   const [row] = await tx
-    .select({ name: t.sites.name, locale: t.sites.defaultLocale, reading: t.siteSettings.reading })
+    .select({ name: t.sites.name, locale: t.sites.defaultLocale, reading: t.siteSettings.reading, timeZone: t.sites.timezone })
     .from(t.sites)
     .innerJoin(t.siteSettings, and(eq(t.siteSettings.organizationId, t.sites.organizationId), eq(t.siteSettings.siteId, t.sites.id)))
     .where(and(eq(t.sites.organizationId, organizationId), eq(t.sites.id, siteId), isNull(t.sites.deletedAt)));
-  return row ? { name: row.name, locale: row.locale, blogPath: readReading(row.reading).blogPath } : null;
+  return row ? { name: row.name, locale: row.locale, blogPath: readReading(row.reading).blogPath, timeZone: row.timeZone } : null;
 }
 
 /** Is the user a member of the organization? (V1 memberships are organization-wide: plan §13.) */
@@ -396,10 +399,12 @@ export async function sitesWithPurgeableEntries(tx: TenantTx, organizationId: st
   return rows.map((row) => row.siteId);
 }
 
-/** A batch of the site's entries due to be purged, oldest in the trash first, locked. */
-export async function purgeCandidates(tx: TenantTx, organizationId: string, siteId: string, before: Date, limit: number): Promise<{ id: string; parentId: string | null }[]> {
+/** A batch of the site's entries due to be purged, oldest in the trash first, locked; with what their record names. */
+export async function purgeCandidates(
+  tx: TenantTx, organizationId: string, siteId: string, before: Date, limit: number,
+): Promise<{ id: string; parentId: string | null; type: "page" | "post"; title: string; path: string; deletedAt: Date | null }[]> {
   return tx
-    .select({ id: entries.id, parentId: entries.parentId })
+    .select({ id: entries.id, parentId: entries.parentId, type: entries.type, title: entries.title, path: entries.path, deletedAt: entries.deletedAt })
     .from(entries)
     .where(and(eq(entries.organizationId, organizationId), eq(entries.siteId, siteId), sql`${entries.deletedAt} is not null`, sql`${entries.deletedAt} < ${before.toISOString()}::timestamptz`))
     .orderBy(entries.deletedAt, entries.id)
@@ -420,4 +425,80 @@ export async function childrenOf(
     .from(entries)
     .where(and(eq(entries.organizationId, organizationId), eq(entries.siteId, siteId), inArray(entries.parentId, [...parentIds])));
   return rows.map((row) => ({ id: row.id, parentId: row.parentId!, trashed: row.trashed, due: row.due }));
+}
+
+
+// ── M7-2: scheduling ─────────────────────────────────────────────────────────
+
+/**
+ * An entry of the organization by its id alone, locked: the scheduled publish job knows the organization (its tenant
+ * transaction's) and the entry, and reads the site from the entry's own row. Not in the trash, of a site that is not
+ * deleted.
+ */
+export async function findEntryOfOrganization(tx: TenantTx, organizationId: string, entryId: string): Promise<EntryRow | null> {
+  const [row] = await tx
+    .select()
+    .from(entries)
+    .where(and(eq(entries.organizationId, organizationId), eq(entries.id, entryId), isNull(entries.deletedAt), siteIsLive))
+    .for("update");
+  return row ?? null;
+}
+
+/** The role a user holds in the organization now, or null when they are not a member any more. */
+export async function memberRole(tx: TenantTx, organizationId: string, userId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ key: t.roles.key })
+    .from(t.organizationMembers)
+    .innerJoin(t.roles, eq(t.roles.id, t.organizationMembers.roleId))
+    .where(and(eq(t.organizationMembers.organizationId, organizationId), eq(t.organizationMembers.userId, userId)));
+  return row?.key ?? null;
+}
+
+/** The entry's latest `scheduled` revision: while it is scheduled, the one its schedule publishes. */
+export async function latestScheduledRevision(tx: TenantTx, organizationId: string, siteId: string, entryId: string) {
+  const [row] = await tx
+    .select()
+    .from(entryRevisions)
+    .where(and(eq(entryRevisions.organizationId, organizationId), eq(entryRevisions.siteId, siteId), eq(entryRevisions.entryId, entryId), eq(entryRevisions.kind, "scheduled")))
+    .orderBy(desc(entryRevisions.number))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The organization's and the site's slugs and the site's name: a link to the entry's editor in an email (M7-2). */
+export async function siteLinkFacts(tx: TenantTx, organizationId: string, siteId: string): Promise<{ orgSlug: string; siteSlug: string; siteName: string } | null> {
+  const [row] = await tx
+    .select({ orgSlug: t.organizations.slug, siteSlug: t.sites.slug, siteName: t.sites.name })
+    .from(t.sites)
+    .innerJoin(t.organizations, eq(t.organizations.id, t.sites.organizationId))
+    .where(and(eq(t.sites.organizationId, organizationId), eq(t.sites.id, siteId)));
+  return row ?? null;
+}
+
+/** The site's scheduled entries, soonest first, and those whose schedule failed lately (M7-2: the site's overview). */
+export async function scheduledOfSite(tx: TenantTx, organizationId: string, siteId: string, failedSince: Date, limit: number) {
+  return tx
+    .select({
+      id: entries.id, type: entries.type, title: entries.title, draftTitle: entryDrafts.title, path: entries.path, status: entries.status, authorId: entries.authorId,
+      organizationId: entries.organizationId, scheduledAt: entries.scheduledAt, scheduleFailure: entries.scheduleFailure, scheduleFailedAt: entries.scheduleFailedAt,
+    })
+    .from(entries)
+    .innerJoin(entryDrafts, and(eq(entryDrafts.organizationId, entries.organizationId), eq(entryDrafts.siteId, entries.siteId), eq(entryDrafts.entryId, entries.id)))
+    .where(
+      and(
+        ofSite(organizationId, siteId), isNull(entries.deletedAt),
+        sql`(${entries.status} = 'scheduled' or (${entries.scheduleFailedAt} is not null and ${entries.scheduleFailedAt} >= ${failedSince.toISOString()}::timestamptz))`,
+      ),
+    )
+    .orderBy(sql`${entries.scheduledAt} asc nulls last`, desc(entries.scheduleFailedAt), entries.id)
+    .limit(limit);
+}
+
+/** One of the entry's revisions, whole (M7-2: the frozen `scheduled` one the job publishes). */
+export async function fullRevision(tx: TenantTx, organizationId: string, siteId: string, entryId: string, revisionId: string) {
+  const [row] = await tx
+    .select()
+    .from(entryRevisions)
+    .where(and(eq(entryRevisions.organizationId, organizationId), eq(entryRevisions.siteId, siteId), eq(entryRevisions.entryId, entryId), eq(entryRevisions.id, revisionId)));
+  return row ?? null;
 }

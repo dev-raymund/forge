@@ -28,10 +28,18 @@ const TABLE: Row[] = [
   ["scheduled", scheduled, "unpublish", "It is not published."],
   ["scheduled", scheduled, "schedule", "It is already scheduled."],
   ["scheduled", scheduled, "cancel_schedule", draft, "publish"],
+  ["scheduled", scheduled, "reschedule", scheduled, "publish"],
+  ["scheduled", scheduled, "publish_scheduled", published, "system"],
+  ["draft", draft, "reschedule", "It is not scheduled."],
+  ["draft", draft, "publish_scheduled", "It is not scheduled."],
+  ["published", published, "reschedule", "It is not scheduled."],
+  ["published", published, "publish_scheduled", "It is not scheduled."],
   ["scheduled", scheduled, "trash", "It is scheduled. Cancel the schedule first, then move it to the trash."],
   ["trashed", trashed, "restore", draft, "delete"],
   ["trashed", trashed, "purge", null, "delete_any"],
-  ...(["publish", "unpublish", "schedule", "cancel_schedule", "trash"] as const).map((action): Row => ["trashed", trashed, action, "It is in the trash. Restore it first."]),
+  ...(["publish", "unpublish", "schedule", "reschedule", "cancel_schedule", "publish_scheduled", "trash"] as const).map(
+    (action): Row => ["trashed", trashed, action, "It is in the trash. Restore it first."],
+  ),
 ];
 
 describe("the transition table", () => {

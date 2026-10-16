@@ -8,6 +8,7 @@ import * as t from "@/platform/db/schema";
 import { validationError } from "@/platform/errors";
 import { isEmbeddableUrl } from "@/platform/net/url-safety";
 import { referencesOf } from "./document/references";
+import type { SiteScope } from "./scope";
 import { entries } from "./schema";
 
 /**
@@ -63,7 +64,7 @@ export async function assertNewReferences(tx: TenantTx, ctx: SiteContext, next: 
   }
 }
 
-export async function assertOwnReferences(tx: TenantTx, ctx: SiteContext, document: unknown): Promise<void> {
+export async function assertOwnReferences(tx: TenantTx, ctx: SiteScope, document: unknown): Promise<void> {
   const refs = referencesOf(document);
   assertEmbeds(refs.embeds);
   if (refs.mediaIds.size) {

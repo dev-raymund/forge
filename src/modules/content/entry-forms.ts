@@ -9,6 +9,7 @@ import { entryEditorPath, entryListPath } from "./admin-paths";
 import { changeAuthor, createEntry, saveDraft } from "./entry.service";
 import { setHomepage } from "./homepage.service";
 import { purgeEntry, restoreEntry, trashEntry, unpublishEntry } from "./lifecycle.service";
+import { cancelSchedule, rescheduleEntry, scheduleEntry } from "./scheduling";
 import { canSetHomepage } from "./policies";
 import { publishEntry } from "./publishing.service";
 import { movePage, placePage } from "./tree.service";
@@ -292,6 +293,65 @@ export async function submitPurgeEntry(actor: Actor, orgSlug: string, siteSlug: 
       state: { status: "success", message: `Deleted for good${pagesBelow(below)}.` },
       revalidate: listsOf(ctx.org.slug, ctx.site.slug),
       invalidate: events,
+    };
+  } catch (error) {
+    return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+// ── M7-2: scheduling ─────────────────────────────────────────────────────────
+
+/**
+ * Schedules the draft at `version` for `runAt`, a wall-clock time typed in the site's time zone (`YYYY-MM-DDTHH:mm`);
+ * the zone is the site's, read on the server, never the browser's.
+ */
+export async function submitScheduleEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { runAt: text(formData.get("runAt")), version: text(formData.get("version")) };
+  try {
+    const id = entryIdFrom(entryId);
+    const version = versionFrom(values.version);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { runAt, events } = await scheduleEntry(ctx, id, { runAt: values.runAt, version });
+    return {
+      state: { status: "success", message: "Scheduled.", values: { ...values, scheduledAt: runAt.toISOString() } },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** Moves a schedule to another time: the same frozen version. */
+export async function submitRescheduleEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { runAt: text(formData.get("runAt")) };
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { runAt, changed, events } = await rescheduleEntry(ctx, id, { runAt: values.runAt });
+    return {
+      state: { status: "success", message: changed ? "The time is changed." : "It is already scheduled for that time.", values: { ...values, scheduledAt: runAt.toISOString() } },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** Cancels a schedule: back to a draft. */
+export async function submitCancelSchedule(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, _formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const { changed, events } = await cancelSchedule(ctx, id);
+    return {
+      state: { status: "success", message: changed ? "The schedule is canceled: it is a draft." : "It is not scheduled." },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: events,
+      refresh: false,
     };
   } catch (error) {
     return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);

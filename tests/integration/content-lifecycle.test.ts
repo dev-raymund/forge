@@ -486,8 +486,11 @@ describe("trash.purge: entries, then media", () => {
     expect(await rowsOf(sibling.ctx, [siblingOld.id])).toEqual([]);
     expect(await rowsOf(other.ctx, [otherOld.id])).toEqual([]);
     expect(await inTenant(ctx, (tx) => tx.select().from(t.mediaAssets).where(eq(t.mediaAssets.id, uploads[0]!.mediaId)))).toEqual([]);
-    // Not recorded (no one did it); the trashing was.
-    expect(await records(ctx, "entry.deleted")).toEqual([]);
+    // Recorded by the system since M7-2 (ADR 0025): one line for Old (with Below in it), one for the sibling site's
+    // post, none by a person; the other organization's is in its own log.
+    const lines = (await records(ctx, "entry.deleted")).map((r) => [r.actorType, r.actorLabel, r.resourceId, (r.metadata as { below: number }).below]);
+    expect(lines).toEqual(expect.arrayContaining([["system", "Forge (trash cleanup)", old.id, 1], ["system", "Forge (trash cleanup)", siblingOld.id, 0]]));
+    expect(lines).toHaveLength(2);
 
     // Again: nothing left to do.
     expect(await purgeTrashedEntries()).toMatchObject({ purged: 0, blocked: 0 });

@@ -15,8 +15,8 @@ import { auditLogs } from "./schema";
  *    no organization, no tenant can read them, and they are written after
  *    Better Auth's own queries, so not in their transaction (ADR 0004).
  */
-export { record } from "./record";
-export type { AuditRequest } from "./record";
+export { record, recordSystem, SYSTEM_ACTORS } from "./record";
+export type { AuditRequest, SystemActor } from "./record";
 export { queryActivity } from "./activity";
 export type { ActivityFilters, ActivityItem, ActivityPage } from "./activity";
 export { AUDIT_ACTIONS, AUDIT_EVENTS, AuditEventError, describeEvent, eventLabel, isAuditAction } from "./events";

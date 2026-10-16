@@ -19,6 +19,11 @@ describe("email templates", () => {
     ],
     ["trial-ending", { organizationName: "Acme", trialEndsAt: new Date("2026-10-15T00:00:00Z"), url }, "Your Forge trial for Acme ends October 15, 2026"],
     ["payment-failed", { organizationName: "Acme", url }, "Payment failed for Acme"],
+    [
+      "scheduled-publish-failed",
+      { name: "Ada", title: "Rye season", siteName: "Harbour Bakery", when: "Tue, 20 Oct 2026, 09:30 (Asia/Manila, UTC+08:00)", reason: "The address /blog/rye is already used by another page or post.", url },
+      "Not published as scheduled: Rye season",
+    ],
   ] as const)("%s renders HTML, plain text and its subject, with the link", async (name, props, subject) => {
     const email = await renderEmail(name, props as never);
     expect(email.subject).toBe(subject);
@@ -26,6 +31,15 @@ describe("email templates", () => {
     expect(email.html).toContain(`href="${url.replace(/&/g, "&amp;")}"`);
     expect(email.text).toContain(url);
     expect(email.text).not.toMatch(/<[a-z]/i);
+  });
+
+  it("a scheduling failure escapes the title and the reason, and its subject is one line", async () => {
+    const email = await renderEmail("scheduled-publish-failed", {
+      name: "Ada", title: "Rye\r\nBcc: x@example.com <b>", siteName: "<i>Bakery</i>", when: "today", reason: "<script>alert(1)</script>", url,
+    });
+    expect(email.subject).toBe("Not published as scheduled: Rye Bcc: x@example.com <b>");
+    expect(email.html).not.toContain("<script>");
+    expect(email.html).not.toContain("<i>Bakery</i>");
   });
 
   it("escapes user-provided names and keeps subjects to one line", async () => {

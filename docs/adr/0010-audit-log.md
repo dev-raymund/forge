@@ -131,3 +131,15 @@ Actor types stay as the V1 table has them (`user`, `api_key`, `system`). Every M
 ## Addendum (M4-2, 2026-10-10): site settings
 
 - **`site.settings_changed`** (about a `site`; `name`, `group` (`general` | `reading` | `analytics`), `fields`: the names of the fields that changed, never their values) is written by `modules/sites/settings.service.ts` in the transaction that saves the settings (ADR 0014). A save that changes nothing records nothing.
+
+## Addendum (M7-2, 2026-10-16): the system actor
+
+ADR 0025 §6 has the details.
+
+- **`recordSystem(tx, entry, actor)`** writes the same events with `actor_type = 'system'`, no user, and a label from a fixed, typed list:
+  - `entry.publish_scheduled` → "Forge (scheduled publishing)";
+  - `trash.purge` → "Forge (trash cleanup)".
+- **Same rules as `record`:** the organization is read from the transaction's context, and the record commits with the change or neither does.
+- **One extra rule:** the transaction must have no user in it.
+- **What uses it:** scheduled publishing, failed schedules, and the automatic purge of entries.
+- **`record` itself is unchanged.**

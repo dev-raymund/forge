@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { entryEditorPath } from "../admin-paths";
 import { ENTRY_STATUS_FILTERS, hasListFilters, listHref, POST_SORTS, type PostListQuery } from "../list-query";
 import type { PostList, PostListItem, TermOption } from "../queries";
+import { formatInZone } from "../zoned-time";
 import { StatusBadge } from "./status-badge";
 import { TrashList, type TrashItem } from "./trash-list";
 
@@ -147,6 +148,7 @@ export function PostsView({ orgSlug, siteSlug, basePath, query, list, categories
                       · Published <Moment iso={post.publishedAt.toISOString()} />
                     </>
                   ) : null}
+                  {post.status === "scheduled" && post.scheduledAt ? <span data-testid="post-scheduled-for"> · Publishes {formatInZone(post.scheduledAt, list.timeZone)}</span> : null}
                 </p>
               </div>
               <StatusBadge status={post.status} changed={post.changed} />
