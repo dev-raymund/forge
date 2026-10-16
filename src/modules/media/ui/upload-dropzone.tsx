@@ -225,7 +225,10 @@ export function UploadDropzone({
                 id={folderSelectId}
                 value={folder}
                 onChange={(event) => setFolder(event.target.value)}
-                className="h-10 min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:ring-3 focus-visible:ring-foreground/25 md:text-sm"
+                // As the file input: a folder chosen before the page is interactive would show in the field but not
+                // reach the upload (the state is not yet listening), and the files would go into no folder.
+                disabled={!interactive}
+                className="h-10 min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:ring-3 focus-visible:ring-foreground/25 disabled:opacity-70 md:text-sm"
               >
                 <option value="">No folder</option>
                 {folders.map((f) => (

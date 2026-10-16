@@ -450,7 +450,9 @@ describe("trash.purge, recorded (M7-2)", () => {
     const run = () => trashPurge.run({}, { job: { id: uuidv7(), type: "trash.purge", attempt: 1, maxAttempts: 5 }, orgId: null, log, withTenant: () => Promise.reject(new Error("none")) });
     await expect(whileFailing("audit_logs", "insert", run)).rejects.toThrow(/trash\.purge: entries failed/);
     expect(await rowOf(ctx, old.id)).not.toBeNull();
-    await run();
+    // The next run (the entries half: this worker's database may hold other tests' kept-back pages, which the job
+    // rightly reports as a failure of its own).
+    await purgeTrashedEntries();
     expect(await rowOf(ctx, old.id)).toBeNull();
     expect((await records(ctx, "entry.deleted")).map((r) => r.resourceId)).toEqual([old.id]);
   });

@@ -516,6 +516,8 @@ describe("trash.purge: entries, then media", () => {
     expect(result.blocked).toBeGreaterThanOrEqual(2);
     expect((await rowsOf(ctx, [parent.id, child.id, home])).map((row) => row.title).sort()).toEqual(["Child", "Home", "Parent"]);
     expect(warn).toHaveBeenCalled();
+    // Put right again: the broken tree was made for this test only, and later purges in this database must not meet it.
+    await withTenant({ orgId: a.org.id }, (tx) => tx.update(t.entries).set({ deletedAt: null }).where(inArray(t.entries.id, [parent.id, home])));
   });
 
   it("a restore racing the purge: the page tree is either back whole or gone whole; in rounds", async () => {

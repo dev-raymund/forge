@@ -250,3 +250,7 @@ The job runs when the runner is called after its `run_at`. On V1's free hosting 
 
   Repeated 5 times: 15 of 15 passed.
 - **Mutation check:** without the job's entry lock, two runs at once both publish, and the test fails every time.
+- **CI on the first push (`74c00e9`) found two problems, fixed in the next commit:**
+  - **A regression:** after the refactor, `makeLive` read the clock twice, so a first publish by hand could get a `first_published_at` one millisecond after its `published_at` (`content-entries.test.ts` expects them equal). It now reads the clock once.
+  - **Test isolation:** a lifecycle test deliberately leaves a trashed page with a live child; when it shared a database with the purge-record test (as CI's fewer workers make it), the job rightly reported that page as kept back. The lifecycle test now puts its broken tree right afterwards. The purge-record test checks its own entries with `purgeTrashedEntries`, as the job's entry half does.
+  - Both were checked again with the integration suite on two workers and with the two files sharing one database.

@@ -97,18 +97,20 @@ export async function prepareForPublish(tx: TenantTx, scope: SiteScope, entry: E
 
 /**
  * The entry made live at a revision (written before it, as the table requires): the projection, the pages below it if
- * its path changed, and the published terms. `publishedAt` is the entry's date at its first publish (the time it was
- * scheduled for, for a scheduled one) and is kept after; `first_published_at` is when it really first went live.
+ * its path changed, and the published terms. `published_at` is the entry's date at its first publish (now; or the
+ * time it was scheduled for, `by.publishedAt`) and is kept after; `first_published_at` is when it really first went live.
  * Returns what the public site must stop serving.
  */
 export async function makeLive(
-  tx: TenantTx, scope: SiteScope, entry: EntryRow, prepared: Prepared, snapshot: Snapshot, revision: { id: string }, by: { userId: string | null; publishedAt: Date },
+  tx: TenantTx, scope: SiteScope, entry: EntryRow, prepared: Prepared, snapshot: Snapshot, revision: { id: string }, by: { userId: string | null; publishedAt?: Date },
 ): Promise<{ path: string; moved: MovedEntry[]; events: CacheEvent[] }> {
   const { definition, path } = prepared;
+  // One reading of the clock: a first publish by hand has the same date and first date, to the millisecond.
+  const now = new Date();
   await withPathTaken(path, () =>
     updateEntry(tx, scope.org.id, scope.site.id, entry.id, {
       status: "published", title: snapshot.title, slug: snapshot.slug, path, excerpt: prepared.excerpt, featuredMediaId: prepared.featuredMediaId,
-      publishedRevisionId: revision.id, publishedAt: entry.publishedAt ?? by.publishedAt, firstPublishedAt: entry.firstPublishedAt ?? new Date(), scheduledAt: null,
+      publishedRevisionId: revision.id, publishedAt: entry.publishedAt ?? by.publishedAt ?? now, firstPublishedAt: entry.firstPublishedAt ?? now, scheduledAt: null,
       scheduleFailure: null, scheduleFailedAt: null, updatedBy: by.userId,
     }),
   );
@@ -150,7 +152,7 @@ export async function publishEntry(ctx: SiteContext, entryId: string, expectedDr
     const revision = await insertRevision(tx, revisionValues(ctx, entry, prepared, snapshot, number, "publish", ctx.actor.userId));
 
     // 4–5. The projection, the pages below it if its path changed, the published terms.
-    const { path, moved, events } = await makeLive(tx, ctx, entry, prepared, snapshot, revision, { userId: ctx.actor.userId, publishedAt: new Date() });
+    const { path, moved, events } = await makeLive(tx, ctx, entry, prepared, snapshot, revision, { userId: ctx.actor.userId });
 
     // 6. The record.
     await record(

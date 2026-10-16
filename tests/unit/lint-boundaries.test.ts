@@ -1,5 +1,5 @@
 import { ESLint } from "eslint";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 /**
  * The module-boundary rules are enforced by ESLint (eslint.config.mjs). These
@@ -7,6 +7,10 @@ import { describe, expect, it } from "vitest";
  * violation fails lint and a legal import passes.
  */
 const eslint = new ESLint({ cwd: process.cwd() });
+
+// ESLint loads eslint.config.mjs and its plugins on the first lint (about 3 s, more when other suites share the machine),
+// which would otherwise count against whichever test happens to run first.
+beforeAll(() => eslint.calculateConfigForFile("src/platform/example.ts"), 30_000);
 
 async function restrictedImports(code: string, filePath: string) {
   const [result] = await eslint.lintText(code, { filePath });

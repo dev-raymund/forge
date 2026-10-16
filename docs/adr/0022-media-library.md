@@ -169,3 +169,10 @@ ADR 0024 has the details.
   Titles appear only for those who see every entry. Nothing is refused.
 - **At commit:** `trashMedia` counts the usage again in its transaction, and the message says how many published pages no longer show the file.
 - **Not promised:** that copies already cached by a browser or CDN are taken back (ADR 0023 §8).
+
+## Addendum (M7-2, 2026-10-16): the folder selector waits for the page
+
+- **What happened:** the dropzone's "Into" folder selector was usable before the page was interactive. A folder chosen in that moment showed in the field, but the upload went into no folder, because React's state was not listening yet. This is the same failure M6-3 fixed for the file input.
+- **Found by:** E2E runs during M7-2. The folder test failed about 1 run in 5 to 1 in 8, and the database showed the files with no folder.
+- **The fix:** the selector is now disabled until the page is interactive, like the file input.
+- **After the fix:** 18 of 18 runs reached the folder step and passed.
