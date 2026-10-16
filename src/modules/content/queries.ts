@@ -13,7 +13,10 @@ import { ENTRY_TRASH_DAYS } from "./lifecycle";
 import {
   canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canPurgeEntry, canSeeEntry, canSeePages, canSetHomepage, canTrashEntry, canUpdateEntry, ownPostsOnly,
 } from "./policies";
-import { descendantsOf, findDraft, findEntry, memberName, revisionById, scheduledOfSite, siteFacts } from "./repository";
+import {
+  descendantsOf, draftHead, findDraft, findEntry, latestScheduledRevision, memberName, revisionById, revisionHistory, scheduledOfSite, siteFacts,
+} from "./repository";
+import type { RevisionKind } from "./revisions";
 import { entries, entryDrafts, entryRevisions, terms } from "./schema";
 import type { ContentTypeKey } from "./types/definition";
 
@@ -442,5 +445,76 @@ export async function listScheduled(ctx: SiteContext): Promise<{ items: Schedule
           failure: row.status !== "scheduled" && row.scheduleFailure && row.scheduleFailedAt ? { reason: row.scheduleFailure, at: row.scheduleFailedAt.toISOString() } : null,
         })),
     };
+  });
+}
+
+// ── M7-3: the history, and the conflict dialog ───────────────────────────────
+
+/** How many revisions the history shows at a time ("Show older" asks for the next ones). */
+export const HISTORY_PAGE_SIZE = 30;
+
+export type RevisionItem = {
+  id: string;
+  number: number;
+  kind: RevisionKind;
+  label: string | null;
+  /** The title the revision has. */
+  title: string;
+  createdAt: string;
+  /** Who made it, while they are a member; null otherwise (shown as a former member). */
+  by: string | null;
+  byYou: boolean;
+  /** The revision visitors see now. */
+  live: boolean;
+  /** The frozen revision of the schedule under way (M7-2): when it publishes. Null for every other one. */
+  scheduledFor: string | null;
+};
+
+export type RevisionList = { items: RevisionItem[]; more: boolean; canRestore: boolean; timeZone: string };
+
+/**
+ * The entry's history, newest first, `HISTORY_PAGE_SIZE` at a time (before revision `before`). Who may see the entry
+ * may see its history: an id of another site, a page to an Author, another Author's post, an entry in the trash, are
+ * not found (M7-1: a trashed entry's history is reachable once it is restored). No content leaves here: the list shows
+ * what each revision is, and restoring one is `restoreRevision`'s.
+ */
+export async function listRevisions(ctx: SiteContext, entryId: string, before?: number): Promise<RevisionList> {
+  return inTenant(ctx, async (tx) => {
+    const entry = await findEntry(tx, ctx.org.id, ctx.site.id, entryId);
+    if (!entry || !canSeeEntry(ctx, refOf(entry))) throw notFound();
+    const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
+    if (!site) throw notFound();
+    const rows = await revisionHistory(tx, ctx.org.id, ctx.site.id, entry.id, { before, limit: HISTORY_PAGE_SIZE + 1 });
+    const frozen = entry.status === "scheduled" && entry.scheduledAt ? await latestScheduledRevision(tx, ctx.org.id, ctx.site.id, entry.id) : null;
+    return {
+      items: rows.slice(0, HISTORY_PAGE_SIZE).map((row) => ({
+        id: row.id,
+        number: row.number,
+        kind: row.kind as RevisionKind,
+        label: row.label,
+        title: row.title,
+        createdAt: row.createdAt.toISOString(),
+        by: row.createdByName,
+        byYou: row.createdBy !== null && row.createdBy === ctx.actor.userId,
+        live: row.id === entry.publishedRevisionId,
+        scheduledFor: frozen && row.id === frozen.id ? entry.scheduledAt!.toISOString() : null,
+      })),
+      more: rows.length > HISTORY_PAGE_SIZE,
+      canRestore: canUpdateEntry(ctx, refOf(entry)),
+      timeZone: site.timeZone,
+    };
+  });
+}
+
+/** The draft as it is on the server, for the conflict dialog: its version, when it was saved and by whom. */
+export type DraftHeadInfo = { version: number; savedAt: string; by: string | null; byYou: boolean };
+
+export async function getDraftHead(ctx: SiteContext, entryId: string): Promise<DraftHeadInfo> {
+  return inTenant(ctx, async (tx) => {
+    const entry = await findEntry(tx, ctx.org.id, ctx.site.id, entryId);
+    if (!entry || !canSeeEntry(ctx, refOf(entry))) throw notFound();
+    const head = await draftHead(tx, ctx.org.id, ctx.site.id, entry.id);
+    if (!head) throw notFound();
+    return { version: head.version, savedAt: head.savedAt.toISOString(), by: head.savedByName, byYou: head.savedBy !== null && head.savedBy === ctx.actor.userId };
   });
 }

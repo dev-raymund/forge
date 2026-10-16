@@ -4,10 +4,10 @@ import { countOf, formatBytes, hasRoomFor, limitMessage, PLANS, type Allowance }
 const GB = 1024 ** 3;
 
 describe("the plans' limits (plan §14)", () => {
-  it("Free: 1 site and 1 GiB (1,073,741,824 bytes). Pro, and the Pro trial: 5 sites and 20 GiB", () => {
-    expect(PLANS.free).toEqual({ label: "Free", limits: { sites: 1, storage: GB } });
+  it("Free: 1 site and 1 GiB (1,073,741,824 bytes), 20 manual revisions kept per entry. Pro, and the Pro trial: 5 sites, 20 GiB, 100", () => {
+    expect(PLANS.free).toEqual({ label: "Free", limits: { sites: 1, storage: GB }, manualRevisions: 20 });
     expect(GB).toBe(1_073_741_824);
-    expect(PLANS.pro).toEqual({ label: "Pro", limits: { sites: 5, storage: 20 * GB } });
+    expect(PLANS.pro).toEqual({ label: "Pro", limits: { sites: 5, storage: 20 * GB }, manualRevisions: 100 });
     expect(Object.isFrozen(PLANS)).toBe(true);
   });
 

@@ -174,3 +174,13 @@ ADR 0023 §2 has the details.
   - An emptied field the schema allows to be `null` (an image's alt text, caption, link) is stored as `null`, not `""`.
 - **Previews in the editor:** none until the person asks ("Show previews", or choosing an image in the picker). Then only this site's `thumb` variants are loaded. Nothing third-party is ever loaded, as before.
 - **Unavailable images:** a page holding an image the library no longer has opens for editing. The block says the image is unavailable, and saving keeps it, id and all.
+
+## Addendum (M7-3, 2026-10-16): the conflict dialog's third choice, "Save" and the history
+
+ADR 0026 has the details.
+
+- **Overwrite:** the dialog now names the newer save (who, when) and offers "Overwrite with my version…".
+  - Confirmed, the server keeps exactly that version as a `save` revision, then writes everything the editor shows through `saveDraft`'s checks, in one transaction.
+  - A version saved after the dialog named one is refused (`CHANGED_AGAIN`), and the dialog shows the newer one.
+  - Autosave then `adopt`s the version the overwrite wrote. "Copy my changes" and "Load the latest version" are unchanged.
+- **"Save"** in the header keeps the draft, as just saved, as a revision. **"History"** lists the revisions and restores one into the draft: what is typed is saved first, and the editor loads the draft again afterwards.

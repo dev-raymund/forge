@@ -191,6 +191,18 @@ export const AUDIT_EVENTS = {
     // Why, in the words the editor shows: never the content.
     metadata: z.object({ type: entryType, title: line(), path: entryPath, runAt: z.iso.datetime(), reason: line(500) }),
   },
+  // M7-3 (ADR 0026): the history. Draft changes only: what visitors see changes by publishing. `revision` is the one
+  // copied into the draft; `keptRevision` the one that keeps the version an overwrite replaced.
+  "entry.revision_restored": {
+    resourceType: "entry",
+    label: "Revision restored",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, revision: z.int().min(1) }),
+  },
+  "entry.draft_replaced": {
+    resourceType: "entry",
+    label: "Draft overwritten",
+    metadata: z.object({ type: entryType, title: line(), path: entryPath, keptRevision: z.int().min(1) }),
+  },
   // M5-8: categories and tags.
   "term.created": {
     resourceType: "term",
@@ -378,6 +390,8 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
     `${actor} ${m.previousRunAt ? "moved the schedule of" : "scheduled"} the ${m.type} ${m.title} ${m.previousRunAt ? "to" : "for"} ${utc(m.runAt)}.`,
   "entry.schedule_canceled": (actor, m) => `${actor} canceled the schedule of the ${m.type} ${m.title} (it was for ${utc(m.runAt)}).`,
   "entry.schedule_failed": (actor, m) => `${actor} could not publish the ${m.type} ${m.title} as scheduled for ${utc(m.runAt)}: ${m.reason} It is a draft again.`,
+  "entry.revision_restored": (actor, m) => `${actor} restored revision ${m.revision} of the ${m.type} ${m.title} into its draft.`,
+  "entry.draft_replaced": (actor, m) => `${actor} overwrote the draft of the ${m.type} ${m.title}; the version it replaced is revision ${m.keptRevision}.`,
   "term.created": (actor, m) => `${actor} created the ${m.taxonomy} ${m.name}.`,
   "term.updated": (actor, m) =>
     m.previousName && m.previousName !== m.name
@@ -426,6 +440,8 @@ const PLAIN: Record<AuditAction, string> = {
   "entry.scheduled": "scheduled a page or post",
   "entry.schedule_canceled": "canceled a schedule",
   "entry.schedule_failed": "a scheduled publish failed",
+  "entry.revision_restored": "restored a revision of a page or post",
+  "entry.draft_replaced": "overwrote the draft of a page or post",
   "term.created": "created a category or tag",
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",

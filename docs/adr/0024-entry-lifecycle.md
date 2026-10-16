@@ -257,3 +257,12 @@ ADR 0025 has the details.
 - **`trash.purge`** now records each entry it deletes as `entry.deleted` by the system actor "Forge (trash cleanup)", in the batch's transaction. That record carries `below` (the pages deleted with it) and `afterDays`. A record that cannot be written deletes nothing.
 - **A scheduled entry** cannot be unpublished or trashed; its schedule is canceled first. The editor's trash section says so.
 - **Unchanged:** the state machine's M7-1 transitions, two-step unpublish and trash, restore refusing a taken address, and the subtree rules.
+
+## Addendum (M7-3, 2026-10-16): restoring a revision is not restoring from the trash
+
+ADR 0026 has the details.
+
+- **A revision restore** copies an earlier revision into the draft of an entry that is not in the trash. The status, the live revision and the address do not change. The screens say "Restore revision N".
+- **An entry in the trash** has no history to list or restore (not found). Restoring it from the trash brings it back first.
+- **A restored slug** whose address another entry holds refuses the restore, naming the address. It is never suffixed, as for this ADR's restore.
+- **Unchanged:** unpublish before trash, the subtree rules, the 30 days and the purge. Purging deletes the revisions with the entry.

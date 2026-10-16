@@ -34,6 +34,8 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "entry.scheduled": { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-20T01:30:00.000Z" },
   "entry.schedule_canceled": { type: "post", title: "Hello", path: "/blog/hello", runAt: "2026-10-20T01:30:00.000Z" },
   "entry.schedule_failed": { type: "page", title: "About", path: "/about", runAt: "2026-10-20T01:30:00.000Z", reason: "The address /about is already used by another page or post." },
+  "entry.revision_restored": { type: "post", title: "Rye season", path: "/blog/rye-season", revision: 3 },
+  "entry.draft_replaced": { type: "page", title: "About", path: "/about", keptRevision: 7 },
   "term.created": { taxonomy: "category", name: "Bread", slug: "bread" },
   "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
   "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
@@ -48,7 +50,7 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
 };
 
 describe("the audit vocabulary", () => {
-  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1, the seven of M6-3, the four of M7-1 and the three of M7-2, each named `resource.verb` in the past tense", () => {
+  it("is the ten events of M3, the three of M4-1, the one of M4-4, the one of M4-2, the one of M4-5, the three of M5-3, the three of M5-7, the three of M5-8, the one of M6-1, the seven of M6-3, the four of M7-1, the three of M7-2 and the two of M7-3, each named `resource.verb` in the past tense", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       [
         "organization.created", "organization.updated", "organization.ownership_transferred",
@@ -58,7 +60,7 @@ describe("the audit vocabulary", () => {
         "entry.created", "entry.published", "site.homepage_changed",
         "entry.moved", "entry.reordered", "entry.author_changed",
         "entry.unpublished", "entry.trashed", "entry.restored", "entry.deleted",
-        "entry.scheduled", "entry.schedule_canceled", "entry.schedule_failed",
+        "entry.scheduled", "entry.schedule_canceled", "entry.schedule_failed", "entry.revision_restored", "entry.draft_replaced",
         "term.created", "term.updated", "term.deleted",
         "media.uploaded",
         "media.updated", "media.moved", "media.trashed", "media.restored", "media.folder_created", "media.folder_renamed", "media.folder_deleted",
@@ -156,6 +158,8 @@ describe("what is stored with an event", () => {
       ["entry.scheduled", { type: "post", title: "X", path: "/x", runAt: "tomorrow" }],
       ["entry.schedule_canceled", { type: "post", title: "X", path: "/x" }],
       ["entry.schedule_failed", { type: "post", title: "X", path: "/x", runAt: "2026-10-20T01:30:00.000Z", reason: "" }],
+      ["entry.revision_restored", { type: "post", title: "X", path: "/x", revision: 0 }],
+      ["entry.draft_replaced", { type: "post", title: "X", path: "/x", keptRevision: "7" }],
       ["entry.published", { type: "post", title: "X", path: "/x", revision: 1, scheduled: false }],
       ["term.created", { taxonomy: "section", name: "X", slug: "x" }],
       ["term.created", { taxonomy: "tag", name: "X", slug: "X Y" }],
@@ -259,6 +263,11 @@ describe("an event as a sentence", () => {
     expect(
       describeEvent({ action: "entry.schedule_failed", actorName: "Forge (scheduled publishing)", metadata: { type: "page", title: "About", path: "/about", runAt: "2026-10-20T01:30:00.000Z", reason: "The address /about is already used by another page or post." } }),
     ).toBe("Forge (scheduled publishing) could not publish the page About as scheduled for 2026-10-20 01:30 UTC: The address /about is already used by another page or post. It is a draft again.");
+    // M7-3: the history. Changes to the draft, and said as such.
+    expect(say("entry.revision_restored", { type: "post", title: "Rye", path: "/blog/rye", revision: 3 })).toBe("Raymund restored revision 3 of the post Rye into its draft.");
+    expect(say("entry.draft_replaced", { type: "page", title: "About", path: "/about", keptRevision: 7 })).toBe(
+      "Raymund overwrote the draft of the page About; the version it replaced is revision 7.",
+    );
     expect(describeEvent({ action: "entry.deleted", actorName: "Forge (trash cleanup)", metadata: { type: "page", title: "Old", path: "/old", below: 1, afterDays: 30 } })).toBe(
       "Forge (trash cleanup) deleted the page Old for good, with 1 page below it, 30 days after it went to the trash.",
     );

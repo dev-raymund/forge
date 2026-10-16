@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { Actor } from "@/modules/auth";
 import { sitePath } from "@/modules/sites/shared";
 import { refusal, resolveSiteContext, type FormOutcome, type RequestMeta } from "@/modules/tenancy";
-import { forbidden, notFound, validationError } from "@/platform/errors";
+import { actionOk, asAppError, forbidden, notFound, toActionResult, validationError, type ActionResult } from "@/platform/errors";
+import { reportError } from "@/platform/observability";
 import { text } from "@/platform/forms";
 import { entryEditorPath, entryListPath } from "./admin-paths";
 import { changeAuthor, createEntry, saveDraft } from "./entry.service";
@@ -12,6 +13,9 @@ import { purgeEntry, restoreEntry, trashEntry, unpublishEntry } from "./lifecycl
 import { cancelSchedule, rescheduleEntry, scheduleEntry } from "./scheduling";
 import { canSetHomepage } from "./policies";
 import { publishEntry } from "./publishing.service";
+import { getDraftHead, listRevisions, type DraftHeadInfo, type RevisionList } from "./queries";
+import { restoredMessage } from "./revisions";
+import { overwriteDraft, restoreRevision, saveRevision } from "./revisions.service";
 import { movePage, placePage } from "./tree.service";
 import { contentType } from "./types/registry";
 import { versionSchema } from "./validation";
@@ -355,5 +359,108 @@ export async function submitCancelSchedule(actor: Actor, orgSlug: string, siteSl
     };
   } catch (error) {
     return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+// ── M7-3: the history ────────────────────────────────────────────────────────
+
+/** "Save": the draft at `version` kept in the history, with an optional `label`. */
+export async function submitSaveRevision(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { version: text(formData.get("version")), label: text(formData.get("label")) };
+  try {
+    const id = entryIdFrom(entryId);
+    const version = versionFrom(values.version);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const saved = await saveRevision(ctx, id, { version, label: values.label });
+    return {
+      state: {
+        status: "success",
+        message: saved.created ? `Saved as revision ${saved.number}.` : `Already in the history as revision ${saved.number}.`,
+        values: { revision: String(saved.number), created: String(saved.created) },
+      },
+      invalidate: saved.events,
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** Copies an earlier revision into the draft at `version`. The editor loads the draft again afterwards. */
+export async function submitRestoreRevision(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { revisionId: text(formData.get("revisionId")), version: text(formData.get("version")) };
+  try {
+    const id = entryIdFrom(entryId);
+    const version = versionFrom(values.version);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const restored = await restoreRevision(ctx, id, { revisionId: values.revisionId, version });
+    return {
+      state: {
+        status: "success",
+        message: restoredMessage(restored.restored, restored.notes),
+        values: { version: String(restored.version), revision: String(restored.revision), kept: String(restored.kept) },
+      },
+      revalidate: listsOf(ctx.org.slug, ctx.site.slug),
+      invalidate: restored.events,
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** The conflict dialog's overwrite: the draft at `replaceVersion` kept in the history, then `draft` (as autosave sends it) written. */
+export async function submitOverwriteDraft(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { replaceVersion: text(formData.get("replaceVersion")) };
+  try {
+    const id = entryIdFrom(entryId);
+    const raw = text(formData.get("draft"));
+    if (raw.length > DRAFT_FIELD_MAX) throw validationError({ content: ["This content is too large to save (the limit is 1 MB)."] });
+    let draft: unknown;
+    try {
+      draft = JSON.parse(raw);
+    } catch {
+      throw validationError({ draft: ["The draft could not be read. Reload the page and try again."] });
+    }
+    const replaceVersion = versionFrom(values.replaceVersion);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const overwritten = await overwriteDraft(ctx, id, { replaceVersion, draft });
+    return {
+      state: {
+        status: "success",
+        message: `Your version is saved. The one it replaced is revision ${overwritten.kept} in the history.`,
+        values: { version: String(overwritten.version), kept: String(overwritten.kept) },
+      },
+      invalidate: overwritten.events,
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+/** The history, newest first (`before`: a revision number, for older ones). Read-only. */
+export async function submitRevisionHistory(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, before: unknown, meta: RequestMeta = {}): Promise<ActionResult<RevisionList>> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const from = before === undefined || before === null || before === "" ? undefined : versionSchema.safeParse(before);
+    if (from && !from.success) throw validationError({ before: ["Reload the page and try again."] });
+    return actionOk(await listRevisions(ctx, id, from?.data));
+  } catch (error) {
+    if (!asAppError(error)) reportError(error, { module: MODULE, requestId: meta.requestId });
+    return toActionResult(error, meta.requestId);
+  }
+}
+
+/** The draft as it is on the server (version, when, who), for the conflict dialog. Read-only. */
+export async function submitDraftHead(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, meta: RequestMeta = {}): Promise<ActionResult<DraftHeadInfo>> {
+  try {
+    const id = entryIdFrom(entryId);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    return actionOk(await getDraftHead(ctx, id));
+  } catch (error) {
+    if (!asAppError(error)) reportError(error, { module: MODULE, requestId: meta.requestId });
+    return toActionResult(error, meta.requestId);
   }
 }

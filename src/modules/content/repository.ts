@@ -502,3 +502,75 @@ export async function fullRevision(tx: TenantTx, organizationId: string, siteId:
     .where(and(eq(entryRevisions.organizationId, organizationId), eq(entryRevisions.siteId, siteId), eq(entryRevisions.entryId, entryId), eq(entryRevisions.id, revisionId)));
   return row ?? null;
 }
+
+// ── M7-3: the history ────────────────────────────────────────────────────────
+
+export type RevisionRow = typeof entryRevisions.$inferSelect;
+
+/** The entry's latest revision, whole: a manual save, an overwrite or a restore keeps nothing it already holds. */
+export async function latestRevision(tx: TenantTx, organizationId: string, siteId: string, entryId: string): Promise<RevisionRow | null> {
+  const [row] = await tx
+    .select()
+    .from(entryRevisions)
+    .where(and(eq(entryRevisions.organizationId, organizationId), eq(entryRevisions.siteId, siteId), eq(entryRevisions.entryId, entryId)))
+    .orderBy(desc(entryRevisions.number))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Deletes the entry's manual revisions (`save`, `restore`) beyond the newest `keep` (plan §14), and returns how many.
+ * `publish` and `scheduled` revisions are never touched; nor is a revision the entry is live at (none of these kinds
+ * ever is, and the foreign key would refuse it anyway). Called under the entry's lock.
+ */
+export async function pruneManualRevisions(tx: TenantTx, organizationId: string, siteId: string, entryId: string, keep: number): Promise<number> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    delete from entry_revisions r
+     where r.organization_id = ${organizationId} and r.site_id = ${siteId} and r.entry_id = ${entryId} and r.kind in ('save', 'restore')
+       and r.id not in (
+         select k.id from entry_revisions k
+          where k.organization_id = ${organizationId} and k.site_id = ${siteId} and k.entry_id = ${entryId} and k.kind in ('save', 'restore')
+          order by k.number desc limit ${keep})
+       and not exists (select 1 from entries e where e.id = r.entry_id and e.published_revision_id = r.id)
+    returning r.id`);
+  return rows.length;
+}
+
+/** One line of the history: no content, which the list does not show. */
+export type HistoryRow = {
+  id: string; number: number; kind: string; label: string | null; title: string; createdAt: Date; createdBy: string | null; createdByName: string | null;
+};
+
+/** The entry's revisions, newest first, `limit` of them before `before` (a number), with the name of whoever made each while they are a member. */
+export async function revisionHistory(tx: TenantTx, organizationId: string, siteId: string, entryId: string, options: { before?: number; limit: number }): Promise<HistoryRow[]> {
+  return tx
+    .select({
+      id: entryRevisions.id, number: entryRevisions.number, kind: entryRevisions.kind, label: entryRevisions.label, title: entryRevisions.title,
+      createdAt: entryRevisions.createdAt, createdBy: entryRevisions.createdBy, createdByName: t.users.name,
+    })
+    .from(entryRevisions)
+    .leftJoin(
+      t.organizationMembers,
+      and(eq(t.organizationMembers.organizationId, entryRevisions.organizationId), eq(t.organizationMembers.userId, entryRevisions.createdBy)),
+    )
+    .leftJoin(t.users, eq(t.users.id, t.organizationMembers.userId))
+    .where(
+      and(
+        eq(entryRevisions.organizationId, organizationId), eq(entryRevisions.siteId, siteId), eq(entryRevisions.entryId, entryId),
+        options.before === undefined ? undefined : sql`${entryRevisions.number} < ${options.before}`,
+      ),
+    )
+    .orderBy(desc(entryRevisions.number))
+    .limit(options.limit);
+}
+
+/** The draft's version, when it was last saved and by whom (their name while they are a member): what the conflict dialog says. */
+export async function draftHead(tx: TenantTx, organizationId: string, siteId: string, entryId: string): Promise<{ version: number; savedAt: Date; savedByName: string | null; savedBy: string | null } | null> {
+  const [row] = await tx
+    .select({ version: entryDrafts.version, savedAt: entryDrafts.updatedAt, savedBy: entryDrafts.updatedBy, savedByName: t.users.name })
+    .from(entryDrafts)
+    .leftJoin(t.organizationMembers, and(eq(t.organizationMembers.organizationId, entryDrafts.organizationId), eq(t.organizationMembers.userId, entryDrafts.updatedBy)))
+    .leftJoin(t.users, eq(t.users.id, t.organizationMembers.userId))
+    .where(and(eq(entryDrafts.organizationId, organizationId), eq(entryDrafts.siteId, siteId), eq(entryDrafts.entryId, entryId)));
+  return row ?? null;
+}

@@ -163,71 +163,79 @@ export async function saveDraft(ctx: SiteContext, entryId: string, expectedVersi
     const entry = await findEntry(tx, ctx.org.id, ctx.site.id, entryId);
     if (!entry) throw notFound();
     if (!canUpdateEntry(ctx, refOf(entry))) throw forbidden();
-    if (input && typeof input === "object" && "termIds" in input && !canAssignTerms(ctx)) throw forbidden();
-    const draft = parseInput(draftSchema, input);
-    const definition = definitionOf(entry);
-
-    const unsupported: Record<string, string[]> = {};
-    if (draft.excerpt && !definition.supports.excerpt) unsupported.excerpt = [`${definition.label.plural} have no excerpt.`];
-    if (draft.featuredMediaId && !definition.supports.featuredImage) unsupported.featuredMediaId = [`${definition.label.plural} have no featured image.`];
-    if (draft.template && !definition.supports.templates) unsupported.template = [`${definition.label.plural} have no template.`];
-    if (draft.termIds?.length && definition.supports.taxonomies.length === 0) unsupported.termIds = [`${definition.label.plural} have no categories or tags.`];
-    if (Object.keys(unsupported).length) throw validationError(unsupported);
-
-    const values: Parameters<typeof updateDraftIfVersion>[5] = { updatedBy: ctx.actor.userId };
-    if (draft.title !== undefined) values.title = draft.title;
-    if (draft.excerpt !== undefined) values.excerpt = draft.excerpt;
-    if (draft.template !== undefined) values.template = draft.template;
-    if (draft.featuredMediaId !== undefined) {
-      // A new featured image must be a ready image of this site (M6-1: uploads can be pending or refused). One that was
-      // already there is not checked again, as the document's images.
-      if (draft.featuredMediaId && draft.featuredMediaId !== (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.featuredMediaId) {
-        await assertUsableImages(tx, ctx, [draft.featuredMediaId], { featuredMediaId: ["Choose an image of this site."] });
-      }
-      values.featuredMediaId = draft.featuredMediaId;
-    }
-    if (draft.content !== undefined) {
-      const parsed = parseDocument(draft.content);
-      if (!parsed.ok) throw validationError({ content: [documentProblem(parsed)] });
-      // Images and links new in this save must be this site's (M5-5).
-      await assertNewReferences(tx, ctx, parsed.document, (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.content);
-      values.content = parsed.document;
-      values.contentHash = contentHashOf(parsed.document);
-    }
-    if (draft.fields !== undefined) {
-      const fields = definition.fields.safeParse(draft.fields);
-      if (!fields.success) throw validationError({ fields: [`${definition.label.plural} have no such fields.`] });
-      values.fields = fields.data;
-    }
-    if (draft.slug !== undefined) {
-      const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
-      if (!site) throw notFound();
-      // The Home page stays at `/` whatever its slug. Any other entry's slug must give an address it may have.
-      if (entry.path !== HOME_PATH) {
-        const path = definition.key === "post" ? postPath(draft.slug, site.blogPath) : pathUnder(parentDir(entry.path), draft.slug);
-        const reserved = reservedPathReason(path, { type: definition.key, blogPath: site.blogPath });
-        if (reserved) throw validationError({ slug: [reserved] });
-      }
-      values.slug = draft.slug;
-    }
-    if (draft.termIds !== undefined) {
-      // The draft first, then the terms: the order a term's deletion takes too (term.repository.ts), so neither waits on the other forever.
-      await findDraft(tx, ctx.org.id, ctx.site.id, entry.id, { lock: true });
-      await assertTermsOfSite(tx, ctx, definition, draft.termIds);
-      values.termIds = draft.termIds;
-    }
-
-    let saved: number | null;
-    try {
-      saved = await updateDraftIfVersion(tx, ctx.org.id, ctx.site.id, entry.id, version, values);
-    } catch (error) {
-      // The draft's featured image is a composite key: an image of another site, or none, is refused by the database.
-      if (pgErrorOf(error)?.constraint === "entry_drafts_featured_media_fk") throw validationError({ featuredMediaId: ["Choose an image of this site."] });
-      throw error;
-    }
-    if (saved === null) throw conflict(DRAFT_CHANGED);
-    return { version: saved };
+    return writeDraft(tx, ctx, entry, version, input);
   });
+}
+
+/**
+ * `saveDraft`'s checks and its write, for a caller that has found the entry and asked who may (M7-3: an overwrite
+ * writes what the editor holds through exactly these, after keeping the version it replaces).
+ */
+export async function writeDraft(tx: TenantTx, ctx: SiteContext, entry: EntryRow, version: number, input: unknown): Promise<{ version: number }> {
+  if (input && typeof input === "object" && "termIds" in input && !canAssignTerms(ctx)) throw forbidden();
+  const draft = parseInput(draftSchema, input);
+  const definition = definitionOf(entry);
+
+  const unsupported: Record<string, string[]> = {};
+  if (draft.excerpt && !definition.supports.excerpt) unsupported.excerpt = [`${definition.label.plural} have no excerpt.`];
+  if (draft.featuredMediaId && !definition.supports.featuredImage) unsupported.featuredMediaId = [`${definition.label.plural} have no featured image.`];
+  if (draft.template && !definition.supports.templates) unsupported.template = [`${definition.label.plural} have no template.`];
+  if (draft.termIds?.length && definition.supports.taxonomies.length === 0) unsupported.termIds = [`${definition.label.plural} have no categories or tags.`];
+  if (Object.keys(unsupported).length) throw validationError(unsupported);
+
+  const values: Parameters<typeof updateDraftIfVersion>[5] = { updatedBy: ctx.actor.userId };
+  if (draft.title !== undefined) values.title = draft.title;
+  if (draft.excerpt !== undefined) values.excerpt = draft.excerpt;
+  if (draft.template !== undefined) values.template = draft.template;
+  if (draft.featuredMediaId !== undefined) {
+    // A new featured image must be a ready image of this site (M6-1: uploads can be pending or refused). One that was
+    // already there is not checked again, as the document's images.
+    if (draft.featuredMediaId && draft.featuredMediaId !== (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.featuredMediaId) {
+      await assertUsableImages(tx, ctx, [draft.featuredMediaId], { featuredMediaId: ["Choose an image of this site."] });
+    }
+    values.featuredMediaId = draft.featuredMediaId;
+  }
+  if (draft.content !== undefined) {
+    const parsed = parseDocument(draft.content);
+    if (!parsed.ok) throw validationError({ content: [documentProblem(parsed)] });
+    // Images and links new in this save must be this site's (M5-5).
+    await assertNewReferences(tx, ctx, parsed.document, (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.content);
+    values.content = parsed.document;
+    values.contentHash = contentHashOf(parsed.document);
+  }
+  if (draft.fields !== undefined) {
+    const fields = definition.fields.safeParse(draft.fields);
+    if (!fields.success) throw validationError({ fields: [`${definition.label.plural} have no such fields.`] });
+    values.fields = fields.data;
+  }
+  if (draft.slug !== undefined) {
+    const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
+    if (!site) throw notFound();
+    // The Home page stays at `/` whatever its slug. Any other entry's slug must give an address it may have.
+    if (entry.path !== HOME_PATH) {
+      const path = definition.key === "post" ? postPath(draft.slug, site.blogPath) : pathUnder(parentDir(entry.path), draft.slug);
+      const reserved = reservedPathReason(path, { type: definition.key, blogPath: site.blogPath });
+      if (reserved) throw validationError({ slug: [reserved] });
+    }
+    values.slug = draft.slug;
+  }
+  if (draft.termIds !== undefined) {
+    // The draft first, then the terms: the order a term's deletion takes too (term.repository.ts), so neither waits on the other forever.
+    await findDraft(tx, ctx.org.id, ctx.site.id, entry.id, { lock: true });
+    await assertTermsOfSite(tx, ctx, definition, draft.termIds);
+    values.termIds = draft.termIds;
+  }
+
+  let saved: number | null;
+  try {
+    saved = await updateDraftIfVersion(tx, ctx.org.id, ctx.site.id, entry.id, version, values);
+  } catch (error) {
+    // The draft's featured image is a composite key: an image of another site, or none, is refused by the database.
+    if (pgErrorOf(error)?.constraint === "entry_drafts_featured_media_fk") throw validationError({ featuredMediaId: ["Choose an image of this site."] });
+    throw error;
+  }
+  if (saved === null) throw conflict(DRAFT_CHANGED);
+  return { version: saved };
 }
 
 /** Every id a term of this site, of a taxonomy the type uses. `entry_drafts.term_ids` has no foreign key, so this is the only check there is. */

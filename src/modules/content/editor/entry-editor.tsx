@@ -8,23 +8,26 @@ import { Bold, Code, GripVertical, Italic, Link2, MoreHorizontal, Rows3, Striket
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FormAlert } from "@/components/admin/form";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ImagePreviews, type ImagePreviewData } from "@/blocks/image/preview-context";
 import { image as imageBlock } from "@/blocks/image/schema";
 import { MediaPicker, type PickedImage } from "@/modules/media/shared";
 import { IDLE } from "@/platform/forms";
-import { publishEntryAction, saveDraftAction } from "../actions";
+import { overwriteDraftAction, publishEntryAction, saveDraftAction, saveRevisionAction } from "../actions";
 import { documentProblem, parseDocument } from "../document/parse";
 import { DOCUMENT_VERSION } from "../document/schema";
+import { CHANGED_AGAIN } from "../messages";
 import type { EditorEntry } from "../queries";
+import { contentType } from "../types/registry";
 import { clearBuffer, createAutosave, readBuffer, type AutosaveStatus, type SaveResult } from "./autosave";
+import { ConflictDialog, type OverwriteResult } from "./conflict-dialog";
 import { dedupeIds } from "./dedupe-ids";
 import { EmbedDialog } from "./embed-dialog";
 import { EntrySettings, type DraftFields, type EntryPlace, type SidebarChoices } from "./entry-settings";
 import { EDITOR_NODE_TYPES, editorExtensions } from "./extensions";
 import { TrashSection, UnpublishButton } from "./lifecycle-controls";
+import { HistoryButton } from "./revision-history";
 import { ScheduleButton, ScheduledControls } from "./schedule-controls";
 import { LinkDialog } from "./link-dialog";
 import { currentBlock, PropertiesPanel, type CurrentBlock } from "./panel/properties-panel";
@@ -37,7 +40,8 @@ import { commandsAt, filterCommands, slashMatch, type SlashCommand, type SlashRa
  * document with the text nodes and the registry's custom blocks, the slash
  * menu, the link picker, the properties panel, reordering (drag handle,
  * Alt+↑/↓, the block menu), autosave with its status, the conflict dialog and
- * the Publish button. Client-only and lazy-loaded (./lazy.tsx).
+ * the Publish button; "Save" and the history, with restore and the conflict
+ * dialog's overwrite (M7-3). Client-only and lazy-loaded (./lazy.tsx).
  *
  * Everything it writes goes through the M5-3 Server Actions, which decide who
  * may and what is valid: what this screen shows or hides is a convenience, not
@@ -59,6 +63,30 @@ export type EntryEditorProps = {
 };
 
 const ENTRY_TITLE_MAX = 200;
+
+/** What the editor says after it loaded the draft again on purpose (M7-3: a revision was restored), kept across the reload. */
+const flashKey = (entryId: string) => `forge:editor-notice:${entryId}`;
+function readFlash(entryId: string): string | null {
+  try {
+    return window.sessionStorage.getItem(flashKey(entryId));
+  } catch {
+    return null;
+  }
+}
+function dropFlash(entryId: string): void {
+  try {
+    window.sessionStorage.removeItem(flashKey(entryId));
+  } catch {
+    // nothing to drop
+  }
+}
+function leaveFlash(entryId: string, text: string): void {
+  try {
+    window.sessionStorage.setItem(flashKey(entryId), text);
+  } catch {
+    // storage unavailable: the restored draft is shown all the same, without the note
+  }
+}
 
 function storageOrNull(): Storage | null {
   try {
@@ -144,9 +172,15 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
     path: entry.path, parentId: entry.settings.parentId, isHome: entry.isHome, authorId: entry.settings.authorId, authorName: entry.settings.authorName,
   });
   const [publishing, setPublishing] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(
-    restored ? { tone: "success", text: "Changes that had not been saved were restored. They are being saved now." } : null,
-  );
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(() => {
+    if (restored) return { tone: "success", text: "Changes that had not been saved were restored. They are being saved now." };
+    const flash = readFlash(entry.id);
+    return flash ? { tone: "success", text: flash } : null;
+  });
+  // Said once: read while the first render is made (which may run twice in development), dropped once it is shown.
+  useEffect(() => dropFlash(entry.id), [entry.id]);
+  // "Save" (M7-3): the draft as it is now, kept in the history.
+  const [savingRevision, setSavingRevision] = useState(false);
   const [slash, setSlash] = useState<SlashState | null>(null);
   // An embed asked for from the slash menu: where it goes once the address is given.
   const [embedAt, setEmbedAt] = useState<SlashRange | null>(null);
@@ -364,6 +398,83 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
     window.location.reload();
   }
 
+  /** What is typed, saved: the draft version the server has now, or why it is not saved (M7-3: before "Save" and a restore). */
+  async function readyVersion(): Promise<{ version: number } | { error: string }> {
+    const autosave = autosaveRef.current;
+    if (!autosave) return { error: "The editor is not ready yet." };
+    await autosave.flush();
+    const state = statusRef.current.state;
+    if (state === "conflict") return { error: "The draft was changed somewhere else. Resolve that first." };
+    if (state === "invalid" || state === "error" || state === "pending") return { error: "The latest changes are not saved yet." };
+    return { version: autosave.version };
+  }
+
+  /** "Save" (M7-3): what is typed is saved, then that version is kept in the history. */
+  async function saveToHistory() {
+    if (savingRevision) return;
+    setSavingRevision(true);
+    setNotice(null);
+    try {
+      const ready = await readyVersion();
+      if ("error" in ready) return setNotice({ tone: "error", text: `Not saved to the history: ${ready.error}` });
+      const data = new FormData();
+      data.set("version", String(ready.version));
+      const result = await saveRevisionAction(orgSlug, siteSlug, entry.id, IDLE, data);
+      if (result.status === "success") setNotice({ tone: "success", text: result.message ?? "Saved." });
+      else setNotice({ tone: "error", text: result.message ?? Object.values(result.fieldErrors ?? {}).flat()[0] ?? "Not saved to the history." });
+    } catch {
+      setNotice({ tone: "error", text: "Not saved to the history: the connection failed. Try again." });
+    } finally {
+      setSavingRevision(false);
+    }
+  }
+
+  /** A revision is in the draft now (the server committed it): the editor loads the draft as it is, saying what happened. */
+  function afterRestore(text: string) {
+    autosaveRef.current?.dispose();
+    if (storage) clearBuffer(storage, entry.id, autosaveRef.current?.version ?? entry.draft.version);
+    leaveFlash(entry.id, text);
+    window.location.reload();
+  }
+
+  /**
+   * The conflict dialog's overwrite (M7-3): everything this editor shows (the title, the text, and every draft field the
+   * sidebar shows, changed here or not) is written over the version the dialog named, after the server keeps that
+   * version in the history. Only a confirmed new version makes the editor go on.
+   */
+  async function overwrite(replaceVersion: number): Promise<OverwriteResult> {
+    if (!editor) return { ok: false, changedAgain: false, text: "The editor is not ready yet." };
+    const { document } = dedupeIds({ v: DOCUMENT_VERSION, doc: editor.getJSON() });
+    const parsed = parseDocument(document);
+    if (!parsed.ok) return { ok: false, changedAgain: false, text: documentProblem(parsed) };
+    const supports = contentType(entry.type)?.supports;
+    const shown = fieldsRef.current;
+    const { settings } = entry;
+    const fields: DraftFields = { slug: shown.slug ?? settings.slug };
+    if (supports?.excerpt) fields.excerpt = shown.excerpt ?? settings.excerpt;
+    if (supports?.featuredImage) fields.featuredMediaId = "featuredMediaId" in shown ? shown.featuredMediaId : settings.featuredMediaId;
+    if (supports?.templates) fields.template = "template" in shown ? shown.template : settings.template;
+    if (supports?.taxonomies.length) fields.termIds = shown.termIds ?? settings.termIds;
+    const data = new FormData();
+    data.set("replaceVersion", String(replaceVersion));
+    data.set("draft", JSON.stringify({ title: titleRef.current, content: parsed.document, ...fields }));
+    try {
+      const result = await overwriteDraftAction(orgSlug, siteSlug, entry.id, IDLE, data);
+      if (result.status !== "success") {
+        return { ok: false, changedAgain: result.message === CHANGED_AGAIN, text: result.message ?? Object.values(result.fieldErrors ?? {}).flat()[0] ?? "Not overwritten." };
+      }
+      const version = Number(result.values?.version);
+      if (!Number.isInteger(version) || version < 1) return { ok: false, changedAgain: false, text: "The answer had no version. Reload the page." };
+      autosaveRef.current?.adopt(version);
+      editor.setEditable(canEdit);
+      setCopied(null);
+      setNotice({ tone: "success", text: result.message ?? "Your version is saved." });
+      return { ok: true };
+    } catch {
+      return { ok: false, changedAgain: false, text: "Not overwritten: the connection failed. Nothing was changed. Try again." };
+    }
+  }
+
   const conflict = status.state === "conflict";
   const editable = canEdit && !conflict;
   const isLive = live.status === "published";
@@ -399,7 +510,30 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
             {statusText(status)}
           </span>
         ) : null}
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <HistoryButton
+            orgSlug={orgSlug}
+            siteSlug={siteSlug}
+            entryId={entry.id}
+            canChange={editable}
+            beforeChange={readyVersion}
+            onRestored={afterRestore}
+            onSaved={(text) => setNotice({ tone: "success", text })}
+            disabled={publishing}
+          />
+          {canEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 px-3"
+              title="Saves the draft and keeps this version in the history"
+              onClick={saveToHistory}
+              disabled={savingRevision || publishing || conflict}
+              aria-busy={savingRevision || undefined}
+            >
+              {savingRevision ? "Saving…" : "Save"}
+            </Button>
+          ) : null}
           {conflict ? (
             <Button type="button" variant="outline" className="h-9 px-3" onClick={() => setConflictOpen(true)}>
               Resolve…
@@ -692,25 +826,18 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
         />
       ) : null}
 
-      <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
-        <DialogContent className="sm:max-w-md" data-testid="conflict-dialog">
-          <DialogHeader>
-            <DialogTitle>This draft was changed somewhere else</DialogTitle>
-            <DialogDescription>
-              A newer version was saved in another tab or by someone else. Your latest changes have not been saved, and nothing you type now will be.
-            </DialogDescription>
-          </DialogHeader>
-          {copied ? <FormAlert tone="success">{copied}</FormAlert> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" className="h-10 px-4" onClick={copyMine}>
-              Copy my changes
-            </Button>
-            <Button type="button" className="h-10 px-4" onClick={loadLatest}>
-              Load the latest version
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConflictDialog
+        open={conflictOpen}
+        onOpenChange={setConflictOpen}
+        orgSlug={orgSlug}
+        siteSlug={siteSlug}
+        entryId={entry.id}
+        canOverwrite={canEdit}
+        copied={copied}
+        onCopy={copyMine}
+        onLoadLatest={loadLatest}
+        onOverwrite={overwrite}
+      />
     </div>
   );
 }

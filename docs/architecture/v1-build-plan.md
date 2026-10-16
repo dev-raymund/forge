@@ -679,6 +679,13 @@ src/themes/
   - **The job:** `entry.publish_scheduled` checks the schedule again (still this one; its author may still publish; still valid) and publishes through the same steps as Publish. It is recorded by the system actor and flushed with `revalidateTag(…, { expire: 0 })`.
   - **Failures:** a permanent one returns the entry to draft, with a banner, an overview line and an email. A transient one is retried.
   - **When it runs:** when the runner is next called after its time, so up to a day late on Hobby without an external scheduler (runbook §6).
+- **As built (M7-3, ADR 0026):**
+  - **Save:** keeps the draft, as just saved, as a `save` revision, deduped on every editable field (a label makes a new one). The plan's number of manual revisions (`save` and `restore`; Free 20, Pro 100) is kept per entry, the oldest pruned. `publish` and `scheduled` revisions are always kept.
+  - **The history:** number, kind, label, who, when; "Live" on the revision visitors see; a schedule's frozen revision with its time.
+  - **Restore:** the draft as it was is kept first, then the revision is copied into the draft and a `restore` revision is added.
+    - It is checked as a draft is now. Deleted terms are left out and said so. Images and links that are gone are kept and flagged. A taken or reserved address refuses it.
+    - Never published; the status, the live revision and a schedule's frozen revision are untouched.
+  - **Conflict overwrite:** the dialog names the newer save; the server keeps exactly that version as a revision, then writes the editor's draft through `saveDraft`'s checks, in one transaction. A version saved after the dialog named one is refused.
 
 ---
 

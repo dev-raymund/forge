@@ -1,8 +1,9 @@
 import type { Actor } from "@/modules/auth/shared";
 import {
-  cancelSchedule, canPublishEntry, canUpdateEntry, purgeEntry, rescheduleEntry, restoreEntry, scheduleEntry, submitCancelSchedule, submitCreateEntry, submitPublishEntry,
-  submitPurgeEntry, submitRescheduleEntry, submitRestoreEntry, submitSaveDraft, submitScheduleEntry, submitSetHomepage, submitTrashEntry, submitUnpublishEntry, trashEntry,
-  unpublishEntry,
+  cancelSchedule, canPublishEntry, canUpdateEntry, getDraftHead, listRevisions, overwriteDraft, purgeEntry, rescheduleEntry, restoreEntry, restoreRevision, saveRevision,
+  scheduleEntry, submitCancelSchedule, submitCreateEntry, submitDraftHead, submitOverwriteDraft, submitPublishEntry, submitPurgeEntry, submitRescheduleEntry,
+  submitRestoreEntry, submitRestoreRevision, submitRevisionHistory, submitSaveDraft, submitSaveRevision, submitScheduleEntry, submitSetHomepage, submitTrashEntry,
+  submitUnpublishEntry, trashEntry, unpublishEntry,
 } from "@/modules/content";
 import {
   completeUpload, deleteFolder, mediaUsage, moveMedia, renameFolder, requestUploads, restoreMedia, submitCompleteUpload, submitDeleteFolder, submitMediaUsage, submitMoveMedia,
@@ -133,6 +134,21 @@ export const tenantOperations: TenantOperation[] = [
   },
   { name: "content.rescheduleEntry(A's site, B's entry)", run: async ({ actor, orgSlug, siteSlug }, b) => rescheduleEntry(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId, { runAt: SOON }) },
   { name: "content.cancelSchedule(A's site, B's entry)", run: async ({ actor, orgSlug, siteSlug }, b) => cancelSchedule(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId) },
+  // The history (M7-3): B's entry named on A's site; read, kept, restored or overwritten; and its reads from B's URL.
+  ...([
+    ["listRevisions", (ctx: SiteContext, b: Foreign) => listRevisions(ctx, b.entryId)],
+    ["getDraftHead", (ctx: SiteContext, b: Foreign) => getDraftHead(ctx, b.entryId)],
+    ["saveRevision", (ctx: SiteContext, b: Foreign) => saveRevision(ctx, b.entryId, { version: 1 })],
+    ["restoreRevision", (ctx: SiteContext, b: Foreign) => restoreRevision(ctx, b.entryId, { revisionId: b.entryId, version: 1 })],
+    ["overwriteDraft", (ctx: SiteContext, b: Foreign) => overwriteDraft(ctx, b.entryId, { replaceVersion: 1, draft: { title: "Hijacked" } })],
+  ] as const).map(([name, run]) => ({
+    name: `content.${name}(A's site, B's entry)`,
+    run: async ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => run(await resolveSiteContext(actor, orgSlug, siteSlug), b),
+  })),
+  { name: "content.submitRevisionHistory(B's slug, B's site, B's entry)", run: ({ actor }, b) => refused(submitRevisionHistory(actor, b.orgSlug, b.siteSlug, b.entryId, undefined)) },
+  { name: "content.submitRevisionHistory(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitRevisionHistory(actor, orgSlug, siteSlug, b.entryId, undefined)) },
+  { name: "content.submitDraftHead(B's slug, B's site, B's entry)", run: ({ actor }, b) => refused(submitDraftHead(actor, b.orgSlug, b.siteSlug, b.entryId)) },
+  { name: "content.submitDraftHead(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitDraftHead(actor, orgSlug, siteSlug, b.entryId)) },
   // The warning before a file goes to the trash (M7-1): where B's file is used, asked from A's site or B's URL.
   { name: "media.mediaUsage(A's site, B's media)", run: async ({ actor, orgSlug, siteSlug }, b) => mediaUsage(await resolveSiteContext(actor, orgSlug, siteSlug), b.mediaId) },
   { name: "media.submitMediaUsage(A's slug, A's site, B's media)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitMediaUsage(actor, orgSlug, siteSlug, b.mediaId)) },
@@ -325,6 +341,13 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
     ["submitScheduleEntry", (actor: Actor, org: string, site: string, entry: string) => submitScheduleEntry(actor, org, site, entry, form({ runAt: SOON, version: "1" }))],
     ["submitRescheduleEntry", (actor: Actor, org: string, site: string, entry: string) => submitRescheduleEntry(actor, org, site, entry, form({ runAt: SOON }))],
     ["submitCancelSchedule", (actor: Actor, org: string, site: string, entry: string) => submitCancelSchedule(actor, org, site, entry, form({}))],
+    // M7-3.
+    ["submitSaveRevision", (actor: Actor, org: string, site: string, entry: string) => submitSaveRevision(actor, org, site, entry, form({ version: "1", label: "Hijacked" }))],
+    ["submitRestoreRevision", (actor: Actor, org: string, site: string, entry: string) => submitRestoreRevision(actor, org, site, entry, form({ revisionId: entry, version: "1" }))],
+    [
+      "submitOverwriteDraft",
+      (actor: Actor, org: string, site: string, entry: string) => submitOverwriteDraft(actor, org, site, entry, form({ replaceVersion: "1", draft: JSON.stringify({ title: "Hijacked" }) })),
+    ],
   ] as const).flatMap(([name, submit]) => [
     { name: `content.${name}(B's slug, B's site, B's entry)`, run: ({ actor }: Caller, b: Foreign) => submit(actor, b.orgSlug, b.siteSlug, b.entryId) },
     { name: `content.${name}(A's slug, A's site, B's entry)`, run: ({ actor, orgSlug, siteSlug }: Caller, b: Foreign) => submit(actor, orgSlug, siteSlug, b.entryId) },

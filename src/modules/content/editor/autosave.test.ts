@@ -115,6 +115,27 @@ describe("conflicts and failures", () => {
     expect(server.saves.at(-1)).toEqual({ expected: 5, doc: "mine" });
   });
 
+  it("after an overwrite wrote what it holds (M7-3), adopt() takes that version: saved, the old buffer gone, nothing saved twice; editing goes on from there", async () => {
+    const { server, storage, autosave, last } = setup();
+    server.version = 5;
+    autosave.change("mine");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(last()).toEqual({ state: "conflict" });
+    expect(storage.data.get(bufferKey(ENTRY, 1))).toBe(JSON.stringify("mine"));
+    // The overwrite (another request) kept version 5 as a revision and wrote "mine" as version 6.
+    server.version = 6;
+    autosave.adopt(6);
+    expect(last()).toMatchObject({ state: "saved", version: 6 });
+    expect(autosave.version).toBe(6);
+    expect(storage.data.size).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(server.saves).toHaveLength(1); // only the save that met the conflict
+    autosave.change("mine, and more");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(server.saves.at(-1)).toEqual({ expected: 6, doc: "mine, and more" });
+    expect(last()).toMatchObject({ state: "saved", version: 7 });
+  });
+
   it("a network error keeps the change and retries on the normal cadence", async () => {
     const { server, autosave, statuses } = setup();
     server.fail = true;

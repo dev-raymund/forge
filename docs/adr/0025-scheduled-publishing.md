@@ -254,3 +254,11 @@ The job runs when the runner is called after its `run_at`. On V1's free hosting 
   - **A regression:** after the refactor, `makeLive` read the clock twice, so a first publish by hand could get a `first_published_at` one millisecond after its `published_at` (`content-entries.test.ts` expects them equal). It now reads the clock once.
   - **Test isolation:** a lifecycle test deliberately leaves a trashed page with a live child; when it shared a database with the purge-record test (as CI's fewer workers make it), the job rightly reported that page as kept back. The lifecycle test now puts its broken tree right afterwards. The purge-record test checks its own entries with `purgeTrashedEntries`, as the job's entry half does.
   - Both were checked again with the integration suite on two workers and with the two files sharing one database.
+
+## Addendum (M7-3, 2026-10-16): scheduled revisions in the history
+
+- **The history** lists `scheduled` revisions with their kind.
+  - The frozen one of a schedule under way says when it publishes, in the site's time zone.
+  - One that went live has the "Live" marker. The kind stays `scheduled`, as this ADR decided: no `publish` copy.
+- **Frozen revisions are never touched.** Restoring a revision into the draft of a scheduled entry, or overwriting its draft from the conflict dialog, changes the draft only. The job publishes the frozen revision (tested, also with a restore racing the job).
+- **Never pruned:** `scheduled` revisions do not count toward the plan's manual revisions. ADR 0026 §2.

@@ -936,7 +936,7 @@ The suite can run against real R2 with `TEST_S3_*`.
 - [x] Title field; publish button (basic publish)
 
 **Decisions taken here (ADR 0003, addendum M5-4):**
-- **The conflict dialog has two of plan §6.3's three choices.** "Overwrite (the other version saved as a revision first)" needs `save` revisions (M7-3) and is added there.
+- **The conflict dialog has two of plan §6.3's three choices.** "Overwrite (the other version saved as a revision first)" needs `save` revisions (M7-3) and is added there. *(Done in M7-3, ADR 0026 §4.)*
 - **A document with blocks this editor lacks is not opened for editing** (nothing can be lost by saving it). It goes away when M5-5 and M6 add those blocks.
 - **Autosave does not re-render the page** (`FormOutcome.refresh: false`).
 - **The site overview links to the Home page's editor**, so the editor is reachable before M5-7's lists. A site made before M5-3 shows "This site has no home page yet."; giving it one is M5-7's (below). No data was backfilled.
@@ -1320,13 +1320,18 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M5-3
 
 **Acceptance criteria:**
-- [ ] "Save" creates a `save` revision (deduped by content hash); cap by plan; publish revisions always kept
-- [ ] History drawer: number, kind, author, time, label, live marker
-- [ ] `restoreRevision` copies into the draft (+ a `restore` revision), never publishes; flags missing media
+- [x] "Save" creates a `save` revision (deduped by content hash); cap by plan; publish revisions always kept *(ADR 0026 §2: deduped on every editable field, a typed label makes a new one; `save` and `restore` kept to the plan's 20 / 100 per entry, oldest pruned; `publish` and `scheduled` always kept; a stale version refused)*
+- [x] History drawer: number, kind, author, time, label, live marker *(§5: the "History" dialog, 30 at a time; "Live", and a schedule's frozen revision with its time; Viewers read it)*
+- [x] `restoreRevision` copies into the draft (+ a `restore` revision), never publishes; flags missing media *(§3: the draft is kept first; checked as a draft is now; deleted terms dropped and said so; images, links and a trashed featured image kept and flagged, a deleted one removed; a taken or reserved address refuses it. §4: the conflict dialog's overwrite, keeping exactly the version the dialog named)*
 
 **Likely files/modules:** `src/modules/content/revision.*`, editor drawer
 
 **Testing:** integration: restore → draft equals the revision content; the published version is unchanged.
+
+**Hand-off (from M7-3, ADR 0026):**
+- **M7-4 (preview):** the history lists revisions by title only. A preview of a revision, and of the draft after a restore, would use the same `renderDocument` path.
+- **The restored draft** may hold images that are gone (flagged in the editor, left out of the page) until someone replaces them.
+- **Compare UI** stays a SHOULD after V1.
 
 ### M7-4 · Preview
 **Labels:** `area:rendering` `type:feature`

@@ -2,11 +2,14 @@
 
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
+import type { ActionResult } from "@/platform/errors";
 import type { FormState } from "@/platform/forms";
 import {
-  submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry, submitRescheduleEntry,
-  submitRestoreEntry, submitSaveDraft, submitScheduleEntry, submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
+  submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitDraftHead, submitMovePage, submitOverwriteDraft, submitPlacePage, submitPublishEntry, submitPurgeEntry,
+  submitRescheduleEntry, submitRestoreEntry, submitRestoreRevision, submitRevisionHistory, submitSaveDraft, submitSaveRevision, submitScheduleEntry, submitSetHomepage,
+  submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";
+import type { DraftHeadInfo, RevisionList } from "./queries";
 import { submitCreateTerm, submitDeleteTerm, submitUpdateTerm } from "./term-forms";
 
 /**
@@ -96,4 +99,28 @@ export async function rescheduleEntryAction(orgSlug: string, siteSlug: string, e
 
 export async function cancelScheduleAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitCancelSchedule(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+// M7-3: the history, and the conflict dialog's overwrite.
+
+export async function saveRevisionAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitSaveRevision(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function restoreRevisionAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitRestoreRevision(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+export async function overwriteDraftAction(orgSlug: string, siteSlug: string, entryId: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitOverwriteDraft(await getCurrentActor(), orgSlug, siteSlug, entryId, formData, await currentRequestMeta()));
+}
+
+/** The entry's history, for its dialog. Read-only. */
+export async function revisionHistoryAction(orgSlug: string, siteSlug: string, entryId: string, before?: number): Promise<ActionResult<RevisionList>> {
+  return submitRevisionHistory(await getCurrentActor(), orgSlug, siteSlug, entryId, before, await currentRequestMeta());
+}
+
+/** Who saved the draft last, and when, for the conflict dialog. Read-only. */
+export async function draftHeadAction(orgSlug: string, siteSlug: string, entryId: string): Promise<ActionResult<DraftHeadInfo>> {
+  return submitDraftHead(await getCurrentActor(), orgSlug, siteSlug, entryId, await currentRequestMeta());
 }

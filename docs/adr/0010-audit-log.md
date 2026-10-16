@@ -143,3 +143,11 @@ ADR 0025 §6 has the details.
 - **One extra rule:** the transaction must have no user in it.
 - **What uses it:** scheduled publishing, failed schedules, and the automatic purge of entries.
 - **`record` itself is unchanged.**
+
+## Addendum (M7-3, 2026-10-16): the history
+
+- **Two events,** each written in the same transaction as its change (ADR 0026):
+  - `entry.revision_restored` (`revision`: the one copied into the draft);
+  - `entry.draft_replaced`, labelled "Draft overwritten" (`keptRevision`: the one that keeps the version an overwrite replaced). Named in the vocabulary's `-ed` form.
+- **Not recorded:** "Save". It changes nothing public, like autosave, and the immutable revision row records who and when.
+- **The writer is unchanged.** The ordering follow-up stays M12-1's.

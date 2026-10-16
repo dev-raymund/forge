@@ -28,6 +28,10 @@ export type { EntryPurgeResult } from "./purge";
 export { cancelSchedule, failDue, publishDue, publishScheduled, rescheduleEntry, runAtFrom, scheduleEntry, SCHEDULE_HORIZON_DAYS, SCHEDULE_LEAD_MS } from "./scheduling";
 export type { DueOutcome, DuePayload, Scheduled } from "./scheduling";
 export { formatInZone, offsetLabel, toLocalInput, zonedToUtc } from "./zoned-time";
+// The history (M7-3, ADR 0026): "Save", restoring a revision, the conflict dialog's overwrite.
+export { overwriteDraft, restoreRevision, saveRevision } from "./revisions.service";
+export type { DraftOverwritten, RevisionRestored, RevisionSaved } from "./revisions.service";
+
 // Categories and tags (M5-8).
 export { createTerm, deleteTerm, listTermsWithUsage, updateTerm } from "./term.service";
 export type { TermSummary } from "./term.service";
@@ -40,13 +44,16 @@ export {
 } from "./policies";
 export type { EntryRef } from "./policies";
 export {
-  DRAFT_FIELD_MAX, submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitMovePage, submitPlacePage, submitPublishEntry, submitPurgeEntry,
-  submitRescheduleEntry, submitRestoreEntry, submitSaveDraft, submitScheduleEntry, submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
+  DRAFT_FIELD_MAX, submitCancelSchedule, submitChangeAuthor, submitCreateEntry, submitDraftHead, submitMovePage, submitOverwriteDraft, submitPlacePage, submitPublishEntry,
+  submitPurgeEntry, submitRescheduleEntry, submitRestoreEntry, submitRestoreRevision, submitRevisionHistory, submitSaveDraft, submitSaveRevision, submitScheduleEntry,
+  submitSetHomepage, submitTrashEntry, submitUnpublishEntry,
 } from "./entry-forms";
 
 // The editor and its link picker (M5-4).
-export { ENTRY_SEARCH_LIMIT, getEntryForEditor, listPages, listPosts, listScheduled, listTerms, PAGE_TREE_LIMIT, searchEntries } from "./queries";
-export type { EditorEntry, EntryMatch, PageListItem, PostList, PostListItem, ScheduledItem, TermOption } from "./queries";
+export {
+  ENTRY_SEARCH_LIMIT, getDraftHead, getEntryForEditor, HISTORY_PAGE_SIZE, listPages, listPosts, listRevisions, listScheduled, listTerms, PAGE_TREE_LIMIT, searchEntries,
+} from "./queries";
+export type { DraftHeadInfo, EditorEntry, EntryMatch, PageListItem, PostList, PostListItem, RevisionItem, RevisionList, ScheduledItem, TermOption } from "./queries";
 export { EntryEditorPage } from "./ui/entry-editor-page";
 // The lists and the new forms (M5-7).
 export { NewEntryForm } from "./ui/new-entry-form";

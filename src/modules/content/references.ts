@@ -82,3 +82,37 @@ export async function assertOwnReferences(tx: TenantTx, ctx: SiteScope, document
     if (elsewhere.length) throw validationError({ content: [NOT_THIS_SITES_ENTRY] });
   }
 }
+
+/**
+ * What an earlier revision points at that is gone now (M7-3: a restore flags it, and keeps the document as it was):
+ * image blocks whose image is not usable any more (trashed, deleted, or not ready), and links to pages or posts that
+ * are not on the site any more (trashed, or deleted). Another site's, which no revision of this entry can hold, is
+ * refused by `assertOwnReferences` first.
+ */
+export async function missingReferences(tx: TenantTx, ctx: SiteScope, document: unknown): Promise<{ images: number; links: number }> {
+  const refs = referencesOf(document);
+  const usable = refs.mediaIds.size ? await usableImageIds(tx, ctx.org.id, ctx.site.id, [...refs.mediaIds]) : new Set<string>();
+  let links = 0;
+  if (refs.entryIds.size) {
+    const found = await tx
+      .select({ id: entries.id })
+      .from(entries)
+      .where(and(eq(entries.organizationId, ctx.org.id), eq(entries.siteId, ctx.site.id), inArray(entries.id, [...refs.entryIds]), isNull(entries.deletedAt)));
+    links = refs.entryIds.size - found.length;
+  }
+  return { images: [...refs.mediaIds].filter((id) => !usable.has(id)).length, links };
+}
+
+/**
+ * A featured image an earlier revision had (M7-3): usable (`ok`); still this site's but not usable (`unavailable`: in
+ * the media trash, kept in the draft as a trashed image already is, and not shown); or gone (`removed`: deleted for
+ * good, so the draft cannot point at it, as the foreign key says).
+ */
+export async function featuredImageState(tx: TenantTx, ctx: SiteScope, mediaId: string): Promise<"ok" | "unavailable" | "removed"> {
+  if ((await usableImageIds(tx, ctx.org.id, ctx.site.id, [mediaId])).has(mediaId)) return "ok";
+  const [row] = await tx
+    .select({ id: t.mediaAssets.id })
+    .from(t.mediaAssets)
+    .where(and(eq(t.mediaAssets.organizationId, ctx.org.id), eq(t.mediaAssets.siteId, ctx.site.id), eq(t.mediaAssets.id, mediaId)));
+  return row ? "unavailable" : "removed";
+}

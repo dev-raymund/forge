@@ -8,6 +8,10 @@ import type { PLAN_KEYS } from "./schema";
  * of the plan's table arrive with the features that check them (M11 wires the
  * remaining ones).
  *
+ * `manualRevisions` (M7-3) is not a limit anything is refused for: it is how
+ * many of an entry's manual revisions (`save`, `restore`) are kept, the oldest
+ * pruned beyond it (plan §14 "Manual revisions kept per entry": 20 and 100).
+ *
  * The figures are the plan's ("illustrative" there, and the ones V1 ships
  * with): Free 1 site and 1 GiB, Pro and the Pro trial 5 sites and 20 GiB.
  * Storage is binary throughout (M6-3, ADR 0020): 1 GiB is 1,073,741,824
@@ -18,13 +22,13 @@ import type { PLAN_KEYS } from "./schema";
 export type PlanKey = (typeof PLAN_KEYS)[number];
 export type LimitKey = "sites" | "storage";
 
-export type Plan = { readonly label: string; readonly limits: Readonly<Record<LimitKey, number>> };
+export type Plan = { readonly label: string; readonly limits: Readonly<Record<LimitKey, number>>; readonly manualRevisions: number };
 
 const GB = 1024 ** 3;
 
 export const PLANS: Readonly<Record<PlanKey, Plan>> = Object.freeze({
-  free: { label: "Free", limits: { sites: 1, storage: 1 * GB } },
-  pro: { label: "Pro", limits: { sites: 5, storage: 20 * GB } },
+  free: { label: "Free", limits: { sites: 1, storage: 1 * GB }, manualRevisions: 20 },
+  pro: { label: "Pro", limits: { sites: 5, storage: 20 * GB }, manualRevisions: 100 },
 });
 
 /** A number of bytes in binary units: "1 GiB", "20 GiB", "512 MiB", "1.5 GiB", "300 bytes". */

@@ -105,3 +105,7 @@ The integration tests record the tags each public read applies (`resolveRoute`, 
   - **freshness:** each operation's events against each public read's tags; the 200-post cap; a draft's term change leaving the live archive alone until published.
 - `src/platform/cache/cache.test.ts`, `src/modules/content/term-validation.test.ts`, `src/modules/audit/events.test.ts`; `tests/integration/audit.test.ts` (every event written by a mutation).
 - `tests/e2e/content-terms.spec.ts` (production build): the category screen (add, subcategory, a taken slug, rename, delete with its counts, drafts cleaned); an Author's "Add a tag" with the text and excerpt kept; the public archives after a rename and a delete, and another site untouched; tags on a phone.
+
+## Addendum (M7-3, 2026-10-16): restoring a revision
+
+As this ADR handed off: a revision restored into the draft keeps the term ids that are still terms of the site, of a taxonomy the type uses, and leaves out the others (deleted since). The message says how many ("1 category or tag it had no longer exists and was left out"). The revision itself still names them: history is not rewritten. ADR 0026 §3.

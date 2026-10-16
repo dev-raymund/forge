@@ -9,7 +9,7 @@ import { subscriptions } from "./schema";
  * something is created (M4-1: sites).
  */
 
-export { allowanceOf, assertLimit } from "./limits";
+export { allowanceOf, assertLimit, manualRevisionsKept } from "./limits";
 export { countOf, formatBytes, hasRoomFor, limitMessage, PLANS } from "./plans";
 export type { Allowance, LimitKey, Plan, PlanKey } from "./plans";
 

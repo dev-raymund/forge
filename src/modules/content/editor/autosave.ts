@@ -8,8 +8,9 @@
  * - One save in flight at a time; changes made meanwhile trigger another save.
  * - `save(expectedVersion, draft)` is optimistic: a version mismatch is a
  *   conflict. On conflict autosave stops, and the editor offers to reload the
- *   latest version or copy what was typed (M5-4; overwriting, which first keeps
- *   the other version as a revision, needs M7-3's revisions).
+ *   latest version, copy what was typed (M5-4), or overwrite after the other
+ *   version is kept as a revision (M7-3): `adopt` then takes the version the
+ *   overwrite wrote, and autosave goes on from it.
  * - Every unsynced change is buffered in storage under entry + base version,
  *   so a crash or reload loses nothing; the buffer is cleared once saved.
  */
@@ -139,6 +140,20 @@ export function createAutosave<Doc>(options: AutosaveOptions<Doc>) {
     },
     /** Saves now (before preview, publish or navigation). */
     flush,
+    /**
+     * The server now holds what this editor holds, at `newVersion` (M7-3: an overwrite wrote it, from what was handed
+     * here last; the editor is read-only during a conflict, so nothing newer exists). Saved: the buffer of the old
+     * version is forgotten, and autosave goes on from the new one.
+     */
+    adopt(newVersion: number) {
+      if (storage) safe(() => storage.removeItem(bufferKey(entryId, version)));
+      clearTimeout(timer);
+      version = newVersion;
+      dirty = false;
+      firstUnsavedAt = null;
+      stopped = false;
+      setStatus({ state: "saved", version, at: new Date(now()) });
+    },
     /** After the user resolved a conflict by reloading or overwriting. */
     resume(newVersion: number) {
       version = newVersion;

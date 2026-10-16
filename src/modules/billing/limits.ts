@@ -25,6 +25,11 @@ async function planOf(tx: TenantTx, organizationId: string): Promise<PlanKey> {
   return row?.plan ?? "free";
 }
 
+/** How many manual revisions of each entry the organization's plan keeps (M7-3, plan §14). */
+export async function manualRevisionsKept(tx: TenantTx, organizationId: string): Promise<number> {
+  return PLANS[await planOf(tx, organizationId)].manualRevisions;
+}
+
 /**
  * What counts towards each limit.
  *  - sites: a deleted site no longer does.
