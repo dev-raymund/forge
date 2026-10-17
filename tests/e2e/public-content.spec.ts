@@ -259,7 +259,9 @@ test("publish in the editor → visible; a saved draft stays private; republishe
   await page.goto(overview);
   await page.getByRole("button", { name: "Publish site…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Publish site" }).click();
-  await expect(shown(page, "site-status")).toHaveText("Live");
+  // The badge changes once the action's refresh has landed (the dialog says "Publishing…" or "Switching…" until
+  // then). Under load that took over 5 s (once in M8-1, once in M8-2): these waits take the suite's 15 s, as elsewhere.
+  await expect(shown(page, "site-status")).toHaveText("Live", { timeout: 15_000 });
   await visitor.goto(siteUrl(address));
   expect(await publicView(visitor)).toMatchObject({ heading: "Harbour Bakery", theme: "studio" });
 
@@ -294,14 +296,14 @@ test("publish in the editor → visible; a saved draft stays private; republishe
   await page.goto(overview);
   await page.getByRole("button", { name: "Switch to Coming soon…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Switch to Coming soon" }).click();
-  await expect(shown(page, "site-status")).toHaveText("Coming soon");
+  await expect(shown(page, "site-status")).toHaveText("Coming soon", { timeout: 15_000 });
   await visitor.reload();
   await expect(publicMain()).toContainText("Coming soon");
   await expect(publicMain()).not.toContainText("Fresh bread");
   expect(await robots(visitor)).toEqual(["noindex, nofollow"]);
   await page.getByRole("button", { name: "Publish site…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Publish site" }).click();
-  await expect(shown(page, "site-status")).toHaveText("Live");
+  await expect(shown(page, "site-status")).toHaveText("Live", { timeout: 15_000 });
   await visitor.reload();
   await expect(publicMain()).toContainText("Fresh bread every morning. Draft words.");
 
