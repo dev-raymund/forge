@@ -1,6 +1,7 @@
 import "server-only";
 import { REVISION_KIND_WORDS, type RevisionKind } from "@/modules/content/shared";
 import { themeFor } from "@/themes/render";
+import type { AppearancePreview } from "../appearance-preview";
 import type { Preview } from "../preview";
 import { renderableSite } from "../public-site";
 import { PublicPageView } from "./public-page";
@@ -80,5 +81,33 @@ export function PreviewUnavailable() {
       <h1 style={{ fontSize: "1.5rem" }}>This preview is not available</h1>
       <p>It may have expired, or you may no longer have access to it. Open a new preview from the editor.</p>
     </main>
+  );
+}
+
+/** The appearance editor's preview (M8-1): the home page with settings that are not saved, under a banner that says so. */
+export function AppearancePreviewView({ preview }: { preview: AppearancePreview }) {
+  const { theme, context } = themeFor(renderableSite(preview.site, preview.locator));
+  const { Layout } = theme;
+  const lines = ["Not saved yet: visitors see the saved appearance until you save."];
+  if (preview.site.status === "coming_soon") lines.push("The site is not live yet: visitors see its Coming soon page.");
+  return (
+    <>
+      <div
+        role="note"
+        aria-label="Preview"
+        data-testid="preview-banner"
+        style={{ background: "#1f2937", color: "#f9fafb", font: "14px/1.5 system-ui, sans-serif", padding: "10px 16px", borderBottom: "3px solid #f59e0b" }}
+      >
+        <strong style={{ display: "block", fontSize: "15px" }}>Preview of your appearance changes</strong>
+        {lines.map((line) => (
+          <span key={line} style={{ display: "block" }}>
+            {line}
+          </span>
+        ))}
+      </div>
+      <Layout context={context}>
+        <PublicPageView page={preview.page} site={preview.site} locator={preview.locator} />
+      </Layout>
+    </>
   );
 }

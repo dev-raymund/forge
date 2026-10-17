@@ -151,3 +151,9 @@ ADR 0025 §6 has the details.
   - `entry.draft_replaced`, labelled "Draft overwritten" (`keptRevision`: the one that keeps the version an overwrite replaced). Named in the vocabulary's `-ed` form.
 - **Not recorded:** "Save". It changes nothing public, like autosave, and the immutable revision row records who and when.
 - **The writer is unchanged.** The ordering follow-up stays M12-1's.
+
+## Addendum (M8-1, 2026-10-17): the appearance settings
+
+- **`site.settings_changed` has a fifth group, `appearance`** (ADR 0028). Its fields are the groups of the theme's settings that changed: `colors`, `fonts`, `header`, `footer`, `layout`.
+- **Example sentence:** "Ada changed the appearance settings of Harbour Bakery: colours, header."
+- **The writer is unchanged.**

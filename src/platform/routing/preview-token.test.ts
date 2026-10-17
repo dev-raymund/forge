@@ -1,6 +1,9 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { DEVELOPMENT_PREVIEW_SECRET, PREVIEW_TOKEN_TTL_SECONDS, previewSecret, signPreviewToken, verifyPreviewToken, type PreviewClaims } from "./preview-token";
+import {
+  DEVELOPMENT_PREVIEW_SECRET, PREVIEW_TOKEN_SHAPE, PREVIEW_TOKEN_TTL_SECONDS, previewSecret, signAppearanceToken, signPreviewToken, verifyAppearanceToken, verifyPreviewToken,
+  type PreviewClaims,
+} from "./preview-token";
 
 /** Preview tokens (M7-4): signed, bound to what they show and who asked, 15 minutes, and nothing else accepted. */
 
@@ -57,5 +60,28 @@ describe("preview tokens", () => {
     expect(previewSecret({ APP_ORIGIN: "http://localhost:3000", BETTER_AUTH_URL: "", PREVIEW_TOKEN_SECRET: "", VERCEL_ENV: "" })).toBe(DEVELOPMENT_PREVIEW_SECRET);
     expect(previewSecret({ APP_ORIGIN: "http://localhost:3000", VERCEL_ENV: "preview" })).toBeNull();
     expect(previewSecret({ APP_ORIGIN: "https://cms.forgelinetechnologies.com" })).toBeNull();
+  });
+});
+
+describe("appearance preview tokens (M8-1)", () => {
+  const appearance = { orgId: claims().orgId, siteId: claims().siteId, userId: claims().userId, settings: { layout: { width: "wide" } }, expiresAt: claims().expiresAt };
+
+  it("carry the organization, site, user and the unsaved settings, and expire like the others", () => {
+    const token = signAppearanceToken(appearance, SECRET);
+    expect(verifyAppearanceToken(token, SECRET, NOW)).toEqual(appearance);
+    expect(verifyAppearanceToken(token, SECRET, NOW + PREVIEW_TOKEN_TTL_SECONDS * 1000)).toBeNull();
+    expect(verifyAppearanceToken(token, "t".repeat(40), NOW)).toBeNull();
+  });
+
+  it("are never read as an entry's preview token, nor the other way round: each is signed under its own label", () => {
+    const appearanceToken = signAppearanceToken(appearance, SECRET);
+    const entryToken = signPreviewToken(claims(), SECRET);
+    expect(verifyPreviewToken(appearanceToken, SECRET, NOW)).toBeNull();
+    expect(verifyAppearanceToken(entryToken, SECRET, NOW)).toBeNull();
+  });
+
+  it("fit the route even with the longest settings the kit allows", () => {
+    const longest = { ...appearance, settings: { header: { cta: { label: "x".repeat(40), href: `/${"a".repeat(499)}` } }, footer: { copyright: "ü".repeat(200) }, tokens: { colors: { primary: "#000000" } } } };
+    expect(PREVIEW_TOKEN_SHAPE.test(signAppearanceToken(longest, SECRET))).toBe(true);
   });
 });

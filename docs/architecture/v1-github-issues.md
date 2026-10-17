@@ -1372,14 +1372,19 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M4-4, M6-4
 
 **Acceptance criteria:**
-- [ ] `/…/appearance`: logo, colours (4 tokens with a contrast warning), fonts (heading/body), header variant + sticky + CTA, footer variant + copyright + social toggle, layout (width, radius, density)
-- [ ] Live preview iframe using a preview token with unsaved settings
-- [ ] Saved to `site_settings.theme`; invalidates `site:{id}:config`
-- [ ] Studio gets all header (3) and footer (2) variants
+- [x] `/…/appearance`: logo, colours (4 tokens with a contrast warning), fonts (heading/body), header variant + sticky + CTA, footer variant + copyright + social toggle, layout (width, radius, density) *(ADR 0028 §1: the M6-4 logo control, reused; the warning is WCAG AA, 4.5:1 for text and 3:1 for primary and accent on the background, warning only; only the theme's variants offered; Unsaved changes, Discard)*
+- [x] Live preview iframe using a preview token with unsaved settings *(§4: an appearance token, signed under its own label, carrying the checked settings for 15 minutes; the home page drawn with them; the person's `site.settings.manage` checked again; nothing written)*
+- [x] Saved to `site_settings.theme`; invalidates `site:{id}:config` *(§2: `parseThemeSettings` plus the theme's variants; the settings `version`; recorded as `site.settings_changed`, group `appearance`; `site.configChanged`)*
+- [x] Studio gets all header (3) and footer (2) variants *(§3: `classic`, `centered`, `minimal`; `simple`, `columns`; a variant a theme does not draw is drawn as its first)*
 
 **Likely files/modules:** appearance page, `src/themes/_kit/*`, `src/themes/studio/components/*`
 
 **Testing:** unit: invalid tokens rejected; E2E change colour → live site updated.
+
+**Hand-off (from M8-1, ADR 0028):**
+- **M8-2:** Journal's definition lists only `centered` and `simple`. Add its variants there (the editor offers whatever a theme declares, and refuses the rest).
+- **M8-3:** the header variants draw `context.menus.header` (empty until then): `centered` under the masthead, `minimal` inline. The `columns` footer has a column for the footer menu.
+- **The appearance preview shows the home page only:** a page picker could follow if asked for.
 
 ### M8-2 · Journal theme
 **Labels:** `area:themes` `type:feature`

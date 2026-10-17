@@ -23,8 +23,9 @@ export const HOST_OVERRIDE_PARAM = "__host";
 export const FORGE_PREFIX = "/_forge";
 export const PREVIEW_PATH_PREFIX = `${FORGE_PREFIX}/preview`;
 export const PREVIEW_RENDER_PREFIX = `${RENDER_PREFIX}/preview`;
-/** base64url payload, a dot, base64url signature (./preview-token.ts): the only shape a token has. */
-export const PREVIEW_TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,1000}\.[A-Za-z0-9_-]{43}$/;
+/** base64url payload, a dot, base64url signature (./preview-token.ts): the only shape a token has. Up to ~4 KB: an
+ *  appearance preview (M8-1) carries the settings it shows. */
+export const PREVIEW_TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,4000}\.[A-Za-z0-9_-]{43}$/;
 
 /** A site's platform address: a DNS-label-shaped slug, so it can become `{address}.sites.example.com` later. */
 const ADDRESS = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;

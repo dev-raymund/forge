@@ -23,7 +23,8 @@ export { changeSiteAddress, createSite, deleteSite, getSite, listSites, siteAllo
 export type { SiteChange } from "./sites.service";
 export { canCreateSite, canDeleteSite, canManageAppearance, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
 export {
-  SITES_NOTICES, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateSiteSettings,
+  SITES_NOTICES, submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus,
+  submitUpdateAppearance, submitUpdateSiteSettings,
 } from "./site-forms";
 export type { SitesNotice } from "./site-forms";
 export { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
@@ -55,6 +56,10 @@ export type { SettableStatus } from "./publishing";
 // Appearance (M4-4, ADR 0012): the theme a site is drawn with.
 export { chooseTheme, getAppearance } from "./appearance.service";
 export type { Appearance, ThemeChoice } from "./appearance.service";
+// M8-1 (ADR 0028): the appearance editor, and its live preview.
+export { APPEARANCE_GROUPS, createAppearancePreview, updateAppearance } from "./appearance.service";
+export type { AppearanceChange, AppearanceGroup } from "./appearance.service";
+export { AppearanceEditor } from "./ui/appearance-editor";
 export { ThemePicker } from "./ui/theme-picker";
 export { languageLabel, siteTimeZones } from "./locale";
 export { SITE_STATUS_LABELS } from "./shared";

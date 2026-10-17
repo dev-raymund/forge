@@ -271,6 +271,8 @@ describe("an event as a sentence", () => {
     expect(describeEvent({ action: "entry.deleted", actorName: "Forge (trash cleanup)", metadata: { type: "page", title: "Old", path: "/old", below: 1, afterDays: 30 } })).toBe(
       "Forge (trash cleanup) deleted the page Old for good, with 1 page below it, 30 days after it went to the trash.",
     );
+    // M8-1: the appearance settings, named by group.
+    expect(say("site.settings_changed", { name: "Harbour Bakery", group: "appearance", fields: ["colors", "header"] })).toBe("Raymund changed the appearance settings of Harbour Bakery: colours, header.");
     expect(say("term.created", { taxonomy: "category", name: "Bread", slug: "bread" })).toBe("Raymund created the category Bread.");
     expect(say("term.updated", { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" })).toBe(
       "Raymund renamed the tag Rye to Sourdough, with the slug sourdough instead of rye.",

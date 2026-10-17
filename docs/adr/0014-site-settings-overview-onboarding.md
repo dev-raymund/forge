@@ -137,3 +137,8 @@ Publishing (M4-5); the pages, menus and SEO the checklist points to (M5, M8); lo
 
 - **§3 is suspended:** no public site runs the GA4 or Plausible snippets, live or not, until an explicit consent and privacy decision has been made and built (ADR 0015 §6). The settings, their validation, saving and the overview's card are unchanged; the settings form and the overview say tracking is not active yet. The "Analytics only on live sites" row of the table above applies again once emission is turned on.
 - **§4:** the overview now has the Publish control below the status, shows the public address in full (`APP_ORIGIN` + `/s/{address}`), and the checklist's "Publish your site" links to it (ADR 0015 §7).
+
+## Addendum (M8-1, 2026-10-17): the appearance settings share the version
+
+- **The appearance editor** saves `site_settings.theme` at the same settings `version` as the general, reading and analytics groups (ADR 0028). A page opened before someone else saved any of them is refused with the same Conflict message.
+- **The social toggle** this ADR handed off is the editor's "Show the site's social links" (`footer.showSocial`).

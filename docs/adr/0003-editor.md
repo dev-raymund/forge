@@ -184,3 +184,12 @@ ADR 0026 has the details.
   - A version saved after the dialog named one is refused (`CHANGED_AGAIN`), and the dialog shows the newer one.
   - Autosave then `adopt`s the version the overwrite wrote. "Copy my changes" and "Load the latest version" are unchanged.
 - **"Save"** in the header keeps the draft, as just saved, as a revision. **"History"** lists the revisions and restores one into the draft: what is typed is saved first, and the editor loads the draft again afterwards.
+
+## Addendum (2026-10-17, found during M8-1's verification): a page refresh no longer stops autosave
+
+- **The bug, since M5-4:** the autosave controller was re-created whenever the page's `entry` prop arrived with a newer draft version. That is after the first save, at the next page refresh, and any action's `refresh()` makes one: Publish, changing the author, moving a page.
+  - If text was typed but not saved when that refresh landed, the old controller's timer was cleared and the new one never heard of the change.
+  - The status stayed "Unsaved changes" and nothing was saved until the next keystroke. The browser's local copy still held it, so a reload would have restored it.
+  - M7-4's E2E test, typing right after Publish, failed this way about one time in four under load.
+- **The fix:** the controller is made once per opened entry, from the version the editor opened with, and keeps its own version from there.
+- **The test:** `editor.spec.ts`, "a page refresh while typing…": save once, type, change the author at once (an action that refreshes the page), and the text is saved. It failed 3 of 3 before the fix; it passed 5 of 5, and 10 of 10 alongside M7-4's test, after.

@@ -17,7 +17,8 @@ export const studio: ThemeDefinition<"studio"> = {
     layout: { width: "normal", radius: "medium", density: "normal" },
   },
   options: z.strictObject({}),
-  headerVariants: ["classic"],
-  footerVariants: ["simple"],
+  // M8-1: every header and footer of the kit.
+  headerVariants: ["classic", "centered", "minimal"],
+  footerVariants: ["simple", "columns"],
   preview: "business",
 };

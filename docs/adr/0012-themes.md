@@ -158,3 +158,13 @@ A theme marketplace, uploaded themes, custom CSS, tenant code, editable template
 - **Studio** draws all eight. **Journal** draws its page templates and uses the kit's own post, blog index and archive (`_kit/templates/blog.tsx`) until M8-2: the types require every theme to draw every template, and Journal's blog design is M8-2's.
 - **The kit** gained the post list, pagination and term links (`_kit/components/`) and the content blocks' styles (`_kit/blocks.css`, loaded by `ThemeFrame`). They use only the kit's variables. A theme adjusts them in its own `styles.css`.
 - **The gallery** draws every template of both themes with made-up data, and `tests/e2e/appearance.spec.ts` checks each one, including at 360 px.
+
+## Addendum (M8-1, 2026-10-17): the appearance editor, as built
+
+ADR 0028 has the details.
+
+- **Saving:** the editor saves through `parseThemeSettings` (strict), and also refuses a header or footer variant the site's theme does not draw. It writes at the settings `version` and flushes `site:{id}:config`.
+- **Studio** declares and draws every variant: headers `classic`, `centered`, `minimal`; footers `simple`, `columns`. Journal still draws `centered` and `simple` (M8-2).
+- **`themeFor` draws a stored variant the theme does not have as its first** (`drawnVariants`), keeping the stored value for switching back, as this ADR's type comment said.
+- **`contrastRatio` and `contrastWarnings`** join `luminance` and `readableOn` in the kit: WCAG AA, warning only.
+- **Unchanged:** `readThemeSettings`, the CSS variables, the curated fonts.

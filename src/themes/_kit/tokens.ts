@@ -181,6 +181,41 @@ export function readableOn(hex: string): "#ffffff" | "#111111" {
   return (1.05 / (l + 0.05)) >= ((l + 0.05) / (luminance("#111111") + 0.05)) ? "#ffffff" : "#111111";
 }
 
+/** The WCAG 2 contrast ratio of two validated colours: 1 (none) to 21 (black on white). */
+export function contrastRatio(a: string, b: string): number {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/** WCAG AA for body text, and for large text and the edges of buttons and links. */
+export const TEXT_CONTRAST = 4.5;
+export const UI_CONTRAST = 3;
+
+export type ContrastWarning = { pair: "text" | "primary" | "accent"; ratio: number; message: string };
+
+/**
+ * The appearance editor's contrast warning (M8-1): the colour pairs a page actually draws, measured against WCAG AA.
+ * A warning, never a refusal: the site owner decides. The text on a primary or accent surface is chosen for them
+ * (`readableOn`), so those are measured against the background they sit on.
+ *
+ *   text      body text on the background                          4.5:1
+ *   primary   links and buttons in the primary colour, on the page  3:1
+ *   accent    the accent colour, on the page                         3:1
+ */
+export function contrastWarnings(colors: { primary: string; accent: string; background: string; text: string }): ContrastWarning[] {
+  const ratio = (a: string, b: string) => Math.round(contrastRatio(a, b) * 100) / 100;
+  const warnings: ContrastWarning[] = [];
+  const text = ratio(colors.text, colors.background);
+  if (text < TEXT_CONTRAST) warnings.push({ pair: "text", ratio: text, message: `The text colour on the background has a contrast of ${text}:1. Body text needs at least ${TEXT_CONTRAST}:1 to be easy to read.` });
+  for (const pair of ["primary", "accent"] as const) {
+    const value = ratio(colors[pair], colors.background);
+    if (value < UI_CONTRAST) {
+      warnings.push({ pair, ratio: value, message: `The ${pair} colour on the background has a contrast of ${value}:1. Links and buttons need at least ${UI_CONTRAST}:1 to stand out.` });
+    }
+  }
+  return warnings;
+}
+
 export type ThemeVariables = Record<`--forge-${string}`, string>;
 
 /**

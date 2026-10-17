@@ -109,7 +109,8 @@ export const AUDIT_EVENTS = {
   "site.settings_changed": {
     resourceType: "site",
     label: "Site settings changed",
-    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics", "images"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
+    // M8-1: `appearance`, the theme's settings (colors, fonts, header, footer, layout).
+    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics", "images", "appearance"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
   },
   // M4-5 (ADR 0015): publishing, and back to Coming soon.
   "site.status_changed": {
@@ -341,6 +342,8 @@ const FIELD_WORDS: Record<string, string> = {
   ga4MeasurementId: "GA4 measurement ID", plausibleDomain: "Plausible domain",
   // M6-4: the "images" group.
   logo: "logo", favicon: "favicon",
+  // M8-1: the "appearance" group.
+  colors: "colours",
   facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
 };
 /** An instant in a sentence: the activity log names it in UTC (the site's zone is the editor's; the log is the organization's). */

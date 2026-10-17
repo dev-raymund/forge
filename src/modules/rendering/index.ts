@@ -25,4 +25,7 @@ export type { RouteCandidate } from "./routes";
 // M7-4: previews of a draft or a revision, for the person a preview token names (ADR 0027).
 export { loadPreview } from "./preview";
 export type { Preview, PreviewGaps, PreviewSubject } from "./preview";
-export { previewLines, PreviewUnavailable, PreviewView } from "./ui/preview-page";
+export { AppearancePreviewView, previewLines, PreviewUnavailable, PreviewView } from "./ui/preview-page";
+// M8-1: the appearance editor's live preview (ADR 0028).
+export { loadAppearancePreview } from "./appearance-preview";
+export type { AppearancePreview } from "./appearance-preview";

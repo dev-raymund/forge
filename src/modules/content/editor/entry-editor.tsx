@@ -204,12 +204,15 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
   const editorRef = useRef<Editor | null>(null);
 
   // One autosave controller for the life of the screen, for the entry and the version it was opened with. Made after
-  // the first render (and before the editor exists, which is created in an effect declared below).
+  // the first render (and before the editor exists, which is created in an effect declared below). From there it keeps
+  // its own version: a refresh of the page (any action's) brings a newer `entry` whose draft version has caught up with
+  // the saves, and must not replace the controller, which would drop what is typed and not saved yet.
+  const [openedVersion] = useState(entry.draft.version);
   const autosaveRef = useRef<ReturnType<typeof createAutosave<DraftPayload>> | null>(null);
   useEffect(() => {
     const controller = createAutosave<DraftPayload>({
       entryId: entry.id,
-      version: entry.draft.version,
+      version: openedVersion,
       storage: storage ?? undefined,
       onStatus: (next) => {
         statusRef.current = next;
@@ -233,7 +236,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
     });
     autosaveRef.current = controller;
     return () => controller.dispose();
-  }, [entry.id, entry.draft.version, storage, orgSlug, siteSlug]);
+  }, [entry.id, openedVersion, storage, orgSlug, siteSlug]);
 
   const payload = (editor: Editor): DraftPayload => ({ title: titleRef.current, doc: editor.getJSON(), fields: fieldsRef.current });
   // The draft as last handed to autosave (or as opened). A transaction that leaves it as it is (the trailing paragraph

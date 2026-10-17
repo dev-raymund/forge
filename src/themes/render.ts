@@ -1,7 +1,7 @@
 import { journalTheme } from "./journal/theme";
 import { activeThemeDefinition, type ThemeKey } from "./registry";
 import { studioTheme } from "./studio/theme";
-import { readThemeOptions, readThemeSettings } from "./_kit/tokens";
+import { readThemeOptions, readThemeSettings, type KitSettings } from "./_kit/tokens";
 import type { NavItem, ThemeContext, ThemeManifest } from "./types";
 
 /**
@@ -39,9 +39,19 @@ export function themeFor(site: RenderableSite): { theme: ThemeManifest; context:
   const theme = themeManifest(site.themeKey);
   const context: ThemeContext = {
     site: { name: site.name, tagline: site.tagline ?? "", language: site.language, basePath: site.basePath, social: site.social ?? [], logo: site.logo ?? null },
-    settings: readThemeSettings(site.themeSettings, theme.defaults),
+    settings: drawnVariants(readThemeSettings(site.themeSettings, theme.defaults), theme),
     options: readThemeOptions(site.themeSettings, theme),
     menus: { header: site.menus?.header ?? [], footer: site.menus?.footer ?? [] },
   };
   return { theme, context };
+}
+
+/**
+ * A header or footer variant the theme does not draw (one saved under another theme, M8-1) is drawn as the theme's
+ * first: the stored value is kept, so switching back restores it.
+ */
+export function drawnVariants(settings: KitSettings, theme: { headerVariants: readonly string[]; footerVariants: readonly string[] }): KitSettings {
+  const header = theme.headerVariants.includes(settings.header.variant) ? settings.header : { ...settings.header, variant: theme.headerVariants[0] as KitSettings["header"]["variant"] };
+  const footer = theme.footerVariants.includes(settings.footer.variant) ? settings.footer : { ...settings.footer, variant: theme.footerVariants[0] as KitSettings["footer"]["variant"] };
+  return { ...settings, header, footer };
 }

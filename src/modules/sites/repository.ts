@@ -127,7 +127,7 @@ export async function readSettingsRow(tx: TenantTx, organizationId: string, site
   return row ?? null;
 }
 
-export type SettingsPatch = { general?: Record<string, unknown>; reading?: Record<string, unknown>; analytics?: Record<string, unknown> };
+export type SettingsPatch = { general?: Record<string, unknown>; reading?: Record<string, unknown>; analytics?: Record<string, unknown>; theme?: Record<string, unknown> };
 
 /**
  * Writes settings groups, if the row is still at the version the person

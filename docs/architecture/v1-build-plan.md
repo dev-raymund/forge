@@ -595,6 +595,12 @@ src/themes/
 - **Not in V1:** marketplace, uploaded themes, custom CSS, editable template parts.
 - **As built (M4-4, ADR 0012):** each theme's manifest is two files: `definition.ts` (pure data, what the admin and validation read through `registry.ts`) and `theme.ts` (the components, what the renderer reads through `render.ts`). Radius is `none | small | medium | large` and density `compact | normal | relaxed`. Settings reach the page as `--forge-*` custom properties set as the theme root's `style`. Fonts: Inter, DM Sans, Manrope, Source Sans 3, Work Sans, Fraunces, Literata, Lora, Playfair Display, Source Serif 4.
 
+- **As built (M8-1, ADR 0028):**
+  - **The appearance page:** the theme picker, the logo, and the editor: four colours with a WCAG contrast warning, heading and body fonts, header (variant, sticky, button), footer (variant, copyright, social toggle) and layout (width, corners, spacing).
+  - **A live preview** of unsaved settings, through a 15-minute appearance preview token.
+  - **Saved** to `site_settings.theme` at the settings version, recorded, and flushed with `site:{id}:config`.
+  - **Studio** draws all three headers and both footers.
+
 ---
 
 ## 8. Media

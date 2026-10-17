@@ -5,14 +5,16 @@ import { useState } from "react";
 import { FormAlert } from "@/components/admin/form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PREVIEW_FRAME_SANDBOX } from "@/platform/routing/preview-frame";
 import { previewLinkAction } from "../actions";
 
 /**
  * Previews in the admin (M7-4; plan §9 "Preview"; ADR 0027). A preview is a site page (`/_forge/preview/{token}`),
  * shown here in a frame and offered in a new tab:
  *
- *   PreviewFrame    the frame: sandboxed (no access to the admin: no same origin, no forms, no top navigation), no
- *                   referrer; the page itself refuses every framing but the admin's (`frame-ancestors 'self'`)
+ *   PreviewFrame    the frame: sandboxed (`PREVIEW_FRAME_SANDBOX`: in production no same origin, so no access to the
+ *                   admin; no forms, no top navigation), no referrer; the page itself refuses every framing but the
+ *                   admin's (`frame-ancestors 'self'`)
  *   PreviewButton   the draft as it is saved: what is typed is saved first, then a link is made (15 minutes)
  *
  * Opening and closing a preview changes nothing: no draft, no revision, no record. The editor stays as it was, with
@@ -26,7 +28,7 @@ export function PreviewFrame({ path, title }: { path: string; title: string }) {
         src={path}
         title={title}
         data-testid="preview-frame"
-        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        sandbox={PREVIEW_FRAME_SANDBOX}
         referrerPolicy="no-referrer"
         className="h-[65dvh] w-full rounded-lg border bg-white"
       />

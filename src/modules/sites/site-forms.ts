@@ -3,9 +3,10 @@ import type { Actor } from "@/modules/auth";
 import {
   orgSitesPath, pagesOf, refusal, requirePermission, resolveOrgContext, resolveSiteContext, type FormOutcome, type RequestMeta,
 } from "@/modules/tenancy";
-import { validationError } from "@/platform/errors";
+import { actionOk, asAppError, toActionResult, validationError, type ActionResult } from "@/platform/errors";
+import { reportError } from "@/platform/observability";
 import { text } from "@/platform/forms";
-import { chooseTheme } from "./appearance.service";
+import { chooseTheme, createAppearancePreview, updateAppearance } from "./appearance.service";
 import { SOCIAL_KEYS } from "./settings";
 import { isSettingsGroup, SETTINGS_CONFLICT, updateSiteSettings, type SettingsGroup } from "./settings.service";
 import { notFound } from "@/platform/errors";
@@ -215,5 +216,54 @@ export async function submitSetSiteImage(actor: Actor, orgSlug: string, siteSlug
     };
   } catch (error) {
     return refusal(error, meta, values, siteSettingsPath(orgSlug, siteSlug), {}, MODULE);
+  }
+}
+
+// ── M8-1: the appearance editor ──────────────────────────────────────────────
+
+/** The editor sends its settings as JSON (`settings`); they are a few hundred bytes, so anything far larger is not them. */
+const APPEARANCE_FIELD_MAX = 8_000;
+
+function appearanceFrom(formData: FormData): unknown {
+  const raw = text(formData.get("settings"));
+  if (raw.length > APPEARANCE_FIELD_MAX) throw validationError({ settings: ["These settings could not be read. Reload the page and try again."] });
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw validationError({ settings: ["These settings could not be read. Reload the page and try again."] });
+  }
+}
+
+/** Saves the site's theme settings at `version` (the page's). Field errors come back keyed by the setting's dotted path. */
+export async function submitUpdateAppearance(actor: Actor, orgSlug: string, siteSlug: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { version: text(formData.get("version")) };
+  try {
+    const settings = appearanceFrom(formData);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const version = /^\d{1,9}$/.test(values.version) ? Number(values.version) : -1;
+    const saved = await updateAppearance(ctx, settings, version);
+    return {
+      state: {
+        status: "success",
+        message: saved.changed.length ? "Appearance saved. The site shows it now." : "Nothing to save: this is already the site’s appearance.",
+        values: { version: String(saved.version) },
+      },
+      ...(saved.changed.length ? { revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug), invalidate: saved.events } : {}),
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, siteAppearancePath(orgSlug, siteSlug), { Conflict: SETTINGS_CONFLICT }, MODULE);
+  }
+}
+
+/** A preview link for settings that are not saved. Read-only. */
+export async function submitAppearancePreview(actor: Actor, orgSlug: string, siteSlug: string, formData: FormData, meta: RequestMeta = {}): Promise<ActionResult<{ path: string; expiresAt: string }>> {
+  try {
+    const settings = appearanceFrom(formData);
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    return actionOk(await createAppearancePreview(ctx, settings));
+  } catch (error) {
+    if (!asAppError(error)) reportError(error, { module: MODULE, requestId: meta.requestId });
+    return toActionResult(error, meta.requestId);
   }
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { FONT_CHOICES, FONT_KEYS, fontStack } from "./font-choices";
-import { hexColor, kitSettingsSchema, parseThemeSettings, readableOn, readThemeOptions, readThemeSettings, safeHref, themeVariables, type KitSettings } from "./tokens";
+import {
+  contrastRatio, contrastWarnings, hexColor, kitSettingsSchema, parseThemeSettings, readableOn, readThemeOptions, readThemeSettings, safeHref, themeVariables, type KitSettings,
+} from "./tokens";
 
 /** The theme kit's settings (M4-4, plan §7): what a site may set, and the only CSS it can produce. */
 
@@ -140,5 +142,23 @@ describe("the CSS a site's settings produce", () => {
     expect(FONT_CHOICES).toHaveLength(10);
     expect(new Set(FONT_KEYS).size).toBe(10);
     for (const font of FONT_CHOICES) expect(["sans", "serif"]).toContain(font.kind);
+  });
+});
+
+describe("the contrast warning (M8-1)", () => {
+  it("measures WCAG contrast: 21:1 black on white, 1:1 a colour on itself, the same both ways", () => {
+    expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
+    expect(contrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 5);
+    expect(contrastRatio("#1d4ed8", "#1d4ed8")).toBe(1);
+    expect(contrastRatio("#767676", "#ffffff")).toBeCloseTo(4.54, 2);
+  });
+
+  it("warns about the pairs a page draws below WCAG AA (text 4.5:1, primary and accent 3:1), and not about the themes' own defaults", () => {
+    expect(contrastWarnings({ primary: "#1d4ed8", accent: "#0f766e", background: "#ffffff", text: "#0f172a" })).toEqual([]);
+    expect(contrastWarnings({ primary: "#9a3412", accent: "#115e59", background: "#fffdf8", text: "#1c1917" })).toEqual([]);
+    const warnings = contrastWarnings({ primary: "#fde047", accent: "#ffffff", background: "#ffffff", text: "#9ca3af" });
+    expect(warnings.map((w) => w.pair)).toEqual(["text", "primary", "accent"]);
+    expect(warnings[0]).toEqual({ pair: "text", ratio: 2.54, message: "The text colour on the background has a contrast of 2.54:1. Body text needs at least 4.5:1 to be easy to read." });
+    expect(warnings[2]!.message).toBe("The accent colour on the background has a contrast of 1:1. Links and buttons need at least 3:1 to stand out.");
   });
 });

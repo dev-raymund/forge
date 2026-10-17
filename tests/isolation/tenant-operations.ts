@@ -11,7 +11,8 @@ import {
   submitRequestAvatarUpload, submitRequestUploads, submitRestoreMedia, submitTrashMedia, submitUpdateMedia, trashMedia, updateMediaDetails,
 } from "@/modules/media";
 import {
-  listSites, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateSiteSettings,
+  listSites, submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus,
+  submitUpdateAppearance, submitUpdateSiteSettings,
 } from "@/modules/sites";
 import {
   acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
@@ -21,6 +22,7 @@ import {
   type FormOutcome, type OrgContext, type OwnedResource, type OwnScope, type Permission, type SiteContext,
 } from "@/modules/tenancy";
 import { AppError, type ActionResult } from "@/platform/errors";
+import { studio } from "@/themes/studio/definition";
 
 /**
  * Registry of operations that take an identifier from the caller, for the
@@ -149,6 +151,9 @@ export const tenantOperations: TenantOperation[] = [
   { name: "content.submitRevisionHistory(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitRevisionHistory(actor, orgSlug, siteSlug, b.entryId, undefined)) },
   { name: "content.submitDraftHead(B's slug, B's site, B's entry)", run: ({ actor }, b) => refused(submitDraftHead(actor, b.orgSlug, b.siteSlug, b.entryId)) },
   { name: "content.submitDraftHead(A's slug, A's site, B's entry)", run: ({ actor, orgSlug, siteSlug }, b) => refused(submitDraftHead(actor, orgSlug, siteSlug, b.entryId)) },
+  // The appearance editor's preview (M8-1): a preview of B's site, from B's URL or A's.
+  { name: "sites.submitAppearancePreview(B's slug, B's site)", run: ({ actor }, b) => refused(submitAppearancePreview(actor, b.orgSlug, b.siteSlug, form({ settings: JSON.stringify(APPEARANCE) }))) },
+  { name: "sites.submitAppearancePreview(A's slug, B's site)", run: ({ actor, orgSlug }, b) => refused(submitAppearancePreview(actor, orgSlug, b.siteSlug, form({ settings: JSON.stringify(APPEARANCE) }))) },
   // Previews (M7-4): a link to B's entry (its draft, or a revision), from A's site or B's URL.
   { name: "content.createPreviewLink(A's site, B's entry)", run: async ({ actor, orgSlug, siteSlug }, b) => createPreviewLink(await resolveSiteContext(actor, orgSlug, siteSlug), b.entryId) },
   {
@@ -170,6 +175,14 @@ export const tenantOperations: TenantOperation[] = [
 ];
 
 const UPLOAD = { name: "photo.png", size: 1_024, type: "image/png" };
+/** Complete, valid appearance settings (Studio's defaults), so a refusal is never about the settings (M8-1). */
+const APPEARANCE = studio.defaults;
+const appearanceForm = () => {
+  const data = new FormData();
+  data.set("settings", JSON.stringify(APPEARANCE));
+  data.set("version", "1");
+  return data;
+};
 /** A wall-clock time well in the future, in any zone (M7-2). */
 const SOON = `${new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)}T09:00`;
 const formOf = (fields: Record<string, string>) => {
@@ -325,6 +338,10 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "sites.submitChooseTheme(B's slug, B's site)", run: ({ actor }, b) => submitChooseTheme(actor, b.orgSlug, b.siteSlug, form({ theme: "journal" })) },
   { name: "sites.submitChooseTheme(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitChooseTheme(actor, orgSlug, b.siteSlug, form({ theme: "journal" })) },
   { name: "sites.submitChooseTheme(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitChooseTheme(actor, orgSlug, b.siteId, form({ theme: "journal" })) },
+  // The appearance editor (M8-1): B's site's settings, from B's URL, A's, or with B's site id as the slug.
+  { name: "sites.submitUpdateAppearance(B's slug, B's site)", run: ({ actor }, b) => submitUpdateAppearance(actor, b.orgSlug, b.siteSlug, appearanceForm()) },
+  { name: "sites.submitUpdateAppearance(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitUpdateAppearance(actor, orgSlug, b.siteSlug, appearanceForm()) },
+  { name: "sites.submitUpdateAppearance(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitUpdateAppearance(actor, orgSlug, b.siteId, appearanceForm()) },
 
   // Publishing (M4-5): B's site, live or back to Coming soon, from B's URL or A's.
   ...(["live", "coming_soon"] as const).flatMap((status) => [

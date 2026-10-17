@@ -3,7 +3,7 @@ import { findSessionCookie, renewedSessionCookie } from "@/modules/auth/shared";
 import { assignRequestId, REQUEST_ID_HEADER } from "@/platform/observability/request-id";
 import { decideAdminAccess, isDocumentNavigation } from "@/platform/routing/admin-access";
 import { decideRoute, forwardedHeaders, normalizeHost } from "@/platform/routing/hosts";
-import { previewSecret, verifyPreviewToken } from "@/platform/routing/preview-token";
+import { previewSecret, verifyAppearanceToken, verifyPreviewToken } from "@/platform/routing/preview-token";
 
 /**
  * proxy.ts (Next 16's middleware, Node runtime), plan §19–20, ADR 0006:
@@ -101,7 +101,8 @@ export function proxy(request: NextRequest) {
     case "preview": {
       // Signed and not expired, checked before anything renders: anything else is a plain 404, never a page.
       const secret = previewSecret();
-      if (!secret || !verifyPreviewToken(decision.token, secret, Date.now())) {
+      // An entry's preview (M7-4) or an appearance preview (M8-1), each signed under its own label.
+      if (!secret || !(verifyPreviewToken(decision.token, secret, Date.now()) || verifyAppearanceToken(decision.token, secret, Date.now()))) {
         response = new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain", ...PREVIEW_HEADERS } });
         break;
       }

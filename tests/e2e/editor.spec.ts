@@ -211,6 +211,23 @@ test("changes typed in a tab closed before they were saved are restored in the n
   expect(JSON.stringify((await draftOf(org.id, home)).content)).toContain("Typed, then the tab closed");
 });
 
+test("a page refresh while typing (another action's, here the author) never stops autosave: what was typed is saved", async ({ page }) => {
+  const { org, home, editorUrl } = await withSite(page);
+  await openEditor(page, editorUrl);
+  await editor(page).click();
+  await page.keyboard.type("Saved once.");
+  // Saved: the draft is now a version past the one the page was opened with.
+  await saved(page);
+  await page.keyboard.type(" Typed, then the page refreshed.");
+  // At once, before autosave's 2 s: an action of the sidebar's own, which refreshes the page with the draft's new version.
+  const settings = page.getByTestId("entry-settings");
+  await settings.getByLabel("Author").selectOption({ label: "E2E User" });
+  await settings.getByRole("button", { name: "Change author" }).click();
+  await expect(page.getByText("Author changed.")).toBeVisible();
+  await saved(page);
+  expect(JSON.stringify((await draftOf(org.id, home)).content)).toContain("Saved once. Typed, then the page refreshed.");
+});
+
 test("a Viewer reads, cannot change: no toolbar, no Publish, nothing editable", async ({ page }) => {
   const { editorUrl } = await withSite(page, "viewer");
   await openEditor(page, editorUrl);

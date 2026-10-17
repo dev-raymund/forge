@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { loadPreview, PreviewUnavailable, PreviewView } from "@/modules/rendering";
+import { AppearancePreviewView, loadAppearancePreview, loadPreview, PreviewUnavailable, PreviewView } from "@/modules/rendering";
 
 /**
- * A preview of a draft or of a revision (M7-4; plan §9 "Preview"; ADR 0027), drawn by the site's theme for the person
+ * A preview of a draft or of a revision (M7-4; plan §9 "Preview"; ADR 0027), or of appearance settings not saved yet
+ * (M8-1, ADR 0028), drawn by the site's theme for the person
  * the token names. Never prerendered and never cached: everything private is read when it is requested (`connection()`),
  * and the proxy has already sent `Cache-Control: private, no-store`, `X-Robots-Tag: noindex` and framing for the
  * admin only. A token the proxy let through that is no good now (its person removed or demoted, its entry trashed) gets
@@ -24,7 +25,10 @@ export default function PreviewPage({ params }: PageProps<"/render/preview/[toke
 async function Preview({ params }: Pick<PageProps<"/render/preview/[token]">, "params">) {
   await connection();
   const { token } = await params;
+  // An entry's draft or revision (M7-4), or the appearance editor's unsaved settings (M8-1): each token is one or the other.
   const preview = await loadPreview(token);
-  if (!preview) return <PreviewUnavailable />;
-  return <PreviewView preview={preview} />;
+  if (preview) return <PreviewView preview={preview} />;
+  const appearance = await loadAppearancePreview(token);
+  if (appearance) return <AppearancePreviewView preview={appearance} />;
+  return <PreviewUnavailable />;
 }

@@ -142,3 +142,20 @@ Its private reads are never cached. Tested by a digest of every content, history
 - **E2E `content-preview.spec.ts`** (2, production build; 10 of 10 over five repeats):
   - **The draft:** typed and previewed at once (saved first); the theme draws it on a Coming soon site; the headers asserted; a new tab; visitors still see Coming soon; a changed or expired link and the internal route are 404s; no revision added.
   - **A revision:** previewed from the history with unsaved typing in the editor, which is then saved; Back; the Live one; a restore from the preview refused after another tab saved, then done after a reload; a Viewer previews with nothing to restore.
+
+## Addendum (M8-1, 2026-10-17): a second kind of token, for appearance previews
+
+ADR 0028 has the details.
+
+- **The appearance editor's live preview** uses this route with a second kind of token: `{ v: 1, k: "appearance", o, s, u, t: settings, x }`. It carries the unsaved kit-level settings and is signed under its own label, so neither kind is ever read as the other.
+- **The proxy** accepts either. The page draws the site's home page with the token's settings, after checking them against the kit's schema and the person's `site.settings.manage` again.
+- **`PREVIEW_TOKEN_SHAPE`** now allows a payload of up to about 4 KB.
+- **Entry previews are unchanged.**
+
+## Addendum (2026-10-17, found during M8-1's manual check): the frame on Next's development server
+
+- **The problem:** Next's development server refuses its own scripts to a document with an opaque origin. This is its cross-origin protection for dev resources (`allowedDevOrigins`), which cannot name one. The preview frames' sandbox (no `allow-same-origin`) gives the preview exactly such an origin, so on `next dev` the streamed preview stayed hidden in the frame. "Open in a new tab" still worked.
+- **Production builds were never affected:** the E2E suites check the content inside the frames.
+- **The fix:** the sandbox is now one constant for every preview frame (`platform/routing/preview-frame.ts`, `PREVIEW_FRAME_SANDBOX`).
+  - **Unchanged outside development:** scripts and popups only. A unit test pins it.
+  - **In development only:** it adds `allow-same-origin`, so the frame works on the local server.

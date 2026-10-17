@@ -2,8 +2,12 @@
 
 import { getCurrentActor } from "@/modules/auth";
 import { currentRequestMeta, finish } from "@/modules/tenancy";
+import type { ActionResult } from "@/platform/errors";
 import type { FormState } from "@/platform/forms";
-import { submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateSiteSettings } from "./site-forms";
+import {
+  submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateAppearance,
+  submitUpdateSiteSettings,
+} from "./site-forms";
 
 /**
  * The site forms' Server Actions (M4-1): session → ./site-forms.ts → invalidate → redirect or state.
@@ -45,4 +49,15 @@ export async function updateSiteSettingsAction(orgSlug: string, siteSlug: string
 /** The logo or the favicon (M6-4): `role` is bound by the settings page; the form sends the chosen image's id, or none. */
 export async function setSiteImageAction(orgSlug: string, siteSlug: string, role: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitSetSiteImage(await getCurrentActor(), orgSlug, siteSlug, role, formData, await currentRequestMeta()));
+}
+
+// M8-1: the appearance editor.
+
+export async function updateAppearanceAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitUpdateAppearance(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
+}
+
+/** A 15-minute preview of settings that are not saved (ADR 0028). Read-only. */
+export async function appearancePreviewAction(orgSlug: string, siteSlug: string, formData: FormData): Promise<ActionResult<{ path: string; expiresAt: string }>> {
+  return submitAppearancePreview(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta());
 }

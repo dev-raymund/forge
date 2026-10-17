@@ -224,3 +224,50 @@ describe("the content templates (M5-6)", () => {
     expect(html).not.toContain("<b>");
   });
 });
+
+describe("Studio's header and footer variants (M8-1)", () => {
+  const settings = (header: Record<string, unknown>, footer: Record<string, unknown> = {}) => ({
+    header: { variant: "classic", sticky: false, cta: { label: "Book <now>", href: "/contact" }, ...header },
+    footer: { variant: "simple", copyright: "All rights <reserved>", showSocial: true, ...footer },
+  });
+  const social = [{ label: "Instagram", href: "https://instagram.com/harbor" }];
+  const html = (themeKey: string, themeSettings: unknown) => render(themeKey, "page", { themeSettings, social });
+
+  it("draws all three headers: the call to action as a button (classic, centered) or a plain link (minimal); the centered one with the tagline", () => {
+    const classic = html("studio", settings({ variant: "classic" }));
+    expect(classic).toContain('data-variant="classic"');
+    expect(classic).toMatch(/<a href="\/s\/harbor\/contact" class="forge-button">Book &lt;now&gt;<\/a>/);
+    expect(classic).not.toContain("studio-header__tagline");
+    const centered = html("studio", settings({ variant: "centered", sticky: true }));
+    expect(centered).toContain('data-variant="centered"');
+    expect(centered).toContain("data-sticky");
+    expect(centered).toContain('<p class="studio-header__tagline">Small spaces &lt;script&gt;window.__xss = 1&lt;/script&gt;</p>');
+    const minimal = html("studio", settings({ variant: "minimal" }));
+    expect(minimal).toContain('data-variant="minimal"');
+    expect(minimal).toMatch(/<a href="\/s\/harbor\/contact" class="studio-header__link">Book &lt;now&gt;<\/a>/);
+    expect(html("studio", settings({ cta: null }))).not.toContain("forge-button");
+  });
+
+  it("draws both footers, with the copyright line, and the social links only when the toggle is on", () => {
+    const simple = html("studio", settings({}, { variant: "simple" }));
+    expect(simple).toContain('data-variant="simple"');
+    expect(simple).toContain("All rights &lt;reserved&gt;");
+    expect(simple).toContain('href="https://instagram.com/harbor"');
+    const columns = html("studio", settings({}, { variant: "columns" }));
+    expect(columns).toContain('data-variant="columns"');
+    expect(columns.match(/class="studio-footer__column"/g)).toHaveLength(3);
+    expect(columns).toContain("All rights &lt;reserved&gt;");
+    expect(html("studio", settings({}, { variant: "columns", showSocial: false }))).not.toContain("instagram.com");
+  });
+
+  it("a variant the theme does not draw is drawn as its first (Journal: centered and simple), and the stored value is kept for switching back", () => {
+    const journal = html("journal", settings({ variant: "minimal" }, { variant: "columns" }));
+    expect(journal).toContain("journal-header");
+    expect(journal).not.toContain('data-variant="minimal"');
+    expect(journal).not.toContain("studio-footer__column");
+    const { context } = themeFor(site("journal", { themeSettings: settings({ variant: "minimal" }, { variant: "columns" }) }));
+    expect(context.settings.header.variant).toBe("centered");
+    expect(context.settings.footer.variant).toBe("simple");
+    expect(themeFor(site("studio", { themeSettings: settings({ variant: "minimal" }, { variant: "columns" }) })).context.settings.header.variant).toBe("minimal");
+  });
+});
