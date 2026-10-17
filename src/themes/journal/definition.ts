@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ThemeDefinition } from "../types";
 
-/** Journal (plan §7): blog first. Its blog templates and its full styles are M8-2's; M4-4 gives it the same skeleton as Studio. */
+/** Journal (plan §7): blog first. M4-4 gave it its skeleton; M8-2 its blog, its page templates and its full styles. */
 export const journal: ThemeDefinition<"journal"> = {
   key: "journal",
   name: "Journal",

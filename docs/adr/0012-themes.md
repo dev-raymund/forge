@@ -168,3 +168,12 @@ ADR 0028 has the details.
 - **`themeFor` draws a stored variant the theme does not have as its first** (`drawnVariants`), keeping the stored value for switching back, as this ADR's type comment said.
 - **`contrastRatio` and `contrastWarnings`** join `luminance` and `readableOn` in the kit: WCAG AA, warning only.
 - **Unchanged:** `readThemeSettings`, the CSS variables, the curated fonts.
+
+## Addendum (M8-2, 2026-10-17): Journal, as built
+
+ADR 0029 has the details.
+
+- **Journal draws every template itself:** page, full width, landing, post, blog index, term archive, coming soon and not found. No theme uses the kit's blog templates now.
+- **Journal's styles use only the kit's variables,** so a site's colours, fonts, width, corners and spacing reach it as chosen. It keeps one header (`centered`) and one footer (`simple`); another theme's variant is drawn as those and kept (ADR 0028 §3).
+- **axe-core** (a dev dependency) checks every gallery template, both themes, in E2E.
+- **Fonts, unchanged:** `display: swap` with next/font's metric-matched fallbacks can move a line of text when a font arrives. Measured at CLS 0.123 on one page of the Lighthouse fixture. `display: optional` or per-site preloading is left to M12-2 (ADR 0029 §6).

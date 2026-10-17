@@ -601,6 +601,11 @@ src/themes/
   - **Saved** to `site_settings.theme` at the settings version, recorded, and flushed with `site:{id}:config`.
   - **Studio** draws all three headers and both footers.
 
+- **As built (M8-2, ADR 0029):**
+  - **Journal draws every template itself.** A post has a masthead (the categories as a kicker, the title, the date), the featured image across the wide column, the text at the measure, and what it is filed under. The blog and archives are a column of entries (the newest on page 1 is the lead) with "Page n of m" and the pagination. The full-width and landing pages have their own designs.
+  - **Journal's styles use only the kit's variables.** It keeps one header and one footer; another theme's variants are drawn as those and kept for switching back.
+  - **axe** checks every template in E2E. Lighthouse mobile medians on a fixture are 92–99 (performance) and 100 (accessibility).
+
 ---
 
 ## 8. Media
@@ -996,7 +1001,7 @@ forge/
 
 | Concern | Location | Rule |
 |---|---|---|
-| Public API | `modules/<m>/index.ts` (server-only), `shared.ts` (client-safe types, Zod, constants) | Other modules and `app/` import **only** these (ESLint `no-restricted-imports`) |
+| Public API | `modules/<m>/index.ts` (server-only), `shared.ts` (client-safe types, Zod, constants); where the public site needs it, `public.ts` (server-only, UI-free: what `rendering` reads, since a barrel's screens are shipped to every page that imports it; M8-2, ADR 0029) | Other modules and `app/` import **only** these (ESLint `no-restricted-imports`) |
 | Server Actions | `modules/<m>/actions.ts` (`"use server"`) | Thin: parse (Zod) → context → service → invalidate → `ActionResult`. In the module (not `app/`) because they're reused across screens, e.g. media actions used by the library and the picker |
 | Route handlers | `src/app/api/**/route.ts`, `src/app/(sites)/render/[site]/**/route.ts` | Thin wrappers over module APIs |
 | Services | `modules/<m>/<thing>.service.ts` | Business rules; open `withTenant` transactions; return domain events; never import `next/*` |

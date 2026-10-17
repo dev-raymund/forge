@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { contentType, parseDocument, referencesOf, roleMaySeeEntry } from "@/modules/content/shared";
-import { publicImages } from "@/modules/media";
+import { publicImages } from "@/modules/media/public";
 import { withTenant } from "@/platform/db";
 import { domains, entries, entryDrafts, entryRevisions, organizationMembers, roles, terms } from "@/platform/db/schema";
 import { previewSecret, verifyPreviewToken } from "@/platform/routing/preview-token";

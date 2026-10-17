@@ -124,3 +124,7 @@ As this ADR handed off, a preview (ADR 0027) draws a draft or a revision with th
 - `entry:` links to live pages only (`livePaths`).
 
 Its private reads (the draft, the revision, the person's role, the terms, the images) are not `'use cache'`: they are made on every request, on a route of their own that is never prerendered or cached. The public reads it shares (the site's settings, live paths) are the public ones, unchanged.
+
+## Addendum (M8-2, 2026-10-17): Journal draws its own blog
+
+Journal now draws `post`, `blog-index`, `term-archive`, `page-full-width` and `page-landing` with templates of its own (ADR 0029). They take the same props as Studio's, so routes, lists, pagination and caching are unchanged. The kit's blog templates (`_kit/templates/blog.tsx`) are no longer used by either theme; they stay as a starting point for another theme. `PostCard` still has no image: Journal's lists are text.

@@ -6,8 +6,10 @@ import nextTs from "eslint-config-next/typescript";
  * Module-boundary rules (v1-build-plan §18, cms-architecture §5.3).
  *
  * 1. Outside a module, import only its public entry points:
- *    `@/modules/<m>` (server API) or `@/modules/<m>/shared` (client-safe).
- *    Inside a module, use relative imports.
+ *    `@/modules/<m>` (server API) or `@/modules/<m>/shared` (client-safe),
+ *    or `@/modules/<m>/public` (what the public site reads: server-only and
+ *    UI-free, since a barrel's screens reach every page that imports it; ADR
+ *    0029). Inside a module, use relative imports.
  * 2. The raw database client (`@/platform/db/client`) is private to
  *    `platform/`. Services and queries use `withTenant()` from `@/platform/db`.
  * 3. `app/` and `components/` never touch the database or Drizzle directly.
@@ -24,9 +26,9 @@ import nextTs from "eslint-config-next/typescript";
  *    `can(ctx, permission)` or `requirePermission(ctx, permission)`.
  */
 const moduleEntryOnly = {
-  group: ["@/modules/*/*", "!@/modules/*/shared"],
+  group: ["@/modules/*/*", "!@/modules/*/shared", "!@/modules/*/public"],
   message:
-    "Import a module only through its public API: @/modules/<m> or @/modules/<m>/shared.",
+    "Import a module only through its public API: @/modules/<m>, @/modules/<m>/shared or @/modules/<m>/public.",
 };
 const rawDbClient = {
   group: ["@/platform/db/client", "@/platform/db/client.*"],

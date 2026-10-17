@@ -1397,14 +1397,25 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 
 **Depends on:** M8-1
 
+*From M8-1 (ADR 0028): its hand-off said to add Journal's variants. M8-2's brief asked to keep Journal's one header and one footer and the fallback, so the definition still lists `centered` and `simple` (ADR 0029 §4).*
+
 **Acceptance criteria:**
-- [ ] Manifest, templates (page, post, blog index, archives, not found, coming soon), styles
-- [ ] Switching Studio ↔ Journal keeps kit-level settings
-- [ ] Lighthouse ≥ 90 performance and accessibility on a fixture site
+- [x] Manifest, templates (page, post, blog index, archives, not found, coming soon), styles *(ADR 0029 §1–3: every template is Journal's own, none of the kit's; post masthead with the categories as a kicker, featured image via `ResponsiveImage`, "Filed under" and "Tagged", "All posts"; the blog and archives as a column of entries with a lead on page 1 and "Page n of m"; full-width and landing pages; nothing drawn for a missing image, excerpt, date or terms; styles use only the kit's variables)*
+- [x] Switching Studio ↔ Journal keeps kit-level settings *(§4: E2E through the admin: colour, width, corners and Studio's `minimal`/`columns` saved; Journal draws them with its own header and footer; switching back restores Studio's variants)*
+- [x] Lighthouse ≥ 90 performance and accessibility on a fixture site *(§6: mobile medians of five runs 92–99, accessibility 100 on every run, desktop 100. Required §5's fix: site pages had shipped about 200 KB of admin scripts through `@/modules/media`; now read through `@/modules/media/public`, guarded by `rendering/public-bundle.test.ts`)*
 
 **Likely files/modules:** `src/themes/journal/*`
 
-**Testing:** E2E theme switch; axe checks on templates.
+**Testing:** E2E theme switch; axe checks on templates. *(axe-core in E2E: all 16 gallery templates, a live Journal site's blog, pages 2, post and archives, a dark palette at 360 and 1280 px, the switch. `journal-theme.spec.ts`, 3 tests.)*
+
+**Hand-off (from M8-2, ADR 0029):**
+- **M8-3:** Journal's header draws `context.menus.header` as a "Main" navigation under the masthead, and its footer draws `context.menus.footer`. Check both themes with a menu of several items, at 360 px and with axe (`tests/e2e/helpers/axe.ts`).
+- **M8-4:** the templates set no metadata (it belongs in `generateMetadata`). A post's Open Graph image should be one of `publicImages`' stored widths, never the original. Posts already carry `<time datetime>`.
+- **M12-2:**
+  - Lighthouse on both themes: ADR 0029 §6 has the method and numbers.
+  - The one open item is the kit's font swap, which moved a line on one fixture page (CLS 0.123). `display: optional` or per-site preloading is a kit-wide choice.
+  - Keep `public-bundle.test.ts` green: a module barrel imported by `rendering` ships the admin to every site.
+- **Kit:** `_kit/templates/blog.tsx` is no longer used by either theme; it stays as a starting point for another theme.
 
 ### M8-3 · Menus
 **Labels:** `area:navigation` `type:feature`
@@ -1414,6 +1425,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Description:** Header and footer navigation.
 
 *From M7-1 (ADR 0024): an entry can now be unpublished, trashed and deleted for good. Menu items pointing at it must be omitted while it is not published (the public reads already resolve `entry:` links only to live entries: `livePaths`). `menus.items` is JSON with no key, so an item can outlive a purged entry: resolve it like a link (nothing drawn), and consider saying so in the menu editor. `entry.unpublished` flushes `routes` and the lists at once.*
+
+*From M8-2 (ADR 0029): both themes draw `context.menus` already. Journal draws the header menu as a "Main" navigation centred under the masthead, and the footer menu in its footer. Check both themes with a menu of several items at 360 px and with axe (`tests/e2e/helpers/axe.ts`, as `journal-theme.spec.ts` does).*
 
 **Depends on:** M5-6
 
@@ -1441,6 +1454,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 *From M5-8 (ADR 0019): a term's published post count is its `entry_terms` rows (as `termsWithUsage` in `content/term.repository.ts` counts them, for the admin): the sitemap's "non-empty term archives" are those with any, read through a public cached function tagged like the archives (flushed by `term.changed` and publishing).*
 
 *From M5-6 (ADR 0017): public pages carry a title (`{title} · {site name}`; the site's name alone for its home; `· Page n` on later list pages) and the robots meta by status; nothing else. Canonical URLs, descriptions, Open Graph, JSON-LD and the sitemap are here; the lists' cached reads (`loadPostList`, tag `site:{id}:list:post`) are the sitemap's source for posts.*
+
+*From M8-2 (ADR 0029): Journal's templates set no metadata, and need none for this issue: titles and dates are drawn, posts carry `<time datetime>`. Keep public reads out of module barrels: `rendering` reads media through `@/modules/media/public` (server-only, UI-free), and `rendering/public-bundle.test.ts` fails if a barrel becomes reachable from a site page.*
 
 **Depends on:** M5-6, M6-4
 
@@ -1655,6 +1670,10 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 - *Each site gets what `createHomePage` makes (a draft page titled "Home", slug `home`, at `/`, and `homepage_entry_id`), in its own transaction, under the site's settings lock, as the site's Owner (audited). A site that has a Home page, or gets one meanwhile, is skipped: running it twice changes nothing.*
 - *A dry run first, with counts (sites found, made, skipped, failed), and the same counts after.*
 - *Verification: afterwards no site has zero or two entries at `/`; every `homepage_entry_id` names the entry at `/`; public pages are unchanged (the new Home pages are drafts, so `/` still shows the name and tagline until published).*
+
+*From M8-2 (ADR 0029 §6): Lighthouse on Journal, by hand on a production build. The fixture has five posts, an uploaded featured image, two a page. Mobile medians of five runs: 92–99 performance, 100 accessibility; desktop 100.*
+- *Open: the kit's font swap (`display: swap`, next/font's metric-matched fallbacks) moved a line on one page at 412 px (CLS 0.123), when a title's width crossed the line between fallback and font. `display: optional`, or preloading each site's two fonts, is the kit-wide choice to make, for both themes.*
+- *Site pages ship no app client component now (about 200 KB less); `rendering/public-bundle.test.ts` keeps it so.*
 
 **Depends on:** M12-1
 

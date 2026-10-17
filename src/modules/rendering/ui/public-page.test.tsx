@@ -52,7 +52,10 @@ describe("a published page", () => {
     expect(draw(page("full-width"))).toContain("studio-page--wide");
     expect(draw(page("landing"))).toContain("studio-page--landing");
     expect(draw(page("retired-template"))).toContain('<article class="studio-page">');
-    expect(draw(page("landing"), { ...site, themeKey: "journal" })).toContain("journal-page--wide");
+    // Journal draws each with a template of its own (M8-2).
+    expect(draw(page("full-width"), { ...site, themeKey: "journal" })).toContain('<article class="journal-page journal-page--full">');
+    expect(draw(page("landing"), { ...site, themeKey: "journal" })).toContain('<article class="journal-page journal-page--landing">');
+    expect(draw(page(null), { ...site, themeKey: "journal" })).toContain('<article class="journal-page">');
   });
 
   it("a generic embed of Forge's own host is never framed, whatever the document says", () => {

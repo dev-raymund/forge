@@ -125,3 +125,7 @@ A live site now serves its published content (ADR 0017). `renderStateFor` decide
 ## Addendum (M7-4, 2026-10-16): previews bypass Coming soon
 
 As planned here: a preview (ADR 0027) shows a draft or a revision of a site that is not live yet, and its banner says that visitors see the Coming soon page. Visitors still do: nothing unpublished is reachable without a valid token. A suspended or deleted site has no previews.
+
+## Addendum (M8-2, 2026-10-17): a site page ships none of the admin
+
+ADR 0029 §5 has the details. Next sends a route every client component reachable from its server imports. Through `@/modules/media` (and the barrels its services import), every site page had shipped the admin's screens, about 200 KB of scripts. `rendering` now reads images through `@/modules/media/public` (server-only, UI-free; a third kind of module entry, allowed by the lint rule). The site tree reaches no app client component, and `rendering/public-bundle.test.ts` fails if one, or another module's barrel, becomes reachable. What a page reads and caches is unchanged.

@@ -1,4 +1,8 @@
-/* Journal (M4-4 skeleton; its blog templates and full styles are M8-2): blog first. Scoped to its sites. */
+/*
+ * Journal (M4-4's skeleton, M8-2's design): blog first. Scoped to its sites, and driven only by the kit's variables
+ * (the site's colours, fonts, width, corners and spacing, M8-1): nothing here is a colour or a size the site did not
+ * choose, except proportions of them.
+ */
 
 [data-theme="journal"] {
   font-size: 1.125rem;
@@ -111,18 +115,249 @@
   justify-content: center;
 }
 
-/* M5-6: the wide page templates, and the kit's blog templates in Journal's measure (Journal's own blog design is M8-2's). */
+/* M8-2: the kicker (what a post or an archive belongs to), set in small capitals in the accent colour. */
 
-[data-theme="journal"] .forge-post__header,
-[data-theme="journal"] .forge-archive__title,
-[data-theme="journal"] .forge-archive .forge-post__eyebrow,
-[data-theme="journal"] .forge-archive__description {
+[data-theme="journal"] .journal-kicker {
+  color: color-mix(in srgb, var(--forge-color-accent) 80%, var(--forge-color-text));
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+[data-theme="journal"] .journal-kicker a {
+  color: inherit;
+  text-decoration: none;
+}
+
+[data-theme="journal"] .journal-kicker a:hover {
+  text-decoration: underline;
+}
+
+/* A post: a centred masthead, the image across the wide column, the text at a reading measure. */
+
+[data-theme="journal"] .journal-post {
+  padding-bottom: calc(var(--forge-gap) * 5);
+}
+
+[data-theme="journal"] .journal-post__header {
+  padding-block: calc(var(--forge-gap) * 3.5) calc(var(--forge-gap) * 2.5);
   text-align: center;
 }
 
-[data-theme="journal"] .forge-post .forge-terms,
-[data-theme="journal"] .forge-post-list,
+[data-theme="journal"] .journal-post__title {
+  max-width: 22ch;
+  margin: calc(var(--forge-gap) * 0.75) auto 0;
+  font-size: clamp(2.1rem, 1.5rem + 3vw, 3.6rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+[data-theme="journal"] .journal-post__date {
+  margin-top: calc(var(--forge-gap) * 1);
+  color: var(--forge-muted);
+  font-style: italic;
+}
+
+[data-theme="journal"] .journal-post__image .forge-featured-image {
+  margin: 0 auto calc(var(--forge-gap) * 2.5);
+}
+
+[data-theme="journal"] .journal-post__image img {
+  width: 100%;
+  border-radius: var(--forge-radius);
+}
+
+/* The first letter of a post's text, set as a drop cap where the browser can. */
+[data-theme="journal"] .journal-post__body > p:first-child::first-letter {
+  float: left;
+  margin: 0.08em 0.12em 0 0;
+  color: var(--forge-color-primary);
+  font-family: var(--forge-font-heading);
+  font-size: 3.4em;
+  font-weight: 600;
+  line-height: 0.85;
+}
+
+[data-theme="journal"] .journal-terms {
+  display: grid;
+  gap: calc(var(--forge-gap) * 0.75);
+  max-width: 68ch;
+  margin: calc(var(--forge-gap) * 3) auto 0;
+  padding-top: calc(var(--forge-gap) * 1.5);
+  border-top: 1px solid var(--forge-line);
+}
+
+[data-theme="journal"] .journal-terms__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+[data-theme="journal"] .journal-terms__label {
+  color: var(--forge-muted);
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+[data-theme="journal"] .journal-terms ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-theme="journal"] .journal-terms a {
+  display: inline-block;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid var(--forge-line);
+  border-radius: calc(var(--forge-radius) * 4);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+[data-theme="journal"] .journal-terms a:hover {
+  border-color: var(--forge-color-primary);
+  color: var(--forge-color-primary);
+}
+
+/* The measure at the text's size (a `ch` is the element's own), so the link lines up with the text above it. */
+[data-theme="journal"] .journal-post__back {
+  max-width: 68ch;
+  margin: calc(var(--forge-gap) * 2) auto 0;
+}
+
+[data-theme="journal"] .journal-post__back a {
+  color: var(--forge-color-primary);
+  font-size: 0.95rem;
+}
+
+/* Lists of posts: the blog and its archives. */
+
+[data-theme="journal"] .journal-archive {
+  padding-block: calc(var(--forge-gap) * 3.5) calc(var(--forge-gap) * 5);
+}
+
+[data-theme="journal"] .journal-archive__header {
+  display: grid;
+  justify-items: center;
+  gap: calc(var(--forge-gap) * 0.75);
+  margin-bottom: calc(var(--forge-gap) * 2.5);
+  text-align: center;
+}
+
+[data-theme="journal"] .journal-archive__title {
+  font-size: clamp(2.1rem, 1.6rem + 2.4vw, 3.2rem);
+  font-weight: 600;
+}
+
+[data-theme="journal"] .journal-archive__description {
+  max-width: 40ch;
+  color: var(--forge-muted);
+  font-style: italic;
+}
+
+[data-theme="journal"] .journal-archive__where {
+  color: var(--forge-muted);
+  font-size: 0.9rem;
+}
+
+[data-theme="journal"] .journal-entries {
+  max-width: 68ch;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+  border-top: 3px double var(--forge-line);
+}
+
+[data-theme="journal"] .journal-entry {
+  padding-block: calc(var(--forge-gap) * 1.75);
+  border-bottom: 1px solid var(--forge-line);
+}
+
+[data-theme="journal"] .journal-entry__date {
+  color: var(--forge-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-theme="journal"] .journal-entry__title {
+  margin-top: 0.3rem;
+  font-size: clamp(1.35rem, 1.2rem + 0.8vw, 1.75rem);
+  font-weight: 600;
+}
+
+[data-theme="journal"] .journal-entry--lead .journal-entry__title {
+  font-size: clamp(1.8rem, 1.4rem + 2vw, 2.6rem);
+}
+
+[data-theme="journal"] .journal-entry__title a {
+  text-decoration: none;
+}
+
+[data-theme="journal"] .journal-entry__title a:hover {
+  color: var(--forge-color-primary);
+  text-decoration: underline;
+}
+
+[data-theme="journal"] .journal-entry__excerpt {
+  margin-top: calc(var(--forge-gap) * 0.6);
+  color: var(--forge-muted);
+}
+
+[data-theme="journal"] .journal-entry--lead .journal-entry__excerpt {
+  font-size: 1.15em;
+}
+
+[data-theme="journal"] .journal-empty {
+  max-width: 34rem;
+  margin: 0 auto;
+  color: var(--forge-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+/* Newer and older pages: the kit's navigation, in Journal's measure, between rules. */
 [data-theme="journal"] .forge-pagination {
   max-width: 68ch;
+  margin: calc(var(--forge-gap) * 2.5) auto 0;
+  padding-top: calc(var(--forge-gap) * 1);
+  border-top: 3px double var(--forge-line);
+  font-style: italic;
+}
+
+[data-theme="journal"] .forge-pagination__link {
+  color: var(--forge-color-primary);
+  font-style: normal;
+}
+
+/* The full-width and landing page templates. */
+
+[data-theme="journal"] .journal-page--full .forge-prose,
+[data-theme="journal"] .journal-page--landing .forge-prose {
   margin-inline: auto;
+}
+
+[data-theme="journal"] .journal-page--landing {
+  padding-top: 0;
+}
+
+[data-theme="journal"] .journal-landing__opening {
+  margin-bottom: calc(var(--forge-gap) * 3);
+  padding-block: calc(var(--forge-gap) * 4.5) calc(var(--forge-gap) * 3.5);
+  border-bottom: 3px double var(--forge-line);
+  background: var(--forge-wash);
+  text-align: center;
+}
+
+[data-theme="journal"] .journal-landing__title {
+  max-width: 20ch;
+  margin-inline: auto;
+  font-size: clamp(2.4rem, 1.6rem + 4vw, 4.4rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }

@@ -194,13 +194,14 @@ describe("the content templates (M5-6)", () => {
     expect(html).toContain('<time dateTime="2026-09-12T08:00:00.000Z">12 September 2026</time>');
     expect(html).toContain('<a href="/s/harbor/blog/category/bread">Bread &lt;3</a>');
     expect(html).toContain('<a href="/s/harbor/blog/tag/rye">Rye</a>');
-    expect(html).toContain('<a href="/s/harbor/blog">Blog</a>');
+    // The way back to the blog: Studio's eyebrow; Journal's "All posts" (its kicker names the post's categories).
+    expect(html).toMatch(/<a href="\/s\/harbor\/blog">(Blog|<span aria-hidden="true">← <\/span>All posts)<\/a>/);
     expect(html).toMatch(/<h1[^>]*>A post<\/h1>/);
   });
 
   it.each(THEME_KEYS.map((key) => [key] as const))("%s: a list of posts: each title an h2 link, its date and excerpt as text; pages linked both ways", (key) => {
     const html = render(key, "blog-index", {}, { posts: cards(2), pagination: pages(2, 3) });
-    expect(html).toContain('<h2 class="forge-post-card__title"><a href="/s/harbor/blog/post-0">Post &lt;0&gt;</a></h2>');
+    expect(html).toMatch(/<h2 class="(forge-post-card__title|journal-entry__title)"><a href="\/s\/harbor\/blog\/post-0">Post &lt;0&gt;<\/a><\/h2>/);
     expect(html).toContain("An excerpt &amp; more");
     expect(html.match(/<h2[ >]/g)).toHaveLength(2);
     expect(html).toContain('<nav class="forge-pagination" aria-label="Pages of posts">');
@@ -211,9 +212,9 @@ describe("the content templates (M5-6)", () => {
 
   it.each(THEME_KEYS.map((key) => [key] as const))("%s: an empty list says so; one page has no page links", (key) => {
     const empty = render(key, "blog-index", {}, { posts: [], pagination: pages(1, 1) });
-    expect(empty).toContain("No posts yet.");
+    expect(empty).toContain(key === "journal" ? "Nothing has been published here yet." : "No posts yet.");
     expect(empty).not.toContain("forge-pagination");
-    expect(render(key, "term-archive", {}, { posts: [], pagination: pages(1, 1) })).toContain("No posts here yet.");
+    expect(render(key, "term-archive", {}, { posts: [], pagination: pages(1, 1) })).toContain(key === "journal" ? "Nothing is filed under Rye &lt;b&gt; yet." : "No posts here yet.");
   });
 
   it.each(THEME_KEYS.map((key) => [key] as const))("%s: a term's archive names it, and what it is, as text", (key) => {
@@ -269,5 +270,69 @@ describe("Studio's header and footer variants (M8-1)", () => {
     expect(context.settings.header.variant).toBe("centered");
     expect(context.settings.footer.variant).toBe("simple");
     expect(themeFor(site("studio", { themeSettings: settings({ variant: "minimal" }, { variant: "columns" }) })).context.settings.header.variant).toBe("minimal");
+  });
+});
+
+describe("Journal's own templates (M8-2)", () => {
+  const { context, theme } = themeFor(site("journal"));
+  const { JournalPost, JournalBlogIndex, JournalTermArchive, JournalPageFullWidth, JournalPageLanding } = {
+    JournalPost: theme.templates.post, JournalBlogIndex: theme.templates["blog-index"], JournalTermArchive: theme.templates["term-archive"],
+    JournalPageFullWidth: theme.templates["page-full-width"], JournalPageLanding: theme.templates["page-landing"],
+  };
+  const image = { alt: "A rye loaf", width: 1600, height: 900, sources: [{ url: "/media/o/s/m/v1/w800/loaf.webp", width: 800, height: 450 }, { url: "/media/o/s/m/v1/w1600/loaf.webp", width: 1600, height: 900 }] };
+  const terms: TermLink[] = [
+    { taxonomy: "category", name: "Bread", href: "/s/harbor/blog/category/bread" },
+    { taxonomy: "category", name: "Seasons", href: "/s/harbor/blog/category/seasons" },
+    { taxonomy: "tag", name: "Rye", href: "/s/harbor/blog/tag/rye" },
+  ];
+  const html = (element: React.ReactElement) => renderToStaticMarkup(element);
+
+  it("draws every template with its own design: no kit template is left", () => {
+    for (const [template, component] of Object.entries(theme.templates)) expect(component.name, template).toMatch(/^Journal/);
+  });
+
+  it("a post: its categories as the kicker, the date, the image across the wide column with its widths and size, what it is filed under, the way back", () => {
+    const post = html(<JournalPost context={context} title="Rye season" date={{ iso: "2026-09-12T08:00:00.000Z", label: "12 September 2026" }} terms={terms} blogHref="/s/harbor/blog" featuredImage={image}><p>Words</p></JournalPost>);
+    expect(post).toMatch(/<p class="journal-kicker"><a href="\/s\/harbor\/blog\/category\/bread">Bread<\/a><span aria-hidden="true"> · <\/span><a href="\/s\/harbor\/blog\/category\/seasons">Seasons<\/a><\/p>/);
+    expect(post).toContain('<h1 class="journal-post__title">Rye season</h1>');
+    expect(post).toContain('<time dateTime="2026-09-12T08:00:00.000Z">12 September 2026</time>');
+    expect(post).toContain('class="forge-container forge-container--wide journal-post__image"');
+    expect(post).toMatch(/<img src="\/media\/o\/s\/m\/v1\/w800\/loaf\.webp" srcSet="\/media\/o\/s\/m\/v1\/w800\/loaf\.webp 800w, \/media\/o\/s\/m\/v1\/w1600\/loaf\.webp 1600w" sizes="[^"]+" width="1600" height="900" alt="A rye loaf" loading="eager"/);
+    expect(post).toContain('<p class="journal-terms__label" id="terms-categories">Filed under</p>');
+    expect(post).toContain('<ul aria-labelledby="terms-tags"><li><a href="/s/harbor/blog/tag/rye">Rye</a></li></ul>');
+    expect(post).toContain('<a href="/s/harbor/blog"><span aria-hidden="true">← </span>All posts</a>');
+  });
+
+  it("a post without what is optional leaves nothing behind: no image, no date, no terms (the kicker is the blog), no title", () => {
+    const bare = html(<JournalPost context={context} title="" date={null} terms={[]} blogHref="/s/harbor/blog" featuredImage={null}><p>Words</p></JournalPost>);
+    expect(bare).toContain('<p class="journal-kicker"><a href="/s/harbor/blog">Blog</a></p>');
+    expect(bare).toContain('<h1 class="journal-post__title">Untitled</h1>');
+    for (const absent of ["<img", "<time", "journal-terms", "journal-post__image", "journal-post__date"]) expect(bare, absent).not.toContain(absent);
+  });
+
+  it("the blog: the first page's newest post is the lead; later pages have none; the page is named; entries are an ordered list of h2 links", () => {
+    const first = html(<JournalBlogIndex context={context} title="Blog" posts={cards(3)} pagination={pages(1, 2)} />);
+    expect(first.match(/journal-entry--lead/g)).toHaveLength(1);
+    expect(first).toContain('<ol class="journal-entries">');
+    expect(first.match(/<h2 class="journal-entry__title">/g)).toHaveLength(3);
+    expect(first).toContain('<p class="journal-archive__where">Page 1 of 2</p>');
+    const second = html(<JournalBlogIndex context={context} title="Blog" posts={cards(2)} pagination={pages(2, 2)} />);
+    expect(second).not.toContain("journal-entry--lead");
+    expect(html(<JournalBlogIndex context={context} title="Blog" posts={cards(1)} pagination={pages(1, 1)} />)).not.toContain("journal-archive__where");
+  });
+
+  it("an archive says what it is (category or tag), with its description, and never sets a lead", () => {
+    const archive = html(<JournalTermArchive context={context} taxonomy="category" name="Bread" description="All about bread" blogHref="/s/harbor/blog" posts={cards(2)} pagination={pages(1, 1)} />);
+    expect(archive).toContain('<p class="journal-kicker"><a href="/s/harbor/blog">Blog</a><span aria-hidden="true"> · </span>Category</p>');
+    expect(archive).toContain('<p class="journal-archive__description">All about bread</p>');
+    expect(archive).not.toContain("journal-entry--lead");
+  });
+
+  it("the full-width page and the landing page: the content across the wide column; the landing's title in its opening", () => {
+    const full = html(<JournalPageFullWidth context={context} title="Work"><p>x</p></JournalPageFullWidth>);
+    expect(full).toContain('class="journal-page journal-page--full"');
+    expect(full).toContain('<div class="forge-container forge-container--wide"><div class="forge-prose forge-prose--wide">');
+    const landing = html(<JournalPageLanding context={context} title="Welcome"><p>x</p></JournalPageLanding>);
+    expect(landing).toContain('<header class="journal-landing__opening"><div class="forge-container"><h1 class="journal-landing__title">Welcome</h1>');
   });
 });

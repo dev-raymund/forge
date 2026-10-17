@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
-import { siteImagery, type SiteImagery } from "@/modules/media";
+import { siteImagery, type SiteImagery } from "@/modules/media/public";
 import { withPlatform, withTenant } from "@/platform/db";
 import { domains, siteSettings, sites } from "@/platform/db/schema";
 import type { SiteLocator } from "@/platform/routing/hosts";

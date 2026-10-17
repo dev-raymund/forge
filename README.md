@@ -39,7 +39,7 @@ Tenant sites on their own hosts (platform subdomains, custom domains) are post-V
 | `npm run lint` | ESLint, including module-boundary rules |
 | `npm test` | Unit tests (Vitest, no I/O) |
 | `npm run test:integration` | Integration tests against Postgres through PgBouncer (needs `dev:services`) |
-| `npm run test:e2e` | Playwright against a production build (`npm run build` first) |
+| `npm run test:e2e` | Playwright against a production build (`npm run build` first); site pages are also checked with axe-core (`tests/e2e/helpers/axe.ts`) |
 | `npm run db:generate` | Generate a migration from schema changes (review the SQL before committing) |
 | `npm run db:generate:custom` | Create an empty migration for hand-written SQL (RLS, grants, functions) |
 | `npm run db:migrate` | Apply migrations as `forge_owner` |

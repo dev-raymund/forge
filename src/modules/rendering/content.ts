@@ -2,7 +2,7 @@ import "server-only";
 import { and, count, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { parseDocument, referencesOf } from "@/modules/content/shared";
-import { publicImages, type PublicImage } from "@/modules/media";
+import { publicImages, type PublicImage } from "@/modules/media/public";
 import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
 import { withTenant } from "@/platform/db";
 import { entries, entryRevisions, entryTerms, terms } from "@/platform/db/schema";

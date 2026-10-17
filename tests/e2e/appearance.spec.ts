@@ -4,6 +4,7 @@ import { asUniqueVisitor } from "./helpers/auth";
 import { auditOf, seedOrganization, sitesIn, themeOf } from "./helpers/orgs";
 import { createSite, expectSiteCreated, memberOf } from "./helpers/site-ui";
 import { addMember, seedUser } from "./helpers/sites";
+import { axeViolations } from "./helpers/axe";
 
 /**
  * M4-4 end to end against the production build: choosing a site's theme on
@@ -123,7 +124,7 @@ test("on a phone (360 px): the theme picker fits, and works", async ({ page }) =
 test.describe("the theme gallery (development only)", () => {
   for (const theme of ["studio", "journal"]) {
     for (const template of ["page", "page-full-width", "page-landing", "post", "blog-index", "term-archive", "coming-soon", "not-found"]) {
-      test(`${theme} / ${template}: drawn by the theme, accessible landmarks, the site's words as text, and it fits a phone`, async ({ page }) => {
+      test(`${theme} / ${template}: drawn by the theme, accessible landmarks, no axe violation, the site's words as text, and it fits a phone`, async ({ page }) => {
         const response = (await page.goto(`/dev/themes/${theme}/${template}`))!;
         expect(response.status()).toBe(200);
         await expect(page.locator(`[data-forge-theme][data-theme="${theme}"]`)).toHaveCount(1);
@@ -138,6 +139,8 @@ test.describe("the theme gallery (development only)", () => {
         // The settings arrive as CSS variables on the theme's root, and only the site's two fonts are in use.
         const primary = await page.locator("[data-forge-theme]").evaluate((element) => getComputedStyle(element).getPropertyValue("--forge-color-primary").trim());
         expect(primary).toBe(theme === "studio" ? "#1d4ed8" : "#9a3412");
+        // M8-2: no WCAG 2.1 A or AA violation (axe), in either theme.
+        expect(await axeViolations(page)).toEqual([]);
         // The first Tab reaches the skip link, which leads to the content.
         await page.keyboard.press("Tab");
         await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();

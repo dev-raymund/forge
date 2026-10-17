@@ -1,25 +1,22 @@
-import { KitBlogIndex, KitPost, KitTermArchive } from "../_kit/templates/blog";
 import type { ThemeManifest } from "../types";
 import { JournalLayout } from "./components/layout";
 import { journal } from "./definition";
+import { JournalBlogIndex, JournalPost, JournalTermArchive } from "./templates/blog";
 import { JournalComingSoon } from "./templates/coming-soon";
 import { JournalNotFound } from "./templates/not-found";
-import { JournalPage, JournalPageWide } from "./templates/page";
+import { JournalPage, JournalPageFullWidth, JournalPageLanding } from "./templates/page";
 
-/**
- * Journal's manifest: its definition, and what the public renderer draws with. Its post, blog index and archive are
- * the kit's own templates until M8-2 designs Journal's (ADR 0012).
- */
+/** Journal's manifest (M4-4; M8-2): its definition, and its own templates for every page the renderer draws. */
 export const journalTheme: ThemeManifest<"journal"> = {
   ...journal,
   Layout: JournalLayout,
   templates: {
     page: JournalPage,
-    "page-full-width": JournalPageWide,
-    "page-landing": JournalPageWide,
-    post: KitPost,
-    "blog-index": KitBlogIndex,
-    "term-archive": KitTermArchive,
+    "page-full-width": JournalPageFullWidth,
+    "page-landing": JournalPageLanding,
+    post: JournalPost,
+    "blog-index": JournalBlogIndex,
+    "term-archive": JournalTermArchive,
     "coming-soon": JournalComingSoon,
     "not-found": JournalNotFound,
   },

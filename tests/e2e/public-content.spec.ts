@@ -165,10 +165,10 @@ test("never public: drafts, the trash, other sites' pages, unknown terms, pages 
   // The other site still has its page; this site's address never shows it.
   expect((await page.goto(siteUrl(other, "/their-page")))!.status()).toBe(200);
 
-  // Journal draws the blog with the kit's templates (its own are M8-2's).
+  // Journal draws the blog with its own templates (M8-2).
   await page.goto(siteUrl(site, "/news/rye-season"));
   expect(await publicView(page)).toMatchObject({ heading: "Rye season", theme: "journal" });
-  await expect(page.locator(".forge-post")).toHaveCount(1);
+  await expect(page.locator(".journal-post")).toHaveCount(1);
   // No tracking script, and the IDs are not in the page.
   const html = await page.content();
   for (const leak of ["googletagmanager", "plausible", "G-ABC1234567", "bakery.example.org", site.siteId, site.orgId]) expect(html, leak).not.toContain(leak);
