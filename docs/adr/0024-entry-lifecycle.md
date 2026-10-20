@@ -266,3 +266,13 @@ ADR 0026 has the details.
 - **An entry in the trash** has no history to list or restore (not found). Restoring it from the trash brings it back first.
 - **A restored slug** whose address another entry holds refuses the restore, naming the address. It is never suffixed, as for this ADR's restore.
 - **Unchanged:** unpublish before trash, the subtree rules, the 30 days and the purge. Purging deletes the revisions with the entry.
+
+## Addendum (M8-3, 2026-10-20): menus follow the lifecycle
+
+ADR 0030 has the details. A menu names an entry by id, and the public site draws the link only while the entry is live (published, not in the trash).
+
+- **Unpublishing or trashing** takes the link off the site on the next request, since `routes` is flushed at once.
+- **Restoring** leaves it off (the entry is a draft).
+- **Publishing again** brings it back as the entry is now, with no change to the menu.
+- **Purging** leaves the item in the menu, flagged "deleted" in the editor, and drawn nowhere.
+- **The lifecycle is unchanged:** nothing here writes to menus.

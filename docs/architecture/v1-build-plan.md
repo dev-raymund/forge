@@ -606,6 +606,11 @@ src/themes/
   - **Journal's styles use only the kit's variables.** It keeps one header and one footer; another theme's variants are drawn as those and kept for switching back.
   - **axe** checks every template in E2E. Lighthouse mobile medians on a fixture are 92–99 (performance) and 100 (accessibility).
 
+- **As built (M8-3, ADR 0030):**
+  - **Menus:** header and footer, two levels, edited as a whole on `/…/menus` (Owner, Admin, Editor). Links to a page or post, a category or tag, the blog, or an address, stored by id; validated strictly when saved, read value by value.
+  - **The public site** draws only live destinations: an unpublished, scheduled, trashed or deleted one is left out (never rewritten) and returns when published again. Cached per site under `config` and `routes`.
+  - **Both themes** draw two levels with no script: a `<details>` disclosure in headers, a list in footers. New tabs get `noopener`.
+
 ---
 
 ## 8. Media

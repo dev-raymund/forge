@@ -336,3 +336,42 @@ describe("Journal's own templates (M8-2)", () => {
     expect(landing).toContain('<header class="journal-landing__opening"><div class="forge-container"><h1 class="journal-landing__title">Welcome</h1>');
   });
 });
+
+describe("menus: two levels, new tabs, both themes (M8-3)", () => {
+  const menus = {
+    header: [
+      { label: "Work", href: "/s/harbor/work" },
+      { label: "Services", href: "/s/harbor/services", children: [{ label: "Interiors", href: "/s/harbor/services/interiors" }, { label: "Kitchens", href: "/s/harbor/services/kitchens" }] },
+      { label: "Shop", href: "https://shop.example.com", newTab: true },
+    ],
+    footer: [{ label: "Studio", href: "/s/harbor/about", children: [{ label: "Team", href: "/s/harbor/about/team" }] }, { label: "Privacy", href: "/s/harbor/privacy" }],
+  };
+
+  for (const themeKey of THEME_KEYS) {
+    it(`${themeKey}: the header's links under a link open from a button beside it, named for it; nothing runs`, () => {
+      const html = render(themeKey, "page", { menus });
+      const main = html.match(/<nav aria-label="Main"[^]*?<\/nav>/)?.[0] ?? "";
+      expect(main).toContain('class="forge-nav forge-nav--disclosure"');
+      expect(main).toMatch(
+        /<li class="forge-nav__parent"><a href="\/s\/harbor\/services">Services<\/a><details class="forge-nav__more"><summary class="forge-nav__toggle"><span class="forge-visually-hidden">More links under Services<\/span><svg[^>]*aria-hidden="true"/,
+      );
+      // The list follows the <details>: the page's styles show it while it is open.
+      expect(main).toMatch(/<\/summary><\/details><ul class="forge-nav__sub"><li><a href="\/s\/harbor\/services\/interiors">Interiors<\/a><\/li><li><a href="\/s\/harbor\/services\/kitchens">Kitchens<\/a><\/li><\/ul><\/li>/);
+      expect(main).not.toMatch(/<script|onclick|onload/i);
+    });
+
+    it(`${themeKey}: the footer lists the links under a link; a new tab says so and gives no access back`, () => {
+      const html = render(themeKey, "page", { menus });
+      const footer = html.match(/<nav aria-label="Footer"[^]*?<\/nav>/)?.[0] ?? "";
+      expect(footer).toContain('class="forge-nav forge-nav--list"');
+      expect(footer).toMatch(/<a href="\/s\/harbor\/about">Studio<\/a><ul class="forge-nav__sub"><li><a href="\/s\/harbor\/about\/team">Team<\/a>/);
+      expect(footer).not.toContain("<details");
+      expect(html).toContain('<a href="https://shop.example.com" rel="noopener noreferrer" target="_blank">Shop<span class="forge-visually-hidden"> (opens in a new tab)</span></a>');
+    });
+  }
+
+  it("the social links keep their own rel; a menu link opening a new tab adds noopener once", () => {
+    const html = render("studio", "page", { social: [{ label: "Instagram", href: "https://instagram.com/x", newTab: true }] });
+    expect(html).toContain('<a href="https://instagram.com/x" rel="me noopener noreferrer" target="_blank">Instagram');
+  });
+});

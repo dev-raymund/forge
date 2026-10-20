@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { siteBasePath, type SiteLocator } from "@/platform/routing/hosts";
 import type { RenderableSite } from "@/themes/render";
+import type { NavItem } from "@/themes/types";
 import { loadPublicSite, resolveSite, type PublicSite } from "./queries";
 
 /**
@@ -22,10 +23,11 @@ export function htmlLang(site: Pick<PublicSite, "language"> | null): string {
 
 /**
  * What the theme is handed (ADR 0012 `RenderableSite`): the site's public
- * words, its base path for links, its theme and settings. Nothing else of the
- * site, and nothing of anyone.
+ * words, its base path for links, its theme and settings, and (M8-3) its menus
+ * when the frame is drawn (`publicMenusFor`). Nothing else of the site, and
+ * nothing of anyone.
  */
-export function renderableSite(site: PublicSite, locator: SiteLocator): RenderableSite {
+export function renderableSite(site: PublicSite, locator: SiteLocator, menus?: { header: NavItem[]; footer: NavItem[] }): RenderableSite {
   return {
     name: site.name,
     tagline: site.tagline,
@@ -35,6 +37,7 @@ export function renderableSite(site: PublicSite, locator: SiteLocator): Renderab
     themeSettings: site.themeSettings,
     social: site.social,
     logo: site.imagery.logo,
+    ...(menus ? { menus } : {}),
   };
 }
 

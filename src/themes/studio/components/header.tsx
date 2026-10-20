@@ -36,7 +36,7 @@ export function StudioHeader({ context }: { context: ThemeContext }) {
           brand
         )}
         <div className="studio-header__end">
-          <Nav items={context.menus.header} label="Main" />
+          <Nav items={context.menus.header} label="Main" submenus="disclosure" />
           {cta}
         </div>
       </Container>

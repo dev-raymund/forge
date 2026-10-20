@@ -2,12 +2,13 @@
 
 Business logic, one folder per bounded context (v1-build-plan §18).
 
-Each module exposes exactly two entry points:
+Each module exposes these entry points:
 
-- `index.ts`: the server-only public API (services, queries, types)
+- `index.ts`: the server-only public API (services, queries, types, and the module's screens)
 - `shared.ts`: client-safe exports (types, Zod schemas, constants)
+- `public.ts`, where the public site needs it: server-only and UI-free (M8-2, ADR 0029), because a barrel's screens are shipped to every page that imports it
 
-Everything else in the module is private. ESLint enforces this: code outside a module may import only `@/modules/<m>` or `@/modules/<m>/shared`.
+Everything else in the module is private. ESLint enforces this: code outside a module may import only `@/modules/<m>`, `@/modules/<m>/shared` or `@/modules/<m>/public`. The public site (`rendering`, `app/(sites)`) never imports another module's barrel (`rendering/public-bundle.test.ts`).
 
 | File | Role |
 |---|---|

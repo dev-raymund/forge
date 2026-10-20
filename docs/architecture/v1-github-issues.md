@@ -1431,13 +1431,19 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M5-6
 
 **Acceptance criteria:**
-- [ ] `menus` table (one per `header`/`footer`), `items` JSONB validated (depth ≤ 2, ≤ 100 items; kinds `entry`, `term`, `archive`, `url`; no `javascript:`)
-- [ ] `/…/menus` tree editor: add from page/post/category search or URL, drag to reorder and nest, label override, new-tab toggle
-- [ ] Themes render menus; items pointing at unpublished or trashed entries are omitted; invalidates `config`
+- [x] `menus` table (one per `header`/`footer`), `items` JSONB validated (depth ≤ 2, ≤ 100 items; kinds `entry`, `term`, `archive`, `url`; no `javascript:`) *(ADR 0030 §1–2: `checkMenuItems` (strict, errors keyed by link) when saving, `readMenuItems` (value by value) when reading; `url` is the header button's `safeHref`; a destination new to the menu must be this site's, a page or post not in the trash or a term; versioned saves, Conflict otherwise; recorded as `menu.updated`)*
+- [x] `/…/menus` tree editor: add from page/post/category search or URL, drag to reorder and nest, label override, new-tab toggle *(§4: header and footer each a form; search (the link picker's), a category, the blog, an address checked in place; drag (before, after, onto a link to nest) and an Arrange menu from the keyboard (up, down, under the link above, out); Edit: label (its default as placeholder), new tab, Remove; flags for links the site leaves out; in the site's links and the overview's checklist for Owners, Admins, Editors)*
+- [x] Themes render menus; items pointing at unpublished or trashed entries are omitted; invalidates `config` *(§3, §5: `loadMenus`, cached under `config` and `routes`, draws only live destinations (a draft, a scheduled post, the trash, a purged page, a deleted term, another site's: left out, never rewritten; its links take its place; it returns when published again); both themes draw two levels without script: a disclosure in headers, a list in footers; new tabs with `noopener`; a save flushes `site:{id}:config`)*
 
 **Likely files/modules:** `src/modules/navigation/*`, menus page, `src/themes/_kit/components/Nav*`
 
-**Testing:** unit: schema validation; E2E trash a linked page → menu item disappears from the live site.
+**Testing:** unit: schema validation; E2E trash a linked page → menu item disappears from the live site. *(Unit: `navigation/shared.test.ts`, `tree.test.ts`, the themes' menus. Integration: `menus.test.ts` (10). E2E: `menus.spec.ts` (4), including "a linked page unpublished and put in the trash leaves the live site's menu at once".)*
+
+**Hand-off (from M8-3, ADR 0030):**
+- **M8-5:** menu links to pages, posts and terms are stored by id and need no redirect. A `url` link typed as a site path (`/old-offer`) is not rewritten when a page moves; the redirects table covers such addresses.
+- **M10-1:** `GET /api/v1/sites/{siteId}/menus/{location}` ("resolved items", plan §12) can return `loadMenus` (rendering): the same resolution as the site, live destinations only.
+- **M12-2:** each public page reads the site's menus through one cached read per site (`config`, `routes` tags). A publish re-reads it once. Measure with the other public reads.
+- **Not in V1:** more menu locations (mobile, theme-declared); `config_revisions` snapshots of menus (plan §1.2, deferred).
 
 ### M8-4 · SEO: resolver, editor panel, site defaults, sitemap, robots, JSON-LD
 **Labels:** `area:seo` `type:feature`
@@ -1484,6 +1490,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 *From M5-8 (ADR 0019): renaming a term's slug moves its archive at once and the old address answers 404. Each `term.updated` record holds `previousSlug`: add the 301 from `/{blogPath}/{category|tag}/{old}` there (in the same transaction as `updateTerm`), and decide what a deleted term's archive redirects to, if anything.*
 
 *From M5-6 (ADR 0017): decided there: a new blog path moves the index and the archives at once; each post stays at the path it was published at until it is published again. Add the redirects for both here (old index and archives → new; a post's old path → its new one when it moves). Public paths are exact (no case or trailing-segment normalization, `…/page/1` is a 404); if redirects should cover other spellings, that is this issue's decision.*
+
+*From M8-3 (ADR 0030): menu links to pages, posts and terms are stored by id and follow a moved page by themselves. A menu `url` link typed as a site path is not rewritten; a redirect from that old path covers it.*
 
 **Depends on:** M8-4, M7-1
 
@@ -1551,6 +1559,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 *From M5-6 (ADR 0017): the public read rule (published, not in the trash, this site and language, content from the published revision) is in `modules/rendering/content.ts`. When the API reads pages and posts, move that rule behind the content module's API rather than writing it a second time, and render `contentHtml` with `renderDocument`.*
 
 *From M3-5 (ADR 0010): the same for API keys: an `api_key` actor in the audit writer, with the key's name as the label, added as an explicit caller when the first write endpoint exists (M10-2).*
+
+*From M8-3 (ADR 0030): the menus endpoint's "resolved items" are `loadMenus` (rendering): live destinations only, paths relative to the site, cached under `config` and `routes`. `readMenuItems` (`@/modules/navigation/shared`) reads stored items value by value.*
 
 **Depends on:** M5-6, M6-2
 
@@ -1674,6 +1684,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 *From M8-2 (ADR 0029 §6): Lighthouse on Journal, by hand on a production build. The fixture has five posts, an uploaded featured image, two a page. Mobile medians of five runs: 92–99 performance, 100 accessibility; desktop 100.*
 - *Open: the kit's font swap (`display: swap`, next/font's metric-matched fallbacks) moved a line on one page at 412 px (CLS 0.123), when a title's width crossed the line between fallback and font. `display: optional`, or preloading each site's two fonts, is the kit-wide choice to make, for both themes.*
 - *Site pages ship no app client component now (about 200 KB less); `rendering/public-bundle.test.ts` keeps it so.*
+
+*From M8-3 (ADR 0030): every public page reads the site's menus through one cached read (tags `config`, `routes`); a publish re-reads it once. Menus draw two levels without script (a `<details>` disclosure in headers): check them with the launch's accessibility pass on both themes.*
 
 **Depends on:** M12-1
 

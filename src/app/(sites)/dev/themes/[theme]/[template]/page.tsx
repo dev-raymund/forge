@@ -27,13 +27,25 @@ const fixture = (themeKey: string): RenderableSite => ({
   basePath: "/s/harbor-and-pine",
   themeKey,
   themeSettings: { header: { cta: { label: "Book a call", href: "/contact" } }, footer: { copyright: "All rights reserved." } },
+  // Two levels, and a link that opens in a new tab (M8-3), so the gallery's checks see every way a menu is drawn.
   menus: {
     header: [
       { label: "Work", href: "/s/harbor-and-pine/work" },
-      { label: "Services", href: "/s/harbor-and-pine/services" },
+      {
+        label: "Services",
+        href: "/s/harbor-and-pine/services",
+        children: [
+          { label: "Interiors", href: "/s/harbor-and-pine/services/interiors" },
+          { label: "Small kitchens", href: "/s/harbor-and-pine/services/kitchens" },
+        ],
+      },
       { label: "About", href: "/s/harbor-and-pine/about" },
     ],
-    footer: [{ label: "Privacy", href: "/s/harbor-and-pine/privacy" }],
+    footer: [
+      { label: "Studio", href: "/s/harbor-and-pine/about", children: [{ label: "Team", href: "/s/harbor-and-pine/about/team" }] },
+      { label: "Privacy", href: "/s/harbor-and-pine/privacy" },
+      { label: "Shop", href: "https://shop.example.com", newTab: true },
+    ],
   },
   social: [
     { label: "Instagram", href: "https://instagram.com/harborandpine" },

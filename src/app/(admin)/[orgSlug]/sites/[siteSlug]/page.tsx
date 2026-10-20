@@ -4,6 +4,7 @@ import { OrganizationSuspended } from "@/components/admin/page-notice";
 import { PageSkeleton } from "@/components/admin/page-skeleton";
 import { activityHref, describeEvent } from "@/modules/audit";
 import { canCreateEntry, canSeePages, canSetHomepage, entryListPath, listScheduled, newEntryPath, ScheduledList } from "@/modules/content";
+import { canManageMenus, siteMenusPath } from "@/modules/navigation";
 import { canManageSiteSettings, getSiteOverview, sitePath, SiteOverviewView } from "@/modules/sites";
 import { canReadActivity, listActivity, orgActivityPath, requireSitePage } from "@/modules/tenancy";
 
@@ -33,7 +34,10 @@ async function Site({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]">, "
   const readsActivity = canReadActivity(ctx);
   const pages = canSeePages(ctx);
   const [overview, page, scheduled] = await Promise.all([
-    getSiteOverview(ctx, { pages: pages ? entryListPath(ctx.org.slug, ctx.site.slug, "page") : null }),
+    getSiteOverview(ctx, {
+      pages: pages ? entryListPath(ctx.org.slug, ctx.site.slug, "page") : null,
+      menus: canManageMenus(ctx) ? siteMenusPath(ctx.org.slug, ctx.site.slug) : null,
+    }),
     readsActivity ? listActivity(ctx, { site: ctx.site.id }) : null,
     listScheduled(ctx),
   ]);

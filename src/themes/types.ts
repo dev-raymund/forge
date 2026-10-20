@@ -50,8 +50,11 @@ export function pageTemplateKey(stored: string | null | undefined): (typeof PAGE
   return stored && Object.hasOwn(PAGE_TEMPLATES, stored) ? PAGE_TEMPLATES[stored as PageTemplateChoice] : "page";
 }
 
-/** A link in a menu. Menus arrive in M8-3; until then the lists are empty. */
-export type NavItem = { readonly label: string; readonly href: string };
+/**
+ * A link in a menu (M8-3): its address already public (with the site's base). A header or footer menu has two levels:
+ * a link may have links under it (`children`), which have none. `newTab`: opened in a new tab, and said so.
+ */
+export type NavItem = { readonly label: string; readonly href: string; readonly newTab?: boolean; readonly children?: readonly NavItem[] };
 
 /**
  * Everything a theme may know when it draws a page, handed to it by the

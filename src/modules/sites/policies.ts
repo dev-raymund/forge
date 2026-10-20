@@ -31,6 +31,7 @@ export const canManageAppearance = (ctx: OrgContext): boolean => canManageSiteSe
 export function siteNavItems(
   paths: {
     overview: string; appearance: string; settings: string; pages?: string | null; posts?: string | null; categories?: string | null; tags?: string | null; media?: string | null;
+    menus?: string | null;
   },
   ctx: OrgContext,
 ): { href: string; label: string }[] {
@@ -41,6 +42,7 @@ export function siteNavItems(
     ...(paths.categories ? [{ href: paths.categories, label: "Categories" }] : []),
     ...(paths.tags ? [{ href: paths.tags, label: "Tags" }] : []),
     ...(paths.media ? [{ href: paths.media, label: "Media" }] : []),
+    ...(paths.menus ? [{ href: paths.menus, label: "Menus" }] : []),
     ...(canManageAppearance(ctx) ? [{ href: paths.appearance, label: "Appearance" }] : []),
     ...(canOpenSiteSettings(ctx) ? [{ href: paths.settings, label: "Settings" }] : []),
   ];

@@ -115,6 +115,12 @@
   justify-content: center;
 }
 
+/* M8-3: the masthead's menu is centred like the masthead, an open link's row too (its list keeps its own alignment). */
+[data-theme="journal"] .journal-header .forge-nav > ul,
+[data-theme="journal"] .journal-header .forge-nav__parent {
+  justify-content: center;
+}
+
 /* M8-2: the kicker (what a post or an archive belongs to), set in small capitals in the accent colour. */
 
 [data-theme="journal"] .journal-kicker {

@@ -2,6 +2,7 @@ import "server-only";
 import { REVISION_KIND_WORDS, type RevisionKind } from "@/modules/content/shared";
 import { themeFor } from "@/themes/render";
 import type { AppearancePreview } from "../appearance-preview";
+import { publicMenusFor } from "../menus";
 import type { Preview } from "../preview";
 import { renderableSite } from "../public-site";
 import { PublicPageView } from "./public-page";
@@ -10,8 +11,8 @@ import { PublicPageView } from "./public-page";
  * A preview (M7-4): a banner that says what this is, then the page as the site would draw it, in its theme. The banner
  * is outside the theme, with its own plain styles, so no theme can hide it: a preview never passes for the live page.
  */
-export function PreviewView({ preview }: { preview: Preview }) {
-  const { theme, context } = themeFor(renderableSite(preview.site, preview.locator));
+export async function PreviewView({ preview }: { preview: Preview }) {
+  const { theme, context } = themeFor(renderableSite(preview.site, preview.locator, await publicMenusFor(preview.site, preview.locator)));
   const { Layout } = theme;
   return (
     <>
@@ -85,8 +86,8 @@ export function PreviewUnavailable() {
 }
 
 /** The appearance editor's preview (M8-1): the home page with settings that are not saved, under a banner that says so. */
-export function AppearancePreviewView({ preview }: { preview: AppearancePreview }) {
-  const { theme, context } = themeFor(renderableSite(preview.site, preview.locator));
+export async function AppearancePreviewView({ preview }: { preview: AppearancePreview }) {
+  const { theme, context } = themeFor(renderableSite(preview.site, preview.locator, await publicMenusFor(preview.site, preview.locator)));
   const { Layout } = theme;
   const lines = ["Not saved yet: visitors see the saved appearance until you save."];
   if (preview.site.status === "coming_soon") lines.push("The site is not live yet: visitors see its Coming soon page.");

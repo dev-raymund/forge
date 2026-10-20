@@ -177,3 +177,14 @@ ADR 0029 has the details.
 - **Journal's styles use only the kit's variables,** so a site's colours, fonts, width, corners and spacing reach it as chosen. It keeps one header (`centered`) and one footer (`simple`); another theme's variant is drawn as those and kept (ADR 0028 §3).
 - **axe-core** (a dev dependency) checks every gallery template, both themes, in E2E.
 - **Fonts, unchanged:** `display: swap` with next/font's metric-matched fallbacks can move a line of text when a font arrives. Measured at CLS 0.123 on one page of the Lighthouse fixture. `display: optional` or per-site preloading is left to M12-2 (ADR 0029 §6).
+
+## Addendum (M8-3, 2026-10-20): menus of two levels
+
+ADR 0030 has the details.
+
+- **`NavItem` gains `newTab` and `children`** (one level under a link). `RenderableSite.menus` is filled by the renderer from the site's saved menus.
+- **The kit's `Nav` draws the links under a link two ways, with no script:**
+  - `disclosure` (both themes' headers): a `<summary>` button beside the link, named "More links under {label}". On a phone the open link takes a row of its own; from 48rem its links are a panel under it. The last link's panel, and all of Studio's right-aligned headers' panels, open towards the page.
+  - `list` (footers): listed under the link.
+- **A new-tab link** gets `target="_blank"`, `rel="noopener noreferrer"` and screen-reader text. `.forge-visually-hidden` joins the kit.
+- **The gallery's fixture** has two levels and a new-tab link, so its axe and 360 px checks see them.

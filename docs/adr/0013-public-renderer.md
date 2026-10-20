@@ -129,3 +129,7 @@ As planned here: a preview (ADR 0027) shows a draft or a revision of a site that
 ## Addendum (M8-2, 2026-10-17): a site page ships none of the admin
 
 ADR 0029 §5 has the details. Next sends a route every client component reachable from its server imports. Through `@/modules/media` (and the barrels its services import), every site page had shipped the admin's screens, about 200 KB of scripts. `rendering` now reads images through `@/modules/media/public` (server-only, UI-free; a third kind of module entry, allowed by the lint rule). The site tree reaches no app client component, and `rendering/public-bundle.test.ts` fails if one, or another module's barrel, becomes reachable. What a page reads and caches is unchanged.
+
+## Addendum (M8-3, 2026-10-20): the frame draws the site's menus
+
+ADR 0030 has the details. The site layout (and the two preview pages) load the site's menus through `publicMenusFor`: a `'use cache'` read tagged `site:{id}:config` and `site:{id}:routes`. It draws only live destinations, under the site's base. The site tree still reaches no client component (`public-bundle.test.ts`).

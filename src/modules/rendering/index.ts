@@ -26,6 +26,9 @@ export type { RouteCandidate } from "./routes";
 export { loadPreview } from "./preview";
 export type { Preview, PreviewGaps, PreviewSubject } from "./preview";
 export { AppearancePreviewView, previewLines, PreviewUnavailable, PreviewView } from "./ui/preview-page";
+// M8-3: the site's menus, as its visitors see them (ADR 0030).
+export { loadMenus, menuNavItems, publicMenusFor } from "./menus";
+export type { PublicMenuLink, PublicMenus } from "./menus";
 // M8-1: the appearance editor's live preview (ADR 0028).
 export { loadAppearancePreview } from "./appearance-preview";
 export type { AppearancePreview } from "./appearance-preview";

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { SectionNav } from "@/components/admin/section-nav";
 import { canManageTerms, canSeePages, entryListPath, termListPath } from "@/modules/content";
 import { canSeeLibrary, mediaLibraryPath } from "@/modules/media";
+import { canManageMenus, siteMenusPath } from "@/modules/navigation";
 import { siteAppearancePath, siteNavItems, sitePath, siteSettingsPath } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
@@ -39,6 +40,8 @@ async function SiteLinks({ params }: Pick<LayoutProps<"/[orgSlug]/sites/[siteSlu
       tags: canManageTerms(ctx) ? termListPath(org, site, "tag") : null,
       // The media library, for those who upload or manage media (M6-3): not a Viewer.
       media: canSeeLibrary(ctx) ? mediaLibraryPath(org, site) : null,
+      // The menus (M8-3), for those who manage them: Owners, Admins, Editors.
+      menus: canManageMenus(ctx) ? siteMenusPath(org, site) : null,
       appearance: siteAppearancePath(org, site),
       settings: siteSettingsPath(org, site),
     },

@@ -157,3 +157,12 @@ ADR 0025 §6 has the details.
 - **`site.settings_changed` has a fifth group, `appearance`** (ADR 0028). Its fields are the groups of the theme's settings that changed: `colors`, `fonts`, `header`, `footer`, `layout`.
 - **Example sentence:** "Ada changed the appearance settings of Harbour Bakery: colours, header."
 - **The writer is unchanged.**
+
+## Addendum (M8-3, 2026-10-20): menus
+
+ADR 0030 has the details.
+
+- **A new resource type, `menu`, and its event `menu.updated`.** Its metadata is the site's name, the location (`header` or `footer`) and how many links the menu holds now. Never the links themselves.
+- **Example sentence:** "Ada changed the header menu of Harbour Bakery: 5 links." ("no links" for an empty one.)
+- **It is written** in the save's transaction, and only when the menu changed.
+- **The writer is unchanged.**

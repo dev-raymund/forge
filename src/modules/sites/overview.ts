@@ -27,7 +27,7 @@ const LATER = "Not available yet.";
 
 export function launchChecklist(
   facts: ChecklistFacts,
-  paths: { settings: string; publicSite: string | null; publish?: string | null; pages?: string | null },
+  paths: { settings: string; publicSite: string | null; publish?: string | null; pages?: string | null; menus?: string | null },
 ): ChecklistItem[] {
   return [
     {
@@ -38,7 +38,14 @@ export function launchChecklist(
       ...(paths.pages ? { href: paths.pages } : {}),
       note: facts.publishedPages > 0 ? `${facts.publishedPages} published ${facts.publishedPages === 1 ? "page" : "pages"}.` : paths.pages ? "Create your pages and publish them." : LATER,
     },
-    { key: "menu", label: "Set up your menu", done: facts.menusWithItems > 0, note: facts.menusWithItems > 0 ? "Your menu is set up." : LATER },
+    {
+      key: "menu",
+      label: "Set up your menu",
+      done: facts.menusWithItems > 0,
+      // M8-3: the menus screen, for those who may manage menus.
+      ...(paths.menus ? { href: paths.menus } : {}),
+      note: facts.menusWithItems > 0 ? "Your menu is set up." : paths.menus ? "Add links to your header and footer menus." : LATER,
+    },
     { key: "seo", label: "Set up search engine details", done: facts.seoConfigured, note: facts.seoConfigured ? "Set." : LATER },
     {
       key: "domain",

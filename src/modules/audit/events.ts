@@ -225,6 +225,12 @@ export const AUDIT_EVENTS = {
     // What it was on: published posts, and drafts it was taken out of.
     metadata: z.object({ taxonomy, name: line(), slug: termSlug, posts: z.int().min(0), drafts: z.int().min(0) }),
   },
+  // M8-3 (ADR 0030): a menu saved. Which one, and how many links it holds now; never the links themselves.
+  "menu.updated": {
+    resourceType: "menu",
+    label: "Menu changed",
+    metadata: z.object({ name: line(), location: z.enum(["header", "footer"]), items: z.int().min(0).max(100) }),
+  },
   // M6-1: an upload accepted (its file checked). Requested uploads are reservations, not activity; refused ones leave nothing.
   "media.uploaded": {
     resourceType: "media",
@@ -401,6 +407,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
       ? `${actor} renamed the ${m.taxonomy} ${m.previousName} to ${m.name}${m.previousSlug ? `, with the slug ${m.slug} instead of ${m.previousSlug}` : ""}.`
       : `${actor} changed the ${m.taxonomy} ${m.name}: ${m.fields.join(", ")}.`,
   "term.deleted": (actor, m) => `${actor} deleted the ${m.taxonomy} ${m.name}, which was on ${m.posts} published ${m.posts === 1 ? "post" : "posts"} and ${m.drafts} ${m.drafts === 1 ? "draft" : "drafts"}.`,
+  "menu.updated": (actor, m) => `${actor} changed the ${m.location} menu of ${m.name}: ${m.items === 0 ? "no links" : `${m.items} ${m.items === 1 ? "link" : "links"}`}.`,
   "media.uploaded": (actor, m) => `${actor} uploaded the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}.`,
   "media.updated": (actor, m) => `${actor} changed the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}: ${m.fields.map((f) => (f === "alt" ? "alternative text" : f)).join(", ")}.`,
   "media.moved": (actor, m) =>
@@ -448,6 +455,7 @@ const PLAIN: Record<AuditAction, string> = {
   "term.created": "created a category or tag",
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",
+  "menu.updated": "changed a menu",
   "media.uploaded": "uploaded a file",
   "media.updated": "changed a file's details",
   "media.moved": "moved a file",

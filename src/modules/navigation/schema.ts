@@ -2,8 +2,9 @@ import { integer, jsonb, pgTable, text, unique, uuid } from "drizzle-orm/pg-core
 import { id, oneOf, siteColumns, tenantPolicy, textEnum, timestamps } from "@/platform/db/columns";
 import { users } from "@/modules/auth/schema";
 import { siteForeignKey } from "@/modules/sites/schema";
+import { MENU_LOCATIONS } from "./shared";
 
-export const MENU_LOCATIONS = ["header", "footer"] as const;
+export { MENU_LOCATIONS };
 
 /**
  * menus — one per location; items are a Zod-validated JSONB tree (depth ≤ 2,

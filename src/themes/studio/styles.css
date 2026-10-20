@@ -208,3 +208,11 @@
   font-family: var(--forge-font-heading);
   font-weight: 800;
 }
+
+/* M8-3: a menu at the right of the header (classic, minimal) opens its panels towards the page. */
+@media (min-width: 48rem) {
+  [data-theme="studio"] .studio-header:not([data-variant="centered"]) .forge-nav__more + .forge-nav__sub {
+    right: 0;
+    left: auto;
+  }
+}

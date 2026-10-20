@@ -1,4 +1,4 @@
-import { emitsAnalytics, htmlLang, isShowable, publicSiteFor, rememberRequestSite, renderableSite, SiteAnalytics } from "@/modules/rendering";
+import { emitsAnalytics, htmlLang, isShowable, publicMenusFor, publicSiteFor, rememberRequestSite, renderableSite, SiteAnalytics } from "@/modules/rendering";
 import { BUILD_PLACEHOLDER_SITE, decodeSiteLocator } from "@/platform/routing/hosts";
 import { themeFor } from "@/themes/render";
 
@@ -35,7 +35,8 @@ export default async function SiteRootLayout({ children, params }: LayoutProps<"
   if (locator) rememberRequestSite(locator, site);
   if (!locator || !site || !isShowable(site)) return <Bare lang={htmlLang(site)}>{children}</Bare>;
 
-  const { theme, context } = themeFor(renderableSite(site, locator));
+  // The frame draws the site's menus (M8-3): only live destinations, resolved and cached per site.
+  const { theme, context } = themeFor(renderableSite(site, locator, await publicMenusFor(site, locator)));
   const { Layout } = theme;
   return (
     <Bare lang={htmlLang(site)}>

@@ -162,3 +162,7 @@ The Lighthouse work found that every public page, in every theme, shipped about 
 - **E2E (`appearance.spec.ts`):** axe on all 16 gallery templates.
 - **E2E (`public-content.spec.ts`):** M5-6's routes, lists and archives, now drawn by Journal.
 - **Lighthouse:** §6. Run by hand, not in CI: it needs a fixture with an uploaded image and takes minutes.
+
+## Addendum (M8-3, 2026-10-20): Journal's menus
+
+ADR 0030 has the details. Journal's header draws the header menu centred under the masthead. A link with links under it has a button beside it; on a phone the open link's row is centred too. The footer lists the footer menu's links under their link. Only kit variables, as before.

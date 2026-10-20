@@ -16,7 +16,7 @@ export function JournalHeader({ context }: { context: ThemeContext }) {
         </a>
         {context.site.tagline ? <p className="journal-tagline">{context.site.tagline}</p> : null}
         <div className="journal-header__end">
-          <Nav items={context.menus.header} label="Main" />
+          <Nav items={context.menus.header} label="Main" submenus="disclosure" />
           {header.cta ? (
             <a href={siteHref(context, header.cta.href)} className="forge-button">
               {header.cta.label}

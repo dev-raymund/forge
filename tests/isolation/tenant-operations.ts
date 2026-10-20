@@ -10,6 +10,7 @@ import {
   submitRenameFolder,
   submitRequestAvatarUpload, submitRequestUploads, submitRestoreMedia, submitTrashMedia, submitUpdateMedia, trashMedia, updateMediaDetails,
 } from "@/modules/media";
+import { submitSaveMenu } from "@/modules/navigation";
 import {
   listSites, submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus,
   submitUpdateAppearance, submitUpdateSiteSettings,
@@ -183,6 +184,13 @@ const appearanceForm = () => {
   data.set("version", "1");
   return data;
 };
+/** A whole menu (M8-3): one link, to the blog, as if the menu had never been saved. */
+const menuForm = () => {
+  const data = new FormData();
+  data.set("items", JSON.stringify([{ id: "01900000-0000-7000-8000-000000000001", kind: "archive", contentType: "post", label: "Blog", newTab: false }]));
+  data.set("version", "0");
+  return data;
+};
 /** A wall-clock time well in the future, in any zone (M7-2). */
 const SOON = `${new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)}T09:00`;
 const formOf = (fields: Record<string, string>) => {
@@ -342,6 +350,11 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "sites.submitUpdateAppearance(B's slug, B's site)", run: ({ actor }, b) => submitUpdateAppearance(actor, b.orgSlug, b.siteSlug, appearanceForm()) },
   { name: "sites.submitUpdateAppearance(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitUpdateAppearance(actor, orgSlug, b.siteSlug, appearanceForm()) },
   { name: "sites.submitUpdateAppearance(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitUpdateAppearance(actor, orgSlug, b.siteId, appearanceForm()) },
+
+  // Menus (M8-3): B's site's header menu, from B's URL, A's, or with B's site id as the slug.
+  { name: "navigation.submitSaveMenu(B's slug, B's site)", run: ({ actor }, b) => submitSaveMenu(actor, b.orgSlug, b.siteSlug, "header", menuForm()) },
+  { name: "navigation.submitSaveMenu(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitSaveMenu(actor, orgSlug, b.siteSlug, "header", menuForm()) },
+  { name: "navigation.submitSaveMenu(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitSaveMenu(actor, orgSlug, b.siteId, "footer", menuForm()) },
 
   // Publishing (M4-5): B's site, live or back to Coming soon, from B's URL or A's.
   ...(["live", "coming_soon"] as const).flatMap((status) => [
