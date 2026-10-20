@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
+import { SITE_SEO_DEFAULTS } from "@/modules/seo/shared";
 import { changeSiteAddress, chooseTheme, createSite, deleteSite } from "@/modules/sites";
 import { resolveSiteContext } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
@@ -36,6 +37,7 @@ describe("an address → its site", () => {
     expect(await loadPublicSite(tenant.org.id, site.id)).toEqual({
       id: site.id, orgId: tenant.org.id, name: "Public Site", tagline: "", status: "coming_soon", language: "fil", timezone: "Asia/Manila", themeKey: "studio",
       themeSettings: {}, social: [], analytics: {}, reading: { blogPath: "blog", postsPerPage: 10 }, imagery: { logo: null, favicon: null },
+      seo: SITE_SEO_DEFAULTS, defaultOgImage: null,
     });
   });
 

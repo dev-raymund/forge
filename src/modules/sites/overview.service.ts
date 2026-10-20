@@ -1,11 +1,12 @@
 import "server-only";
+import { readSiteSeo, SITE_SEO_DEFAULTS } from "@/modules/seo/shared";
 import { inTenant, type SiteContext } from "@/modules/tenancy";
 import { env } from "@/platform/config/env";
 import { notFound } from "@/platform/errors";
 import { activeThemeDefinition } from "@/themes/registry";
 import { launchChecklist, type ChecklistItem } from "./overview";
-import { canManageSiteSettings } from "./policies";
-import { publicSitePath, siteSettingsPath } from "./paths";
+import { canManageSeo, canManageSiteSettings } from "./policies";
+import { publicSitePath, siteSeoPath, siteSettingsPath } from "./paths";
 import { findSiteRow, homePage, launchCounts, readSettingsRow } from "./repository";
 import { readAnalytics, readGeneral, readReading, type ReadingSettings } from "./settings";
 import type { SiteSummary } from "./shared";
@@ -34,6 +35,7 @@ export const publicSiteUrl = (address: string): string => `${env("core").APP_ORI
 
 /** `links.pages`: the pages screen, for a member who may see it (the content module decides; the page passes it, M5-7). */
 export async function getSiteOverview(ctx: SiteContext, links: { pages?: string | null; menus?: string | null } = {}): Promise<SiteOverview> {
+  const seoPath = canManageSeo(ctx) ? siteSeoPath(ctx.org.slug, ctx.site.slug) : null;
   return inTenant(ctx, async (tx) => {
     const site = await findSiteRow(tx, ctx.org.id, ctx.site.id);
     const settings = site ? await readSettingsRow(tx, ctx.org.id, site.id) : null;
@@ -42,8 +44,10 @@ export async function getSiteOverview(ctx: SiteContext, links: { pages?: string 
     const home = await homePage(tx, ctx.org.id, site.id);
     const general = readGeneral(settings.general);
     const analytics = readAnalytics(settings.analytics);
-    const seo = settings.seo;
-    const seoConfigured = typeof seo === "object" && seo !== null && Object.values(seo).some((value) => value !== "" && value !== null && value !== undefined);
+    // Set up once anything differs from the platform's defaults (M8-4): a template, a description, an image, a token, or
+    // asking not to be indexed.
+    const seo = readSiteSeo(settings.seo);
+    const seoConfigured = (Object.keys(SITE_SEO_DEFAULTS) as (keyof typeof SITE_SEO_DEFAULTS)[]).some((key) => seo[key] !== SITE_SEO_DEFAULTS[key]);
     const theme = activeThemeDefinition(site.theme);
     return {
       site,
@@ -63,6 +67,7 @@ export async function getSiteOverview(ctx: SiteContext, links: { pages?: string 
           publish: canManageSiteSettings(ctx) ? "#publish" : null,
           pages: links.pages ?? null,
           menus: links.menus ?? null,
+          seo: seoPath,
         },
       ),
     };

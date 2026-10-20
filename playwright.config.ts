@@ -42,6 +42,8 @@ function server(port: number, google: { GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_
       // Files go to a local directory (gitignored); no storage account.
       STORAGE_DRIVER: "local",
       STORAGE_LOCAL_DIR: ".storage/e2e",
+      // The sites are indexable, as in production (M8-4): what search engines are told is what is tested.
+      SEARCH_INDEXING: "allowed",
       ...google,
     },
   };

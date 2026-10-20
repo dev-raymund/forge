@@ -128,3 +128,11 @@ Its private reads (the draft, the revision, the person's role, the terms, the im
 ## Addendum (M8-2, 2026-10-17): Journal draws its own blog
 
 Journal now draws `post`, `blog-index`, `term-archive`, `page-full-width` and `page-landing` with templates of its own (ADR 0029). They take the same props as Studio's, so routes, lists, pagination and caching are unchanged. The kit's blog templates (`_kit/templates/blog.tsx`) are no longer used by either theme; they stay as a starting point for another theme. `PostCard` still has no image: Journal's lists are text.
+
+## Addendum (M8-4, 2026-10-20): metadata, structured data, the sitemap
+
+ADR 0031 has the details.
+- **The titles** stay as this ADR set them unless a site changes its title template or an entry has its own SEO title.
+- **Descriptions, canonicals, Open Graph and JSON-LD** are added to live pages, from the published revision.
+- **The sitemap** reads its own cached rows (`loadSitemapRows`: live entries with their published SEO, and terms with live posts) rather than the paginated lists. It is tagged `site`, `routes`, `list:post` and `list:page`, so every change that alters what is live flushes it.
+- **Addresses stay exact:** the sitemap lists page 1 of each list only.

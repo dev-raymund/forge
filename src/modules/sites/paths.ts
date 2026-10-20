@@ -14,6 +14,9 @@ export const siteSettingsPath = (orgSlug: string, siteSlug: string): string => `
 
 export const siteAppearancePath = (orgSlug: string, siteSlug: string): string => `${sitePath(orgSlug, siteSlug)}/appearance`;
 
+/** The site's SEO defaults (M8-4; plan §19). */
+export const siteSeoPath = (orgSlug: string, siteSlug: string): string => `${sitePath(orgSlug, siteSlug)}/seo`;
+
 /** Onboarding, step 3 (M4-2): the new site's theme. Step 2 is the tenancy module's `onboardingSitePath`. */
 export const onboardingThemePath = (orgSlug: string, siteSlug: string): string => `/onboarding/${orgSlug}/${siteSlug}`;
 

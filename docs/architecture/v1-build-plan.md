@@ -726,6 +726,13 @@ src/themes/
 
 Not in V1: SEO scoring/analysis, hreflang, 404 monitor, prefix/regex redirects, RSS (SHOULD).
 
+- **As built (M8-4, ADR 0031):**
+  - **`resolveSeo()`** resolves each field with its source (entry → derived → type → site → platform). The safety overrides come last: discourage indexing, coming soon, preview, and not production (`SEARCH_INDEXING`; unset, only Vercel production allows indexing). The editor's SEO tab shows its hints from the same function.
+  - **Live pages only** get a description, canonical, Open Graph, Twitter and one JSON-LD graph (`<` escaped). Addresses come from `APP_ORIGIN` and `/s/{address}`, never request headers.
+  - **The Open Graph image** is the widest stored width of the entry's own image, else a post's featured image, else the site's default. It is never the original, and there is no 1200 × 630 crop.
+  - **The sitemap** (`/s/{address}/sitemap.xml`) lists live, indexable entries that are their own canonical, the blog, and terms with live posts. A site that is not live or discourages indexing gets a 404.
+  - **`robots.txt`** is the host's, in path mode: `Allow: /s/`, `Disallow: /api/` and `/_forge/`, a sitemap per indexable site (from a `SECURITY DEFINER` lookup of addresses only), and `Disallow: /` off production.
+
 ---
 
 ## 11. Custom domains (post-V1 infrastructure)

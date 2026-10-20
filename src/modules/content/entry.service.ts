@@ -12,6 +12,7 @@ import { DRAFT_CHANGED } from "./messages";
 import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from "./paths";
 import { canAssignTerms, canChangeAuthor, canCreateEntry, canCreditOthers, canUpdateEntry, type EntryRef } from "./policies";
 import { assertNewReferences, assertUsableImages } from "./references";
+import { readEntrySeo } from "@/modules/seo/shared";
 import {
   findDraft, findEntry, insertDraft, insertEntry, isMember, memberName, setHomepageEntry, siteFacts, termsOfSite, updateDraftIfVersion, updateEntry, type EntryRow,
 } from "./repository";
@@ -202,6 +203,14 @@ export async function writeDraft(tx: TenantTx, ctx: SiteContext, entry: EntryRow
     await assertNewReferences(tx, ctx, parsed.document, (await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.content);
     values.content = parsed.document;
     values.contentHash = contentHashOf(parsed.document);
+  }
+  if (draft.seo !== undefined) {
+    // M8-4: a new social image must be a ready image of this site, as the featured image (an id in JSON has no key).
+    const stored = readEntrySeo((await findDraft(tx, ctx.org.id, ctx.site.id, entry.id))?.seo);
+    if (draft.seo.ogImageId && draft.seo.ogImageId !== stored.ogImageId) {
+      await assertUsableImages(tx, ctx, [draft.seo.ogImageId], { "seo.ogImageId": ["Choose an image of this site."] });
+    }
+    values.seo = { ...draft.seo };
   }
   if (draft.fields !== undefined) {
     const fields = definition.fields.safeParse(draft.fields);

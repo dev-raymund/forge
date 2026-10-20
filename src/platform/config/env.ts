@@ -43,6 +43,14 @@ export function allowsDevelopmentAuthSecret(v: { APP_ORIGIN?: string; BETTER_AUT
   }
 }
 
+/**
+ * Whether search engines may index the sites this deployment serves (M8-4, plan §10): only on Vercel production unless
+ * set explicitly. Elsewhere every site page says `noindex` and the host's robots.txt disallows everything.
+ */
+export function resolveSearchIndexing(v: { SEARCH_INDEXING?: "allowed" | "blocked"; VERCEL_ENV?: string }): boolean {
+  return v.SEARCH_INDEXING ? v.SEARCH_INDEXING === "allowed" : v.VERCEL_ENV === "production";
+}
+
 export const STORAGE_DRIVERS = ["local", "s3"] as const;
 export type StorageDriverName = (typeof STORAGE_DRIVERS)[number];
 
@@ -66,6 +74,8 @@ const schemas = {
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
     VERCEL_GIT_COMMIT_SHA: z.string().optional(),
+    /** M8-4: `allowed` or `blocked` search indexing of the sites; unset, only Vercel production allows it. */
+    SEARCH_INDEXING: z.enum(["allowed", "blocked"]).optional(),
   }),
   database: z.object({
     DATABASE_URL: z.url(),

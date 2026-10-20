@@ -3,6 +3,7 @@ import { and, count, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { parseDocument, referencesOf } from "@/modules/content/shared";
 import { publicImages, type PublicImage } from "@/modules/media/public";
+import { readEntrySeo, type EntrySeo } from "@/modules/seo/shared";
 import { CMS_CACHE_PROFILE, tags } from "@/platform/cache";
 import { withTenant } from "@/platform/db";
 import { entries, entryRevisions, entryTerms, terms } from "@/platform/db/schema";
@@ -82,6 +83,11 @@ export type PublishedEntry = {
   images: Record<string, PublicImage>;
   /** A post's featured image, when it has one that is still usable (M6-4). */
   featuredImage: PublicImage | null;
+  /** M8-4: the published revision's excerpt and SEO, its own social image when still usable, and when it was published. */
+  excerpt: string;
+  seo: EntrySeo;
+  ogImage: PublicImage | null;
+  modifiedAt: string | null;
 };
 
 /**
@@ -102,6 +108,7 @@ export async function loadEntry(orgId: string, siteId: string, entryId: string):
       .select({
         type: entries.type, path: entries.path, publishedAt: entries.publishedAt,
         title: entryRevisions.title, template: entryRevisions.template, content: entryRevisions.content, featuredMediaId: entryRevisions.featuredMediaId,
+        excerpt: entryRevisions.excerpt, seo: entryRevisions.seo, modifiedAt: entryRevisions.createdAt,
       })
       .from(entries)
       .innerJoin(entryRevisions, and(eq(entryRevisions.id, entries.publishedRevisionId), eq(entryRevisions.entryId, entries.id), eq(entryRevisions.siteId, entries.siteId)))
@@ -116,7 +123,11 @@ export async function loadEntry(orgId: string, siteId: string, entryId: string):
     const parsed = parseDocument(row.content);
     const content = parsed.ok ? parsed.document : row.content;
     // Every image it would draw is tagged, drawn or not: a restore must bring a trashed one back, not only a trash remove it.
-    const mediaIds = [...new Set([...referencesOf(content).mediaIds, ...(row.featuredMediaId && row.type === "post" ? [row.featuredMediaId] : [])])];
+    // Its social image (M8-4) too: an id in JSON with no key, checked here again as on save.
+    const seo = readEntrySeo(row.seo);
+    const mediaIds = [
+      ...new Set([...referencesOf(content).mediaIds, ...(row.featuredMediaId && row.type === "post" ? [row.featuredMediaId] : []), ...(seo.ogImageId ? [seo.ogImageId] : [])]),
+    ];
     if (mediaIds.length > ENTRY_MEDIA_TAGS_MAX) cacheTag(tags.siteMedia(siteId));
     else if (mediaIds.length) cacheTag(...mediaIds.map(tags.media));
     const images = await publicImages(tx, orgId, siteId, mediaIds);
@@ -131,6 +142,10 @@ export async function loadEntry(orgId: string, siteId: string, entryId: string):
       terms: assigned,
       images,
       featuredImage: row.type === "post" && row.featuredMediaId ? (images[row.featuredMediaId] ?? null) : null,
+      excerpt: row.excerpt,
+      seo,
+      ogImage: seo.ogImageId ? (images[seo.ogImageId] ?? null) : null,
+      modifiedAt: row.modifiedAt?.toISOString() ?? null,
     };
   });
 }
@@ -193,4 +208,74 @@ export async function livePaths(orgId: string, siteId: string, locale: string, e
     tx.select({ id: entries.id, path: entries.path }).from(entries).where(and(live(orgId, siteId, locale), inArray(entries.id, ids))),
   );
   return Object.fromEntries(rows.map((row) => [row.id, row.path]));
+}
+
+// ── M8-4: breadcrumbs and the sitemap ─────────────────────────────────────────
+
+/** The live entries' published titles at these paths of the site (a page's ancestors, for its breadcrumbs). */
+export async function liveTitlesAt(orgId: string, siteId: string, locale: string, paths: readonly string[]): Promise<Record<string, string>> {
+  "use cache";
+  cacheLife(CMS_CACHE_PROFILE);
+  cacheTag(tags.site(siteId), tags.routes(siteId));
+  const wanted = [...new Set(paths)].filter((path) => path.startsWith("/") && path.length <= 2048).slice(0, 20);
+  if (wanted.length === 0) return {};
+  const rows = await withTenant({ orgId }, (tx) =>
+    tx.select({ path: entries.path, title: entries.title }).from(entries).where(and(live(orgId, siteId, locale), inArray(entries.path, wanted))),
+  );
+  return Object.fromEntries(rows.map((row) => [row.path, row.title]));
+}
+
+export type SitemapRows = {
+  /** Live entries: their path, what their published revision says to search engines, and when that revision was made. */
+  entries: { path: string; type: "page" | "post"; noindex: boolean; canonical: string; lastmod: string | null }[];
+  /** Categories and tags with at least one live post. */
+  terms: { taxonomy: Taxonomy; slug: string; lastmod: string | null }[];
+};
+
+/** Past this many entries a site's sitemap stops (the sitemaps.org limit is 50,000 addresses). */
+export const SITEMAP_ENTRIES_MAX = 45_000;
+
+/**
+ * What a site's sitemap lists (M8-4; plan §10): its live entries (published, not in the trash, in the site's
+ * language), with their published SEO, and its non-empty term archives. The same rule as every public read (`live`),
+ * cached under the routes (what is live and where: publishing, unpublishing, the trash, a move, a term's change) and the
+ * lists.
+ */
+export async function loadSitemapRows(orgId: string, siteId: string, locale: string): Promise<SitemapRows> {
+  "use cache";
+  cacheLife(CMS_CACHE_PROFILE);
+  cacheTag(tags.site(siteId), tags.routes(siteId), tags.list(siteId, "post"), tags.list(siteId, "page"));
+  return withTenant({ orgId }, async (tx) => {
+    const rows = await tx
+      .select({ path: entries.path, type: entries.type, seo: entryRevisions.seo, lastmod: entryRevisions.createdAt })
+      .from(entries)
+      .innerJoin(entryRevisions, and(eq(entryRevisions.id, entries.publishedRevisionId), eq(entryRevisions.entryId, entries.id), eq(entryRevisions.siteId, entries.siteId)))
+      .where(live(orgId, siteId, locale))
+      .orderBy(entries.path)
+      .limit(SITEMAP_ENTRIES_MAX);
+    const termRows = await tx
+      .select({ taxonomy: terms.taxonomy, slug: terms.slug })
+      .from(terms)
+      .where(
+        and(
+          eq(terms.organizationId, orgId),
+          eq(terms.siteId, siteId),
+          exists(
+            tx
+              .select({ one: entryTerms.termId })
+              .from(entryTerms)
+              .innerJoin(entries, and(eq(entries.id, entryTerms.entryId), eq(entries.siteId, entryTerms.siteId)))
+              .where(and(eq(entryTerms.termId, terms.id), eq(entryTerms.siteId, siteId), live(orgId, siteId, locale))),
+          ),
+        ),
+      )
+      .orderBy(terms.taxonomy, terms.slug);
+    return {
+      entries: rows.map((row) => {
+        const seo = readEntrySeo(row.seo);
+        return { path: row.path, type: row.type, noindex: seo.noindex, canonical: seo.canonical, lastmod: row.lastmod?.toISOString() ?? null };
+      }),
+      terms: termRows.map((row) => ({ ...row, lastmod: null })),
+    };
+  });
 }

@@ -613,7 +613,7 @@ describe("trashing an image that content uses (the warning, M7-1)", () => {
     await withTenant({ orgId: a.org.id }, (tx) => tx.update(t.entryDrafts).set({ content: image(mediaId) }).where(eq(t.entryDrafts.entryId, elsewhere.id)));
 
     expect(await mediaUsage(ctx, mediaId)).toEqual({
-      published: 1, drafts: 2, publishedTitles: ["Gallery"], draftTitles: expect.arrayContaining(["Gallery", "Rye"]), logo: true, favicon: false,
+      published: 1, drafts: 2, publishedTitles: ["Gallery"], draftTitles: expect.arrayContaining(["Gallery", "Rye"]), logo: true, favicon: false, socialDefault: false,
     });
     const author = await addMember(a.org, "author");
     const authorCtx = await resolveSiteContext(author.actor, a.org.slug, site.slug);
@@ -639,7 +639,7 @@ describe("trashing an image that content uses (the warning, M7-1)", () => {
     const a = await newTenant();
     const { ctx } = await liveSite(a);
     const mediaId = await uploaded(ctx);
-    expect(await mediaUsage(ctx, mediaId)).toEqual({ published: 0, drafts: 0, publishedTitles: [], draftTitles: [], logo: false, favicon: false });
+    expect(await mediaUsage(ctx, mediaId)).toEqual({ published: 0, drafts: 0, publishedTitles: [], draftTitles: [], logo: false, favicon: false, socialDefault: false });
     expect((await trashMedia(ctx, mediaId)).usage).toMatchObject({ published: 0 });
   });
 });

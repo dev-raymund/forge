@@ -80,7 +80,8 @@ describe("publishing a site", () => {
     const admin = await addMember(a.org, "admin");
     const result = await setSiteStatus(await siteCtx(admin, slug), { status: "live" });
     expect(result).toMatchObject({ changed: true, site: { id: site.id, status: "live", address }, events: [{ type: "site.statusChanged", siteId: site.id }] });
-    expect(tagsForAll(result.events)).toEqual({ immediate: [`site:${site.id}`], stale: [] });
+    // Going live lists the site in the host's robots.txt at once (M8-4).
+    expect(tagsForAll(result.events)).toEqual({ immediate: [`site:${site.id}`, "robots"], stale: [] });
 
     const after = await siteState(a.org.id, site.id);
     expect(after.status).toBe("live");

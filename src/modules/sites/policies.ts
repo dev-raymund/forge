@@ -21,6 +21,9 @@ export const canDeleteSite = (ctx: OrgContext): boolean => can(ctx, "sites.delet
 /** The appearance page: choosing the theme (M4-4), and customising it (M8-1). */
 export const canManageAppearance = (ctx: OrgContext): boolean => canManageSiteSettings(ctx);
 
+/** The site's SEO defaults (M8-4): `site.seo.manage`, Owners, Admins and Editors. */
+export const canManageSeo = (ctx: OrgContext): boolean => can(ctx, "site.seo.manage");
+
 /**
  * The links of a site's own nav, for what this member may open. Which pages a
  * member may see is still decided by each page; this only leaves out links to
@@ -32,6 +35,7 @@ export function siteNavItems(
   paths: {
     overview: string; appearance: string; settings: string; pages?: string | null; posts?: string | null; categories?: string | null; tags?: string | null; media?: string | null;
     menus?: string | null;
+    seo?: string | null;
   },
   ctx: OrgContext,
 ): { href: string; label: string }[] {
@@ -43,6 +47,7 @@ export function siteNavItems(
     ...(paths.tags ? [{ href: paths.tags, label: "Tags" }] : []),
     ...(paths.media ? [{ href: paths.media, label: "Media" }] : []),
     ...(paths.menus ? [{ href: paths.menus, label: "Menus" }] : []),
+    ...(paths.seo ? [{ href: paths.seo, label: "SEO" }] : []),
     ...(canManageAppearance(ctx) ? [{ href: paths.appearance, label: "Appearance" }] : []),
     ...(canOpenSiteSettings(ctx) ? [{ href: paths.settings, label: "Settings" }] : []),
   ];

@@ -250,7 +250,7 @@ function UsageWarning({ usage }: { usage: MediaUsage | null }) {
     <div className="grid gap-1 text-sm" data-testid="media-usage">
       {usage === null ? (
         <p>Where it is used could not be checked. Pages that show it stop showing it at once.</p>
-      ) : usage.published || usage.drafts || usage.logo || usage.favicon ? (
+      ) : usage.published || usage.drafts || usage.logo || usage.favicon || usage.socialDefault ? (
         <>
           {usage.published ? (
             <p className="font-medium">
@@ -266,6 +266,7 @@ function UsageWarning({ usage }: { usage: MediaUsage | null }) {
           ) : null}
           {usage.logo ? <p>It is the site&rsquo;s logo: the header shows the site&rsquo;s name instead.</p> : null}
           {usage.favicon ? <p>It is the site&rsquo;s favicon: the site has none while it is in the trash.</p> : null}
+          {usage.socialDefault ? <p>It is the site&rsquo;s default social image: pages shared without an image of their own go without one.</p> : null}
         </>
       ) : (
         <p>No page or post uses it.</p>

@@ -198,10 +198,11 @@ export async function moveMedia(ctx: SiteContext, mediaIds: unknown, folderId: u
 
 /**
  * Where a file is used (M7-1), for the warning before it goes to the trash: how many published pages and posts show
- * it, how many drafts hold it, and whether it is the site's logo or favicon. Titles (at most five of each) only for
+ * it (in their text, as their featured image, or as their social image, M8-4), how many drafts hold it, and whether it
+ * is the site's logo, favicon or default social image. Titles (at most five of each) only for
  * those who see every page and post: an Author sees the counts, not the titles of pages they cannot open.
  */
-export type MediaUsage = { published: number; drafts: number; publishedTitles: string[]; draftTitles: string[]; logo: boolean; favicon: boolean };
+export type MediaUsage = { published: number; drafts: number; publishedTitles: string[]; draftTitles: string[]; logo: boolean; favicon: boolean; socialDefault: boolean };
 const USAGE_TITLES = 5;
 
 function usageFrom(ctx: SiteContext, found: Awaited<ReturnType<typeof usageOf>>): MediaUsage {
@@ -214,6 +215,7 @@ function usageFrom(ctx: SiteContext, found: Awaited<ReturnType<typeof usageOf>>)
     draftTitles: titles("draft"),
     logo: found.logo,
     favicon: found.favicon,
+    socialDefault: found.socialDefault,
   };
 }
 

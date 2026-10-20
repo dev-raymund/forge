@@ -166,3 +166,7 @@ The Lighthouse work found that every public page, in every theme, shipped about 
 ## Addendum (M8-3, 2026-10-20): Journal's menus
 
 ADR 0030 has the details. Journal's header draws the header menu centred under the masthead. A link with links under it has a button beside it; on a phone the open link's row is centred too. The footer lists the footer menu's links under their link. Only kit variables, as before.
+
+## Addendum (M8-4, 2026-10-20): metadata and structured data
+
+ADR 0031 has the details. Journal's templates still set no metadata: the site page's `generateMetadata` resolves it for both themes. Each live page carries one `<script type="application/ld+json">`: data, not code, with `<` escaped. The site tree still reaches no client component (`public-bundle.test.ts`).

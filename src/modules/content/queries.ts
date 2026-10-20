@@ -1,6 +1,9 @@
 import "server-only";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { imagePreviews, type ImagePreview } from "@/modules/media";
+import { readEntrySeo, type EntrySeo, type SiteSeo } from "@/modules/seo/shared";
+import { env, resolveSearchIndexing } from "@/platform/config/env";
+import { siteBasePath } from "@/platform/routing/hosts";
 import { inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
 import { forbidden, notFound } from "@/platform/errors";
@@ -14,11 +17,12 @@ import {
   canArrangePage, canChangeAuthor, canCreateTerm, canPublishEntry, canPurgeEntry, canSeeEntry, canSeePages, canSetHomepage, canTrashEntry, canUpdateEntry, ownPostsOnly,
 } from "./policies";
 import {
-  descendantsOf, draftHead, findDraft, findEntry, latestScheduledRevision, memberName, revisionById, revisionHistory, scheduledOfSite, siteFacts,
+  descendantsOf, draftHead, findDraft, findEntry, latestScheduledRevision, memberName, revisionById, revisionHistory, scheduledOfSite, siteFacts, siteSeoFacts,
 } from "./repository";
 import type { RevisionKind } from "./revisions";
 import { entries, entryDrafts, entryRevisions, terms } from "./schema";
 import type { ContentTypeKey } from "./types/definition";
+import { contentType } from "./types/registry";
 
 /**
  * What the admin reads of entries (M5-4, M5-7): one entry for its editor, the
@@ -57,6 +61,18 @@ export type EditorEntry = {
    */
   schedule: { at: string | null; timeZone: string; failure: { reason: string; at: string } | null };
   canPublish: boolean;
+  /**
+   * M8-4's SEO tab: the draft's own SEO, and what it inherits: the site's name, tagline, SEO defaults and whether it is
+   * live, the content type's title template, the site's public address (for the canonical), and whether this
+   * deployment lets search engines index anything.
+   */
+  seo: {
+    own: EntrySeo;
+    site: { name: string; tagline: string; seo: SiteSeo; live: boolean };
+    typeTitleTemplate: string | null;
+    baseUrl: string | null;
+    indexingAllowed: boolean;
+  };
   /** M5-7's sidebar: the draft's other fields, the entry's place and author, and what else the caller may do. */
   settings: {
     slug: string;
@@ -91,9 +107,15 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
     if (!entry || entry.type !== type || !canSeeEntry(ctx, refOf(entry))) throw notFound();
     const draft = await findDraft(tx, ctx.org.id, ctx.site.id, entry.id);
     const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
-    if (!draft || !site) throw notFound();
+    const seoFacts = await siteSeoFacts(tx, ctx.org.id, ctx.site.id);
+    if (!draft || !site || !seoFacts) throw notFound();
     const live = entry.publishedRevisionId ? await revisionById(tx, ctx.org.id, ctx.site.id, entry.id, entry.publishedRevisionId) : null;
-    const imageIds = [...referencesOf(draft.content).mediaIds, ...(draft.featuredMediaId ? [draft.featuredMediaId] : [])];
+    const ownSeo = readEntrySeo(draft.seo);
+    // The SEO tab's images too (M8-4): its own social image, and the site's default it would inherit.
+    const imageIds = [
+      ...referencesOf(draft.content).mediaIds, ...(draft.featuredMediaId ? [draft.featuredMediaId] : []), ...(ownSeo.ogImageId ? [ownSeo.ogImageId] : []),
+      ...(seoFacts.seo.defaultOgImageId ? [seoFacts.seo.defaultOgImageId] : []),
+    ];
     const images = await imagePreviews(tx, ctx.org.id, ctx.site.id, imageIds);
     const below = entry.type === "page" ? await descendantsOf(tx, ctx.org.id, ctx.site.id, entry.id) : [];
     return {
@@ -107,6 +129,13 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
       images,
       canEdit: canUpdateEntry(ctx, refOf(entry)),
       canPublish: canPublishEntry(ctx, refOf(entry)),
+      seo: {
+        own: ownSeo,
+        site: { name: seoFacts.name, tagline: seoFacts.tagline, seo: seoFacts.seo, live: seoFacts.status === "live" },
+        typeTitleTemplate: contentType(entry.type)?.seoDefaults.titleTemplate ?? null,
+        baseUrl: seoFacts.address ? `${env("core").APP_ORIGIN.replace(/\/$/, "")}${siteBasePath({ kind: "address", address: seoFacts.address })}` : null,
+        indexingAllowed: resolveSearchIndexing(env("core")),
+      },
       lifecycle: {
         canUnpublish: canPublishEntry(ctx, refOf(entry)),
         canTrash: canTrashEntry(ctx, refOf(entry)),

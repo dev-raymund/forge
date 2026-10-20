@@ -306,7 +306,7 @@ describe("changing files", () => {
     const id = await ready(ctx, { filename: "photo.jpg", folderId: folder.id });
     expect(await trashMedia(ctx, id)).toEqual({
       events: [{ type: "media.trashed", mediaId: id, siteId: ctx.site.id }],
-      usage: { published: 0, drafts: 0, publishedTitles: [], draftTitles: [], logo: false, favicon: false },
+      usage: { published: 0, drafts: 0, publishedTitles: [], draftTitles: [], logo: false, favicon: false, socialDefault: false },
     });
     expect(await trashMedia(ctx, id)).toEqual({ events: [] }); // already there
     expect((await listLibrary(ctx, query())).items).toHaveLength(0);

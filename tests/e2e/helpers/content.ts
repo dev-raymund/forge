@@ -65,6 +65,9 @@ export type PublishedSeed = {
   publishedAt?: Date;
   /** Left as a draft: the row and its draft, never published. */
   draftOnly?: boolean;
+  /** Its own SEO (M8-4), in the draft and the published revision. */
+  seo?: Record<string, unknown>;
+  featuredMediaId?: string | null;
 };
 
 /**
@@ -74,18 +77,20 @@ export type PublishedSeed = {
 export async function seedPublishedEntry(orgId: string, siteId: string, seed: PublishedSeed) {
   await inTenant(orgId, async (c) => {
     await c.query(
-      "insert into entries (id, organization_id, site_id, type, locale, parent_id, title, slug, path, excerpt) values ($1, $2, $3, $4, 'en', $5, $6, $7, $8, $9)",
-      [seed.id, orgId, siteId, seed.type, seed.parentId ?? null, seed.title, seed.slug, seed.path, seed.excerpt ?? ""],
+      "insert into entries (id, organization_id, site_id, type, locale, parent_id, title, slug, path, excerpt, featured_media_id) values ($1, $2, $3, $4, 'en', $5, $6, $7, $8, $9, $10)",
+      [seed.id, orgId, siteId, seed.type, seed.parentId ?? null, seed.title, seed.slug, seed.path, seed.excerpt ?? "", seed.featuredMediaId ?? null],
     );
-    await c.query("insert into entry_drafts (entry_id, organization_id, site_id, title, slug, template, content, term_ids) values ($1, $2, $3, $4, $5, $6, $7, $8)", [
-      seed.id, orgId, siteId, seed.title, seed.slug, seed.template ?? null, JSON.stringify(seed.content), seed.termIds ?? [],
-    ]);
+    const seo = JSON.stringify(seed.seo ?? {});
+    await c.query(
+      "insert into entry_drafts (entry_id, organization_id, site_id, title, slug, excerpt, featured_media_id, template, content, seo, term_ids) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+      [seed.id, orgId, siteId, seed.title, seed.slug, seed.excerpt ?? "", seed.featuredMediaId ?? null, seed.template ?? null, JSON.stringify(seed.content), seo, seed.termIds ?? []],
+    );
     if (seed.draftOnly) return;
     const revisionId = uuidv7();
     await c.query(
-      `insert into entry_revisions (id, organization_id, site_id, entry_id, number, kind, title, slug, excerpt, template, content, term_ids, content_hash, source_draft_version)
-       values ($1, $2, $3, $4, 1, 'publish', $5, $6, $7, $8, $9, $10, '', 1)`,
-      [revisionId, orgId, siteId, seed.id, seed.title, seed.slug, seed.excerpt ?? "", seed.template ?? null, JSON.stringify(seed.content), seed.termIds ?? []],
+      `insert into entry_revisions (id, organization_id, site_id, entry_id, number, kind, title, slug, excerpt, featured_media_id, template, content, seo, term_ids, content_hash, source_draft_version)
+       values ($1, $2, $3, $4, 1, 'publish', $5, $6, $7, $8, $9, $10, $11, $12, '', 1)`,
+      [revisionId, orgId, siteId, seed.id, seed.title, seed.slug, seed.excerpt ?? "", seed.featuredMediaId ?? null, seed.template ?? null, JSON.stringify(seed.content), seo, seed.termIds ?? []],
     );
     const at = seed.publishedAt ?? new Date();
     await c.query("update entries set status = 'published', published_revision_id = $1, published_at = $2, first_published_at = $2 where id = $3", [revisionId, at, seed.id]);

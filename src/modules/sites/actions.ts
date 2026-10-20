@@ -5,7 +5,7 @@ import { currentRequestMeta, finish } from "@/modules/tenancy";
 import type { ActionResult } from "@/platform/errors";
 import type { FormState } from "@/platform/forms";
 import {
-  submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateAppearance,
+  submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus, submitUpdateAppearance, submitUpdateSeoSettings,
   submitUpdateSiteSettings,
 } from "./site-forms";
 
@@ -55,6 +55,11 @@ export async function setSiteImageAction(orgSlug: string, siteSlug: string, role
 
 export async function updateAppearanceAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
   return finish(await submitUpdateAppearance(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
+}
+
+/** The site's SEO defaults (M8-4). */
+export async function updateSeoSettingsAction(orgSlug: string, siteSlug: string, _previous: FormState, formData: FormData): Promise<FormState> {
+  return finish(await submitUpdateSeoSettings(await getCurrentActor(), orgSlug, siteSlug, formData, await currentRequestMeta()));
 }
 
 /** A 15-minute preview of settings that are not saved (ADR 0028). Read-only. */

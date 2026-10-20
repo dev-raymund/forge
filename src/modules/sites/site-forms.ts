@@ -10,7 +10,8 @@ import { chooseTheme, createAppearancePreview, updateAppearance } from "./appear
 import { SOCIAL_KEYS } from "./settings";
 import { isSettingsGroup, SETTINGS_CONFLICT, updateSiteSettings, type SettingsGroup } from "./settings.service";
 import { notFound } from "@/platform/errors";
-import { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+import { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSeoPath, siteSettingsPath } from "./paths";
+import { updateSeoSettings } from "./seo-settings.service";
 import { isSiteImageRole, setSiteImage } from "./imagery.service";
 import { setSiteStatus } from "./publishing.service";
 import { changeSiteAddress, createSite, deleteSite, getSite } from "./sites.service";
@@ -253,6 +254,34 @@ export async function submitUpdateAppearance(actor: Actor, orgSlug: string, site
     };
   } catch (error) {
     return refusal(error, meta, values, siteAppearancePath(orgSlug, siteSlug), { Conflict: SETTINGS_CONFLICT }, MODULE);
+  }
+}
+
+/** Saves the site's SEO defaults (M8-4) at `version` (the page's). Field errors come back keyed by the setting. */
+export async function submitUpdateSeoSettings(actor: Actor, orgSlug: string, siteSlug: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { version: text(formData.get("version")) };
+  try {
+    const raw = text(formData.get("seo"));
+    let input: unknown;
+    try {
+      input = JSON.parse(raw);
+    } catch {
+      throw validationError({ seo: ["These settings could not be read. Reload the page and try again."] });
+    }
+    const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
+    const version = /^\d{1,9}$/.test(values.version) ? Number(values.version) : -1;
+    const saved = await updateSeoSettings(ctx, input, version);
+    return {
+      state: {
+        status: "success",
+        message: saved.changed.length ? "SEO settings saved. The site uses them now." : "Nothing to save: these are already the site’s SEO settings.",
+        values: { version: String(saved.version) },
+      },
+      ...(saved.changed.length ? { revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug), invalidate: saved.events } : {}),
+      refresh: false,
+    };
+  } catch (error) {
+    return refusal(error, meta, values, siteSeoPath(orgSlug, siteSlug), { Conflict: SETTINGS_CONFLICT }, MODULE);
   }
 }
 

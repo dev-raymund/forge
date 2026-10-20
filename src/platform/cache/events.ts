@@ -11,6 +11,8 @@ export type CacheEvent =
   // A live entry's path changed without it being published again: a page below one whose path changed, or the old and new Home (M5-3).
   | { type: "entry.moved"; siteId: string; entryId: string; contentType: string }
   | { type: "site.configChanged"; siteId: string } // settings, theme, menus, redirects
+  // M8-4: the site's SEO defaults: its settings, and whether the host's robots.txt lists it (discourage indexing).
+  | { type: "site.seoChanged"; siteId: string }
   | { type: "site.statusChanged"; siteId: string } // coming soon ↔ live ↔ suspended, theme switch
   | { type: "domain.changed"; siteId: string; hostnames: readonly string[] }
   // Details changed (title, alt text, caption): pages drawing the image may show the old ones for one request.
@@ -61,10 +63,14 @@ export function tagsFor(event: CacheEvent): TagSet {
       };
     case "site.configChanged":
       return { immediate: [tags.config(event.siteId)], stale: [] };
+    case "site.seoChanged":
+      return { immediate: [tags.config(event.siteId), tags.robots()], stale: [] };
+    // A site going live or back (or its address changing) is listed in, or left out of, the host's robots.txt (M8-4).
+    // A theme change (M4-4) sends this event too, to flush the whole site: the robots list is then read once more.
     case "site.statusChanged":
-      return { immediate: [tags.site(event.siteId)], stale: [] };
+      return { immediate: [tags.site(event.siteId), tags.robots()], stale: [] };
     case "domain.changed":
-      return { immediate: [...event.hostnames.map(tags.host), tags.site(event.siteId)], stale: [] };
+      return { immediate: [...event.hostnames.map(tags.host), tags.site(event.siteId), tags.robots()], stale: [] };
     case "media.updated":
       return { immediate: [], stale: [tags.media(event.mediaId), ...(event.siteId ? [tags.siteMedia(event.siteId)] : [])] };
     case "media.trashed":

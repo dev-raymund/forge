@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { ConfigError, env, envStatus, mediaPublicBaseUrl, REQUIRED_ENV_GROUPS, resetEnvCache } from "./env";
+import { ConfigError, env, envStatus, mediaPublicBaseUrl, REQUIRED_ENV_GROUPS, resetEnvCache, resolveSearchIndexing } from "./env";
 
 const base = {
   APP_ORIGIN: "https://cms.forgelinetechnologies.com",
@@ -59,6 +59,19 @@ describe("V1 single-host deployment", () => {
   it("serves media from the app's /media route unless a media base URL is configured", () => {
     expect(mediaPublicBaseUrl(base)).toBe("https://cms.forgelinetechnologies.com/media");
     expect(mediaPublicBaseUrl({ ...base, MEDIA_PUBLIC_BASE_URL: "https://media.example.com/" })).toBe("https://media.example.com");
+  });
+});
+
+describe("search indexing (M8-4)", () => {
+  it("only Vercel production lets search engines index the sites, unless SEARCH_INDEXING says otherwise; anything else is refused", () => {
+    const indexing = (source: Record<string, string>) => resolveSearchIndexing(env("core", { ...base, ...source }));
+    expect(indexing({})).toBe(false);
+    expect(indexing({ VERCEL_ENV: "preview" })).toBe(false);
+    expect(indexing({ VERCEL_ENV: "production" })).toBe(true);
+    expect(indexing({ VERCEL_ENV: "production", SEARCH_INDEXING: "blocked" })).toBe(false);
+    expect(indexing({ VERCEL_ENV: "preview", SEARCH_INDEXING: "allowed" })).toBe(true);
+    expect(indexing({ SEARCH_INDEXING: "" })).toBe(false);
+    expect(() => env("core", { ...base, SEARCH_INDEXING: "yes" })).toThrow(ConfigError);
   });
 });
 

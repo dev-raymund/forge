@@ -26,6 +26,12 @@ export type { RouteCandidate } from "./routes";
 export { loadPreview } from "./preview";
 export type { Preview, PreviewGaps, PreviewSubject } from "./preview";
 export { AppearancePreviewView, previewLines, PreviewUnavailable, PreviewView } from "./ui/preview-page";
+// M8-4: what a site says to search engines (ADR 0031).
+export { liveTitlesAt, loadSitemapRows, SITEMAP_ENTRIES_MAX } from "./content";
+export type { SitemapRows } from "./content";
+export { indexableSiteAddresses, ROBOTS_SITES_MAX } from "./queries";
+export { indexableNotice, publicPageSeo, publicStructuredData, searchIndexingAllowed, seoImage, seoMetadata, seoPageOf, siteBaseUrl, sitemapUrlsOf } from "./seo";
+export { JsonLd } from "./ui/json-ld";
 // M8-3: the site's menus, as its visitors see them (ADR 0030).
 export { loadMenus, menuNavItems, publicMenusFor } from "./menus";
 export type { PublicMenuLink, PublicMenus } from "./menus";

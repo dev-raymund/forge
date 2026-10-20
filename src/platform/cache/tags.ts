@@ -32,6 +32,8 @@ export const tags = {
   entry: (siteId: string, entryId: string) => `site:${siteId}:entry:${entryId}`,
   /** Blog index, archives, sitemap for a content type. */
   list: (siteId: string, type: string) => `site:${siteId}:list:${type}`,
+  /** The app host's robots.txt in path mode (M8-4): which sites it lists, live and allowing indexing. */
+  robots: () => "robots",
   /** Media metadata used in renders. */
   media: (mediaId: string) => `media:${mediaId}`,
   /** A render that draws more images than it tags one by one (M6-4): flushed by any of the site's media events. */

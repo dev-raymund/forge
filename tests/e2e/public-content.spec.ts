@@ -200,7 +200,15 @@ test("a hostile document written around the services renders nothing that runs",
   await page.getByText("bad link").click();
   await page.mouse.move(10, 10);
   expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
-  const main = await page.getByRole("main").innerHTML();
+  const html = await page.getByRole("main").innerHTML();
+  // The page's structured data (M8-4) is the one script: a data block, not run, its text holding no `<` (the hostile
+  // title is in it, escaped as <).
+  const dataBlocks = html.match(/<script type="application\/ld\+json">([^]*?)<\/script>/g) ?? [];
+  expect(dataBlocks).toHaveLength(1);
+  const json = dataBlocks[0]!.slice('<script type="application/ld+json">'.length, -"</script>".length);
+  expect(json).not.toMatch(/[<>]/);
+  expect(JSON.stringify(JSON.parse(json))).toContain("Hostile <script>window.__xss=1</script>");
+  const main = html.replace(dataBlocks[0]!, "");
   // Markup only: the hostile words are there, as escaped text.
   expect(main).toContain("&lt;script&gt;");
   expect(main).not.toMatch(/<script|<img|<[^>]+\s(?:href|src)="\s*(?:javascript|data):|<[^>]+\son[a-z]+=|<[^>]+srcdoc|<[^>]+style="[^"]*url\(/i);

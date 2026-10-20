@@ -110,7 +110,7 @@ export const AUDIT_EVENTS = {
     resourceType: "site",
     label: "Site settings changed",
     // M8-1: `appearance`, the theme's settings (colors, fonts, header, footer, layout).
-    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics", "images", "appearance"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
+    metadata: z.object({ name: line(), group: z.enum(["general", "reading", "analytics", "images", "appearance", "seo"]), fields: z.array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/)).min(1).max(20) }),
   },
   // M4-5 (ADR 0015): publishing, and back to Coming soon.
   "site.status_changed": {
@@ -350,6 +350,8 @@ const FIELD_WORDS: Record<string, string> = {
   logo: "logo", favicon: "favicon",
   // M8-1: the "appearance" group.
   colors: "colours",
+  // M8-4: the "seo" group.
+  defaultOgImage: "default social image", searchConsoleToken: "Search Console token",
   facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
 };
 /** An instant in a sentence: the activity log names it in UTC (the site's zone is the editor's; the log is the organization's). */
@@ -378,7 +380,7 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
   "site.address_changed": (actor, m) => `${actor} moved the site ${m.name} from /s/${m.previousAddress} to /s/${m.newAddress}.`,
   "site.deleted": (actor, m) => `${actor} deleted the site ${m.name}, which was at /s/${m.address}.`,
   "site.theme_changed": (actor, m) => `${actor} changed the theme of ${m.name} from ${word(m.previousTheme)} to ${word(m.newTheme)}.`,
-  "site.settings_changed": (actor, m) => `${actor} changed the ${m.group === "images" ? "image" : m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
+  "site.settings_changed": (actor, m) => `${actor} changed the ${m.group === "images" ? "image" : m.group === "seo" ? "SEO" : m.group} settings of ${m.name}: ${m.fields.map(fieldWord).join(", ")}.`,
   "site.status_changed": (actor, m) =>
     m.newStatus === "live" ? `${actor} published the site ${m.name}.` : `${actor} switched the site ${m.name} back to Coming soon.`,
   "entry.created": (actor, m) => `${actor} created the ${m.type} ${m.title} at ${m.path}.`,

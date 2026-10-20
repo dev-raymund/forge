@@ -28,6 +28,13 @@ describe("the launch checklist (M4-2)", () => {
     expect(launchChecklist({ ...facts, menusWithItems: 2 }, { ...paths, menus: "/m" }).find((one) => one.key === "menu")).toMatchObject({ done: true, note: "Your menu is set up." });
   });
 
+  it("M8-4: \"Set up search engine details\" links to the SEO screen for those who may manage SEO", () => {
+    const item = launchChecklist(facts, { ...paths, seo: "/acme/sites/bakery/seo" }).find((one) => one.key === "seo")!;
+    expect(item).toMatchObject({ href: "/acme/sites/bakery/seo", note: "Choose how the site appears in search results and when it is shared.", done: false });
+    expect(launchChecklist(facts, { ...paths, seo: null }).find((one) => one.key === "seo")).not.toHaveProperty("href");
+    expect(launchChecklist({ ...facts, seoConfigured: true }, { ...paths, seo: "/s" }).find((one) => one.key === "seo")).toMatchObject({ done: true, note: "Set." });
+  });
+
   it("links only to screens that exist (the address, in settings); the rest say they are not available yet", () => {
     const items = launchChecklist(facts, paths);
     expect(items.filter((item) => item.href).map((item) => [item.key, item.href])).toEqual([["domain", paths.settings]]);

@@ -267,3 +267,11 @@ Image ids inside documents (`mediaId` in JSON) have no key. The services check t
   - **a phone:** keyboard in the picker, the narrow variant chosen, no sideways scrolling.
   Repeated 5 times: 25 of 25 passed.
 - `tests/e2e/editor.spec.ts`: a page with an image the library lacks opens, says so, and keeps the block. `content-admin.spec.ts`: the post sidebar's slot is the real one now.
+
+## Addendum (M8-4, 2026-10-20): social images
+
+ADR 0031 has the details.
+- **An entry's social image and the site's default** are chosen with `MediaPicker`, checked with `usableImageIds` when they are new to what is saved, and resolved with `publicImages` when a page is drawn.
+- **Each is the image's widest `w{n}` variant,** never the original. An unusable one falls back (entry → featured image → site default → none).
+- **Tagged:** each is tagged `media:{id}` in the read that names it.
+- **The trash's warning** (`usageOf`) counts them: a page or post whose social image it is, published or in a draft, and the site's default.

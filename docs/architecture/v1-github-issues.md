@@ -1466,15 +1466,36 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M5-6, M6-4
 
 **Acceptance criteria:**
-- [ ] `resolveSeo()` pure function with field-level precedence and safety overrides (coming soon, preview, non-production, discourage indexing)
-- [ ] Editor SEO tab: title, description, canonical (absolute https), OG image, noindex/nofollow, with "inherited from…" hints and length counters
-- [ ] `/…/seo`: title template, default description, default OG image, discourage indexing, Search Console token
-- [ ] Output: meta, canonical, OG/Twitter, JSON-LD (`WebSite`, `Organization`, `WebPage`/`BlogPosting`, `BreadcrumbList`) with `<` escaped
-- [ ] Per-site sitemap (V1: `/s/{address}/sitemap.xml`; published, indexable, non-empty archives). Path mode: the host's `/robots.txt` allows `/s/`, lists live sites' sitemaps, and disallows `/api/`; a site that discourages indexing gets `noindex` meta and is left out. Host mode (post-V1): `/robots.txt` per host. Canonical/OG URLs are built from the site's base (`/s/{address}` in V1)
+- [x] `resolveSeo()` pure function with field-level precedence and safety overrides (coming soon, preview, non-production, discourage indexing) *(ADR 0031 §2: each field with its source (entry → derived → type → site → platform); overrides last: discourage → noindex, not live → noindex nofollow, preview → noindex nofollow, not production → noindex. "Production" is `SEARCH_INDEXING` (`allowed`/`blocked`); unset, only Vercel production)*
+- [x] Editor SEO tab: title, description, canonical (absolute https), OG image, noindex/nofollow, with "inherited from…" hints and length counters *(§5: a "SEO" tab beside "Page"/"Post" (arrow keys); a search-result preview and the hints from the same resolver; counters against 60 and 160; the canonical checked as typed; the image by `MediaPicker`; saved with the draft (`saveDraft` checks it strictly and the image with `usableImageIds`), published with the revision)*
+- [x] `/…/seo`: title template, default description, default OG image, discourage indexing, Search Console token *(§4: Owner, Admin, Editor; in the site's links and the overview's checklist; strict checks (the template holds `%title%` and known tokens; the token is taken out of a pasted meta tag); the image must be this site's and usable; at the shared settings version; recorded as the `seo` group; flushes `config` and `robots`)*
+- [x] Output: meta, canonical, OG/Twitter, JSON-LD (`WebSite`, `Organization`, `WebPage`/`BlogPosting`, `BreadcrumbList`) with `<` escaped *(§3: live pages only (coming soon and the rest keep M5-6's head); addresses from `APP_ORIGIN` and `/s/{address}`, never headers; the social image is the widest stored variant (entry → featured → site default), never the original, checked again and `media:`-tagged; favicons kept; one JSON-LD block, `<`, `>`, `&`, U+2028/9 escaped, no `dangerouslySetInnerHTML`, no internal ids; breadcrumbs from live ancestors' published titles)*
+- [x] Per-site sitemap (V1: `/s/{address}/sitemap.xml`; published, indexable, non-empty archives). Path mode: the host's `/robots.txt` allows `/s/`, lists live sites' sitemaps, and disallows `/api/`; a site that discourages indexing gets `noindex` meta and is left out. Host mode (post-V1): `/robots.txt` per host. Canonical/OG URLs are built from the site's base (`/s/{address}` in V1) *(§6–7: the sitemap lists the home, live entries that are indexable and their own canonical, the blog, and categories and tags with live posts; 404 with `noindex` for a site that is not live or discourages indexing; cached rows tagged `routes` and the lists. robots.txt: `Allow: /s/`, `/media/`; `Disallow: /api/`, `/_forge/`; a sitemap per indexable site from a `SECURITY DEFINER` lookup returning addresses only (migration 0015), tagged `robots`, flushed by status, address, deletion and SEO changes; `Disallow: /` off production. Both answered per request)*
 
 **Likely files/modules:** `src/modules/seo/*`, `src/app/(sites)/render/[site]/…/sitemap.xml/*`, `src/app/robots.ts`
 
-**Testing:** resolver table tests; sitemap excludes drafts and noindex; JSON-LD escaping test.
+**Testing:** resolver table tests; sitemap excludes drafts and noindex; JSON-LD escaping test. *(Unit: `seo/seo.test.ts` (32: the resolver's tables, schemas, readers, structured data, escaping, sitemap XML, robots), `env.test.ts` (`SEARCH_INDEXING`). Integration: `seo.test.ts` (15, including "drafts, scheduled, trashed, noindex, canonical elsewhere, empty terms, another site's: left out"). Isolation: `submitUpdateSeoSettings`. E2E: `seo.spec.ts` (3, both themes; a `</script>` title sent escaped and never run).)*
+
+**Hand-off (from M8-4, ADR 0031):**
+- **M8-5:**
+  - redirects live under `/…/seo/redirects`: the SEO page is `siteSeoPath`, in the site's links after Menus;
+  - the sitemap lists stored paths only, so an entry's old path is never in it;
+  - a redirect source needs no `noindex`, being a 301;
+  - a new redirect map read should be tagged `config`, which `site.seoChanged` already flushes with the SEO settings.
+- **M9-2 (host mode):**
+  - `siteBaseUrl` (`rendering/seo.ts`) is where the primary domain replaces `APP_ORIGIN` + `/s/{address}` for canonicals, Open Graph, JSON-LD and the sitemap;
+  - `robotsRules` and `sitemapUrlsOf` take the origin and base as arguments;
+  - a `robots.txt` per host is a route of its own;
+  - `indexable_site_addresses` lists platform addresses only.
+- **M12-1:**
+  - the one cross-tenant read added is `indexable_site_addresses` (addresses of live, indexable sites);
+  - GA4 and Plausible remain off;
+  - `SEARCH_INDEXING` must be checked on production (unset means only Vercel production indexes).
+- **M12-2:**
+  - each live page now resolves its SEO from reads it already made, plus `liveTitlesAt` for a nested page's breadcrumbs (cached);
+  - check the share cards (Open Graph) on both themes;
+  - check `robots.txt` and a sitemap with Search Console on the production deployment.
+- **Not in V1:** a 1200 × 630 social crop (the widest stored width is used); a sitemap index past 45,000 entries; hreflang; per-type title templates in the admin.
 
 ### M8-5 · Redirects, auto-redirects, custom 404
 **Labels:** `area:seo` `type:feature`
@@ -1492,6 +1513,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 *From M5-6 (ADR 0017): decided there: a new blog path moves the index and the archives at once; each post stays at the path it was published at until it is published again. Add the redirects for both here (old index and archives → new; a post's old path → its new one when it moves). Public paths are exact (no case or trailing-segment normalization, `…/page/1` is a 404); if redirects should cover other spellings, that is this issue's decision.*
 
 *From M8-3 (ADR 0030): menu links to pages, posts and terms are stored by id and follow a moved page by themselves. A menu `url` link typed as a site path is not rewritten; a redirect from that old path covers it.*
+
+*From M8-4 (ADR 0031): `/…/seo` exists (`siteSeoPath`, Owner/Admin/Editor, `site.seo.manage`); put the redirects manager under it. The sitemap lists each live entry's stored path only, so a moved entry's old path leaves it at once. A cached redirect map tagged `config` is flushed by `site.configChanged` and `site.seoChanged` alike.*
 
 **Depends on:** M8-4, M7-1
 
@@ -1544,6 +1567,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Likely files/modules:** domains page, `src/modules/domains/*`, rendering
 
 **Testing:** E2E with the fake provider; one manual run with a real domain on staging (documented).
+
+*From M8-4 (ADR 0031): canonicals, Open Graph, JSON-LD and sitemap addresses all come from `siteBaseUrl(locator)` (`rendering/seo.ts`): give it the primary host there. A `robots.txt` per custom host is new; the app host's lists platform addresses only (`indexable_site_addresses`).*
 
 ---
 
@@ -1657,6 +1682,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 
 *From M3-5 (ADR 0010): the audit log is never purged in V1 (no `audit_purge_before()`), and platform events (logins, password changes: rows with no organization) still have no reader. Both are this issue's: a definer function or platform policy for staff to read them, and the retention decision. The activity page shows tenants neither the client address nor the request id that every row stores; the staff view is where those are for.*
 
+*From M8-4 (ADR 0031): one cross-tenant read was added, `indexable_site_addresses(limit)` (`SECURITY DEFINER`, owned by `forge_lookup`, executable by `forge_app`): the addresses of live, indexable sites, for the host's `robots.txt`. Include it in the security pass. Site pages now carry one inline `<script type="application/ld+json">` (data, `<` escaped): a `script-src` for `/s/*` does not need to allow it, since it is not executed.*
+
 **Depends on:** all feature milestones
 
 **Acceptance criteria:**
@@ -1686,6 +1713,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 - *Site pages ship no app client component now (about 200 KB less); `rendering/public-bundle.test.ts` keeps it so.*
 
 *From M8-3 (ADR 0030): every public page reads the site's menus through one cached read (tags `config`, `routes`); a publish re-reads it once. Menus draw two levels without script (a `<details>` disclosure in headers): check them with the launch's accessibility pass on both themes.*
+
+*From M8-4 (ADR 0031): set `SEARCH_INDEXING` deliberately on production (unset, only `VERCEL_ENV=production` lets sites be indexed; staging must stay unindexed). Check a site's share card and its sitemap in Search Console on the production deployment. The social image is the widest stored width, not a 1200 × 630 crop.*
 
 **Depends on:** M12-1
 

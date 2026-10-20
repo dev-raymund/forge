@@ -133,3 +133,11 @@ ADR 0029 §5 has the details. Next sends a route every client component reachabl
 ## Addendum (M8-3, 2026-10-20): the frame draws the site's menus
 
 ADR 0030 has the details. The site layout (and the two preview pages) load the site's menus through `publicMenusFor`: a `'use cache'` read tagged `site:{id}:config` and `site:{id}:routes`. It draws only live destinations, under the site's base. The site tree still reaches no client component (`public-bundle.test.ts`).
+
+## Addendum (M8-4, 2026-10-20): a live page's head is resolved
+
+ADR 0031 has the details.
+- **A live page's metadata** comes from `resolveSeo()`: its title (the same `{title} · {site}` by default), description, canonical, robots, Open Graph, Twitter and the Search Console token. The favicon links are kept.
+- **One JSON-LD block** comes before the page's content.
+- **Coming soon, unavailable and not-found pages** keep the head this ADR gave them.
+- **Robots:** a live page says `index, follow` only where the deployment allows indexing (`SEARCH_INDEXING`). Elsewhere it says `noindex`.

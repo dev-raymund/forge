@@ -13,6 +13,8 @@ import { HOME_PATH, parentDir, pathUnder, postPath, reservedPathReason } from ".
 import type { EditorEntry, TermOption } from "../queries";
 import { MovePageDialog, pagesOutside, type MovablePage } from "../ui/move-page-dialog";
 import { ENTRY_EXCERPT_MAX, typedSlug } from "../validation";
+import { EMPTY_ENTRY_SEO, type EntrySeo } from "@/modules/seo/shared";
+import { EntrySeoPanel } from "./seo-panel";
 
 /**
  * The entry's settings, beside the text (M5-7 criterion 4; plan §6.3 "entry sidebar"):
@@ -27,7 +29,7 @@ import { ENTRY_EXCERPT_MAX, typedSlug } from "../validation";
  * of the text. A slug another entry holds is refused when publishing, with the address it collides on.
  */
 
-export type DraftFields = { slug?: string; template?: string | null; excerpt?: string; termIds?: string[]; featuredMediaId?: string | null };
+export type DraftFields = { slug?: string; template?: string | null; excerpt?: string; termIds?: string[]; featuredMediaId?: string | null; seo?: EntrySeo };
 export type SidebarChoices = { pages: MovablePage[]; members: { userId: string; name: string }[]; terms: TermOption[] };
 /** What the sidebar's immediate actions change, kept by the editor so its header follows. */
 export type EntryPlace = { path: string; parentId: string | null; isHome: boolean; authorId: string | null; authorName: string | null };
@@ -45,7 +47,7 @@ const messageOf = (state: FormState, fallback: string) => (state.fieldErrors ? O
 const NO_IMAGES: ImagePreviewState = { images: {}, shown: false, show: () => {} };
 
 export function EntrySettings({
-  orgSlug, siteSlug, entry, title, status, place, fields, onFields, editable, choices, onPlace, onTermCreated, images = NO_IMAGES, onImagePicked,
+  orgSlug, siteSlug, entry, title, status, place, fields, onFields, editable, choices, onPlace, onTermCreated, images = NO_IMAGES, onImagePicked, bodyText = () => "",
 }: {
   orgSlug: string;
   siteSlug: string;
@@ -65,10 +67,19 @@ export function EntrySettings({
   /** The images the editor knows (M6-4): the featured image's preview comes from here, once previews are asked for. */
   images?: ImagePreviewState;
   onImagePicked?: (image: PickedImage) => void;
+  /** The text as it is now (M8-4): the SEO tab shows the description a page without one would take from it. */
+  bodyText?: () => string;
 }) {
   const { settings } = entry;
   const isPage = entry.type === "page";
-  const ids = { slug: useId(), template: useId(), excerpt: useId(), author: useId() };
+  const ids = { slug: useId(), template: useId(), excerpt: useId(), author: useId(), tabs: useId() };
+  // M8-4: two tabs, the entry's settings and its SEO (plan §6.3: "Sidebar tabs: Page/Post and SEO").
+  const [tab, setTab] = useState<"settings" | "seo">("settings");
+  const tabIds = { settings: `${ids.tabs}-settings`, seo: `${ids.tabs}-seo` };
+  const tabs = [
+    { key: "settings" as const, label: isPage ? "Page" : "Post" },
+    { key: "seo" as const, label: "SEO" },
+  ];
   const [slugText, setSlugText] = useState(fields.slug ?? settings.slug);
   const [slugError, setSlugError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
@@ -104,8 +115,52 @@ export function EntrySettings({
   const terms = { category: choices.terms.filter((term) => term.taxonomy === "category"), tag: choices.terms.filter((term) => term.taxonomy === "tag") };
 
   return (
-    <section aria-label={isPage ? "Page settings" : "Post settings"} data-testid="entry-settings" className="grid content-start gap-5 rounded-xl border p-4">
-      <h2 className="text-sm font-semibold">{isPage ? "Page settings" : "Post settings"}</h2>
+    <section aria-label={isPage ? "Page settings" : "Post settings"} data-testid="entry-settings" className="grid content-start gap-4 rounded-xl border p-4">
+      <div role="tablist" aria-label={isPage ? "Page settings" : "Post settings"} className="flex gap-1 border-b">
+        {tabs.map((one, index) => (
+          <button
+            key={one.key}
+            type="button"
+            role="tab"
+            id={`${tabIds[one.key]}-tab`}
+            aria-selected={tab === one.key}
+            aria-controls={tabIds[one.key]}
+            tabIndex={tab === one.key ? 0 : -1}
+            onClick={() => setTab(one.key)}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+              event.preventDefault();
+              const next = tabs[(index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]!;
+              setTab(next.key);
+              document.getElementById(`${tabIds[next.key]}-tab`)?.focus();
+            }}
+            className={`-mb-px rounded-t-md border-b-2 px-3 py-2 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-foreground/25 ${tab === one.key ? "border-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          >
+            {one.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={tabIds.seo} aria-labelledby={`${tabIds.seo}-tab`} hidden={tab !== "seo"}>
+        {tab === "seo" ? (
+          <EntrySeoPanel
+            orgSlug={orgSlug}
+            siteSlug={siteSlug}
+            entry={entry}
+            own={fields.seo ?? entry.seo.own ?? EMPTY_ENTRY_SEO}
+            title={title}
+            path={draftPath}
+            isHome={place.isHome}
+            excerpt={fields.excerpt ?? settings.excerpt}
+            featuredMediaId={"featuredMediaId" in fields ? (fields.featuredMediaId ?? null) : settings.featuredMediaId}
+            bodyText={bodyText}
+            images={images}
+            editable={editable}
+            onChange={(seo) => onFields({ ...fields, seo })}
+            onImagePicked={onImagePicked}
+          />
+        ) : null}
+      </div>
+      <div role="tabpanel" id={tabIds.settings} aria-labelledby={`${tabIds.settings}-tab`} hidden={tab !== "settings"} className="grid content-start gap-5">
       {actionError ? <FormAlert tone="error">{actionError}</FormAlert> : null}
 
       <div className="grid gap-2">
@@ -323,6 +378,7 @@ export function EntrySettings({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </section>
   );
 }

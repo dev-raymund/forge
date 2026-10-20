@@ -26,9 +26,11 @@ describe("tagsFor (the invalidation map)", () => {
     [{ type: "entry.moved", siteId: S, entryId: E, contentType: "page" } as const,
       { immediate: [tags.entry(S, E), tags.routes(S), tags.config(S)], stale: [tags.list(S, "page")] }],
     [{ type: "site.configChanged", siteId: S } as const, { immediate: [`site:${S}:config`], stale: [] }],
-    [{ type: "site.statusChanged", siteId: S } as const, { immediate: [`site:${S}`], stale: [] }],
+    [{ type: "site.statusChanged", siteId: S } as const, { immediate: [`site:${S}`, "robots"], stale: [] }],
     [{ type: "domain.changed", siteId: S, hostnames: ["old.com", "new.com"] } as const,
-      { immediate: ["host:old.com", "host:new.com", `site:${S}`], stale: [] }],
+      { immediate: ["host:old.com", "host:new.com", `site:${S}`, "robots"], stale: [] }],
+    // M8-4: the SEO defaults, and the host's robots.txt (a site that discourages indexing is not listed).
+    [{ type: "site.seoChanged", siteId: S } as const, { immediate: [`site:${S}:config`, "robots"], stale: [] }],
     [{ type: "media.updated", mediaId: E } as const, { immediate: [], stale: [`media:${E}`] }],
     [{ type: "media.trashed", mediaId: E } as const, { immediate: [`media:${E}`], stale: [] }],
     [{ type: "media.restored", mediaId: E } as const, { immediate: [`media:${E}`], stale: [] }],

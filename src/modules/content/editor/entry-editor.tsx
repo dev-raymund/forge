@@ -17,6 +17,7 @@ import { IDLE } from "@/platform/forms";
 import { overwriteDraftAction, publishEntryAction, saveDraftAction, saveRevisionAction } from "../actions";
 import { documentProblem, parseDocument } from "../document/parse";
 import { DOCUMENT_VERSION } from "../document/schema";
+import { documentText } from "@/modules/seo/shared";
 import { CHANGED_AGAIN } from "../messages";
 import type { EditorEntry } from "../queries";
 import { contentType } from "../types/registry";
@@ -460,6 +461,8 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
     if (supports?.featuredImage) fields.featuredMediaId = "featuredMediaId" in shown ? shown.featuredMediaId : settings.featuredMediaId;
     if (supports?.templates) fields.template = "template" in shown ? shown.template : settings.template;
     if (supports?.taxonomies.length) fields.termIds = shown.termIds ?? settings.termIds;
+    // M8-4: the SEO tab, as shown.
+    fields.seo = shown.seo ?? entry.seo.own;
     const data = new FormData();
     data.set("replaceVersion", String(replaceVersion));
     data.set("draft", JSON.stringify({ title: titleRef.current, content: parsed.document, ...fields }));
@@ -773,6 +776,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               updateFields({ ...current, termIds: [...(current.termIds ?? entry.settings.termIds), term.id] });
             }}
             onFields={updateFields}
+            bodyText={() => documentText(editor ? { v: DOCUMENT_VERSION, doc: editor.getJSON() } : entry.draft.content)}
             onPlace={(next, message) => {
               setPlace((current) => ({ ...current, ...next }));
               if (next.path) setLive((current) => ({ ...current, path: next.path! }));

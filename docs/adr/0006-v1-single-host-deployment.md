@@ -169,3 +169,12 @@ ADR 0027 has the details.
 - **`/_forge/preview/{token}`** on the app host. The proxy checks the token's signature and expiry (a 404 otherwise), removes credentials as for site pages, and rewrites to the internal `/render/preview/{token}`. Direct `/render/*` stays a 404.
 - **Headers:** `Cache-Control: private, no-store`, `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`, and the site surface's framing (`SAMEORIGIN`, `frame-ancestors 'self'`): only the admin's preview pane frames it.
 - **The token** (HMAC with `PREVIEW_TOKEN_SECRET`, 15 minutes) names the organization, site, entry, user and, for the history, a revision. The renderer checks it again, with the user's rights as they are then.
+
+## Addendum (M8-4, 2026-10-20): robots.txt and sitemaps on the one host
+
+ADR 0031 has the details.
+- **`/robots.txt` is the host's:** `Allow: /s/` and `/media/`, `Disallow: /api/` and `/_forge/` (previews), and a `Sitemap:` line for each live site that allows indexing.
+- **Each site's sitemap** is at `/s/{address}/sitemap.xml`, through the same rewrite as its pages.
+- **A deployment that is not production** (`SEARCH_INDEXING`; unset, only Vercel production allows indexing) answers `Disallow: /` and marks every site page `noindex`.
+- **Canonical and Open Graph addresses** are built from `APP_ORIGIN` and `/s/{address}`, never from request headers.
+- **Host mode** (post-V1) will need a `robots.txt` per host.

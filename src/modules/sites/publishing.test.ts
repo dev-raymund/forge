@@ -107,7 +107,8 @@ describe("setSiteStatus, in order", () => {
     expect(result.changed).toBe(true);
     expect(result.site.status).toBe("live");
     expect(result.events).toEqual([{ type: "site.statusChanged", siteId: "site-1" }]);
-    expect(tagsForAll(result.events)).toEqual({ immediate: ["site:site-1"], stale: [] });
+    // The site's pages, and (M8-4) the host's robots.txt, which lists live sites' sitemaps.
+    expect(tagsForAll(result.events)).toEqual({ immediate: ["site:site-1", "robots"], stale: [] });
   });
 
   it("back to Coming soon needs no verified address (it hides the site), and is recorded the same way", async () => {

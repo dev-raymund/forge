@@ -70,7 +70,8 @@ describe("a site's theme", () => {
 
     const result = await chooseTheme(await siteCtx(admin, slug), { theme: "journal" });
     expect(result).toMatchObject({ changed: true, site: { id: site.id, theme: "journal" }, events: [{ type: "site.statusChanged", siteId: site.id }] });
-    expect(tagsForAll(result.events)).toEqual({ immediate: [`site:${site.id}`], stale: [] });
+    // `site.statusChanged` flushes the whole site, and the host's robots.txt list with it (M8-4: read again once).
+    expect(tagsForAll(result.events)).toEqual({ immediate: [`site:${site.id}`, "robots"], stale: [] });
 
     const after = await siteState(a.org.id, site.id);
     expect(after.themeKey).toBe("journal");

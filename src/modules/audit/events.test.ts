@@ -225,6 +225,10 @@ describe("an event as a sentence", () => {
       "Raymund changed the analytics settings of Acme Bakery: GA4 measurement ID.",
     );
     expect(say("site.settings_changed", { name: "Acme Bakery", group: "images", fields: ["logo"] })).toBe("Raymund changed the image settings of Acme Bakery: logo.");
+    // M8-4: the SEO defaults.
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "seo", fields: ["titleTemplate", "defaultOgImage", "searchConsoleToken", "discourageIndexing"] })).toBe(
+      "Raymund changed the SEO settings of Acme Bakery: title template, default social image, Search Console token, discourage indexing.",
+    );
     expect(say("site.settings_changed", { name: "Acme Bakery", group: "images", fields: ["favicon"] })).toBe("Raymund changed the image settings of Acme Bakery: favicon.");
     expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "coming_soon", newStatus: "live" })).toBe("Raymund published the site Acme Bakery.");
     expect(say("site.status_changed", { name: "Acme Bakery", previousStatus: "live", newStatus: "coming_soon" })).toBe(

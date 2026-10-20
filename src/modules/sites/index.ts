@@ -21,13 +21,17 @@ export type { SiteRef, SiteStatus } from "./repository";
 // Sites (M4-1).
 export { changeSiteAddress, createSite, deleteSite, getSite, listSites, siteAllowance } from "./sites.service";
 export type { SiteChange } from "./sites.service";
-export { canCreateSite, canDeleteSite, canManageAppearance, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
+export { canCreateSite, canDeleteSite, canManageAppearance, canManageSeo, canManageSiteSettings, canOpenSiteSettings, siteNavItems } from "./policies";
 export {
   SITES_NOTICES, submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus,
-  submitUpdateAppearance, submitUpdateSiteSettings,
+  submitUpdateAppearance, submitUpdateSeoSettings, submitUpdateSiteSettings,
 } from "./site-forms";
 export type { SitesNotice } from "./site-forms";
-export { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSettingsPath } from "./paths";
+export { newSitePath, onboardingThemePath, publicSitePath, siteAppearancePath, sitePath, siteSeoPath, siteSettingsPath } from "./paths";
+// M8-4: the site's SEO defaults (ADR 0031).
+export { getSeoSettings, updateSeoSettings } from "./seo-settings.service";
+export type { SeoSettingsChange, SeoSettingsView } from "./seo-settings.service";
+export { SeoSettingsForm } from "./ui/seo-settings-form";
 export { ONBOARDING_STEPS, onboardingNext } from "./onboarding";
 export type { OnboardingNext, OnboardingState } from "./onboarding";
 

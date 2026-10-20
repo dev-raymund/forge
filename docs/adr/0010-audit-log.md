@@ -166,3 +166,11 @@ ADR 0030 has the details.
 - **Example sentence:** "Ada changed the header menu of Harbour Bakery: 5 links." ("no links" for an empty one.)
 - **It is written** in the save's transaction, and only when the menu changed.
 - **The writer is unchanged.**
+
+## Addendum (M8-4, 2026-10-20): the SEO settings
+
+ADR 0031 has the details.
+- **A new group, `seo`, for `site.settings_changed`.** Its fields are `titleTemplate`, `defaultDescription`, `defaultOgImage`, `discourageIndexing` and `searchConsoleToken`. Never their values.
+- **Example sentence:** "Ada changed the SEO settings of Harbour Bakery: title template, default social image."
+- **It is written** in the save's transaction, and only when something changed. An entry's own SEO is part of its draft and is recorded as the draft and its publishing are.
+- **The writer is unchanged.**

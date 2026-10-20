@@ -142,3 +142,9 @@ Publishing (M4-5); the pages, menus and SEO the checklist points to (M5, M8); lo
 
 - **The appearance editor** saves `site_settings.theme` at the same settings `version` as the general, reading and analytics groups (ADR 0028). A page opened before someone else saved any of them is refused with the same Conflict message.
 - **The social toggle** this ADR handed off is the editor's "Show the site's social links" (`footer.showSocial`).
+
+## Addendum (M8-4, 2026-10-20): the SEO settings share the version; the checklist links to them
+
+ADR 0031 has the details.
+- **The SEO defaults** (`site_settings.seo`) are saved on `/…/seo` at the same settings `version` as the other groups. A page opened before someone else saved any of them is refused with the same Conflict message.
+- **"Set up search engine details"** links to `/…/seo` for those who may manage SEO. It is done once anything differs from the defaults.

@@ -13,7 +13,7 @@ import {
 import { submitSaveMenu } from "@/modules/navigation";
 import {
   listSites, submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus,
-  submitUpdateAppearance, submitUpdateSiteSettings,
+  submitUpdateAppearance, submitUpdateSeoSettings, submitUpdateSiteSettings,
 } from "@/modules/sites";
 import {
   acceptInvitation, can, canActOn, changeMemberRole, listActivity, listInvitations, listMembers, PERMISSIONS, removeMember, resendInvitation, resolveOrgContext,
@@ -191,6 +191,13 @@ const menuForm = () => {
   data.set("version", "0");
   return data;
 };
+/** A site's SEO defaults (M8-4): discourage indexing, as if nothing had been saved since the site was made. */
+const seoForm = () => {
+  const data = new FormData();
+  data.set("seo", JSON.stringify({ titleTemplate: "%title% %sep% %site%", defaultDescription: "Hijacked", defaultOgImageId: null, discourageIndexing: true, searchConsoleToken: "" }));
+  data.set("version", "1");
+  return data;
+};
 /** A wall-clock time well in the future, in any zone (M7-2). */
 const SOON = `${new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)}T09:00`;
 const formOf = (fields: Record<string, string>) => {
@@ -355,6 +362,11 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "navigation.submitSaveMenu(B's slug, B's site)", run: ({ actor }, b) => submitSaveMenu(actor, b.orgSlug, b.siteSlug, "header", menuForm()) },
   { name: "navigation.submitSaveMenu(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitSaveMenu(actor, orgSlug, b.siteSlug, "header", menuForm()) },
   { name: "navigation.submitSaveMenu(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitSaveMenu(actor, orgSlug, b.siteId, "footer", menuForm()) },
+
+  // SEO settings (M8-4): B's site's defaults, from B's URL, A's, or with B's site id as the slug.
+  { name: "sites.submitUpdateSeoSettings(B's slug, B's site)", run: ({ actor }, b) => submitUpdateSeoSettings(actor, b.orgSlug, b.siteSlug, seoForm()) },
+  { name: "sites.submitUpdateSeoSettings(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitUpdateSeoSettings(actor, orgSlug, b.siteSlug, seoForm()) },
+  { name: "sites.submitUpdateSeoSettings(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitUpdateSeoSettings(actor, orgSlug, b.siteId, seoForm()) },
 
   // Publishing (M4-5): B's site, live or back to Coming soon, from B's URL or A's.
   ...(["live", "coming_soon"] as const).flatMap((status) => [

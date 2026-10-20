@@ -7,6 +7,7 @@ vi.mock("@/platform/config/env", () => ({ env: () => ({ APP_ORIGIN: "https://cms
 import type { PublicPage } from "../public-page";
 import type { PublicSite } from "../queries";
 import { PublicPageView, publicPageTitle } from "./public-page";
+import { EMPTY_ENTRY_SEO, SITE_SEO_DEFAULTS } from "@/modules/seo/shared";
 
 /**
  * What a live site's page hands its theme (M5-6): the template the page asked for, public addresses with the
@@ -26,14 +27,14 @@ const site: PublicSite = {
   social: [],
   analytics: { ga4MeasurementId: "G-ABC1234567", plausibleDomain: "acme.example.org" },
   reading: { blogPath: "news", postsPerPage: 2 },
-  imagery: { logo: null, favicon: null },
+  imagery: { logo: null, favicon: null }, seo: SITE_SEO_DEFAULTS, defaultOgImage: null,
 };
 const locator = { kind: "address", address: "acme" } as const;
 const TERM_SLUG = "bread";
 const draw = (page: PublicPage, at: PublicSite = site) => renderToStaticMarkup(<PublicPageView page={page} site={at} locator={locator} />);
 const page = (template: string | null, content: unknown = editableDocument, path = "/about"): PublicPage => ({
   kind: "entry",
-  entry: { type: "page", title: "About <us>", path, template, content, publishedAt: "2026-09-30T23:30:00.000Z", terms: [], images: {}, featuredImage: null },
+  entry: { type: "page", title: "About <us>", path, template, content, publishedAt: "2026-09-30T23:30:00.000Z", terms: [], images: {}, featuredImage: null, excerpt: "", seo: EMPTY_ENTRY_SEO, ogImage: null, modifiedAt: null },
   links: { [ENTRY_ID]: "/services" },
 });
 
@@ -71,7 +72,7 @@ describe("a published post, the blog and its archives", () => {
       type: "post", title: "Rye season", path: "/news/rye-season", template: null, content: editableDocument, publishedAt: "2026-09-30T23:30:00.000Z",
       terms: [{ taxonomy: "category", name: "Bread", slug: TERM_SLUG, description: "" }, { taxonomy: "tag", name: "Rye", slug: "rye", description: "" }],
       images: {},
-      featuredImage: null,
+      featuredImage: null, excerpt: "", seo: EMPTY_ENTRY_SEO, ogImage: null, modifiedAt: null,
     },
     links: {},
   };

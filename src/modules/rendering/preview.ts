@@ -2,6 +2,7 @@ import "server-only";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { contentType, parseDocument, referencesOf, roleMaySeeEntry } from "@/modules/content/shared";
 import { publicImages } from "@/modules/media/public";
+import { readEntrySeo } from "@/modules/seo/shared";
 import { withTenant } from "@/platform/db";
 import { domains, entries, entryDrafts, entryRevisions, organizationMembers, roles, terms } from "@/platform/db/schema";
 import { previewSecret, verifyPreviewToken } from "@/platform/routing/preview-token";
@@ -87,7 +88,7 @@ export async function loadPreview(token: string, now: number = Date.now()): Prom
     const definition = contentType(entry.type);
     if (!definition) return null;
 
-    let source: { title: string; template: string | null; content: unknown; featuredMediaId: string | null; termIds: string[] };
+    let source: { title: string; template: string | null; content: unknown; featuredMediaId: string | null; termIds: string[]; excerpt: string; seo: unknown };
     let subject: PreviewSubject;
     const liveRevision = entry.publishedRevisionId
       ? (await tx.select({ id: entryRevisions.id, sourceDraftVersion: entryRevisions.sourceDraftVersion }).from(entryRevisions).where(and(eq(entryRevisions.organizationId, claims.orgId), eq(entryRevisions.siteId, claims.siteId), eq(entryRevisions.id, entry.publishedRevisionId))))[0]
@@ -152,6 +153,11 @@ export async function loadPreview(token: string, now: number = Date.now()): Prom
       terms: assigned,
       images,
       featuredImage: featuredMediaId ? (images[featuredMediaId] ?? null) : null,
+      // M8-4: what it would say to search engines; a preview itself is never indexed (its metadata says so).
+      excerpt: source.excerpt,
+      seo: readEntrySeo(source.seo),
+      ogImage: null,
+      modifiedAt: null,
     };
     return { entry: published, status: entry.status, subject, address: address?.hostname ?? null, missingImages: mediaIds.filter((id) => !Object.hasOwn(images, id)).length };
   });

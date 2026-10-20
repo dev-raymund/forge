@@ -2,7 +2,8 @@ import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { PlatformTx, TenantTx } from "@/platform/db";
 import * as t from "@/platform/db/schema";
-import { readReading } from "@/modules/sites/shared";
+import { readSiteSeo, type SiteSeo } from "@/modules/seo/shared";
+import { readGeneral, readReading } from "@/modules/sites/shared";
 import { entries, entryDrafts, entryRevisions, entryTerms, terms } from "./schema";
 
 /**
@@ -66,6 +67,26 @@ export async function siteFacts(tx: TenantTx, organizationId: string, siteId: st
     .innerJoin(t.siteSettings, and(eq(t.siteSettings.organizationId, t.sites.organizationId), eq(t.siteSettings.siteId, t.sites.id)))
     .where(and(eq(t.sites.organizationId, organizationId), eq(t.sites.id, siteId), isNull(t.sites.deletedAt)));
   return row ? { name: row.name, locale: row.locale, blogPath: readReading(row.reading).blogPath, timeZone: row.timeZone } : null;
+}
+
+/**
+ * What the editor's SEO tab inherits (M8-4): the site's name, tagline, status and SEO defaults, and its public address
+ * (its active platform address) for the canonical it shows.
+ */
+export async function siteSeoFacts(
+  tx: TenantTx, organizationId: string, siteId: string,
+): Promise<{ name: string; tagline: string; status: string; seo: SiteSeo; address: string | null } | null> {
+  const [row] = await tx
+    .select({ name: t.sites.name, status: t.sites.status, general: t.siteSettings.general, seo: t.siteSettings.seo })
+    .from(t.sites)
+    .innerJoin(t.siteSettings, and(eq(t.siteSettings.organizationId, t.sites.organizationId), eq(t.siteSettings.siteId, t.sites.id)))
+    .where(and(eq(t.sites.organizationId, organizationId), eq(t.sites.id, siteId), isNull(t.sites.deletedAt)));
+  if (!row) return null;
+  const [domain] = await tx
+    .select({ hostname: t.domains.hostname })
+    .from(t.domains)
+    .where(and(eq(t.domains.organizationId, organizationId), eq(t.domains.siteId, siteId), eq(t.domains.kind, "subdomain"), eq(t.domains.status, "active")));
+  return { name: row.name, tagline: readGeneral(row.general).tagline, status: row.status, seo: readSiteSeo(row.seo), address: domain?.hostname ?? null };
 }
 
 /** Is the user a member of the organization? (V1 memberships are organization-wide: plan §13.) */

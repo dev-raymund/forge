@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { publicPageFor, publicPageTitle, PublicPageView, publicSiteFor, renderableSite, renderStateFor, robotsFor } from "@/modules/rendering";
+import {
+  JsonLd, publicPageFor, publicPageSeo, publicPageTitle, PublicPageView, publicSiteFor, publicStructuredData, renderableSite, renderStateFor, robotsFor, seoMetadata,
+} from "@/modules/rendering";
 import { BUILD_PLACEHOLDER_SITE, decodeSiteLocator } from "@/platform/routing/hosts";
 import { themeFor } from "@/themes/render";
 
@@ -38,17 +40,18 @@ async function stateOf({ params }: Pick<Props, "params">) {
 export async function generateMetadata({ params }: Pick<Props, "params">): Promise<Metadata> {
   const resolved = await stateOf({ params });
   if (!resolved) return {};
-  const { site, state, page } = resolved;
+  const { locator, site, state, page } = resolved;
+  // The site's favicon (M6-4), on the pages its theme draws: a 32 px PNG and the 180 px Apple touch icon, from /media.
+  const favicon = state.kind === "live" || state.kind === "coming-soon" ? site!.imagery.favicon : null;
+  const icons: Metadata = favicon
+    ? { icons: { icon: [{ url: favicon.url32, sizes: "32x32", type: "image/png" }], apple: [{ url: favicon.url180, sizes: "180x180", type: "image/png" }] } }
+    : {};
+  // A live page (M8-4): its resolved SEO, title to structured data.
+  if (state.kind === "live" && page) return { ...seoMetadata(publicPageSeo(site!, locator!, page), site!), ...icons };
   // A site's name only where its theme draws the page; never on the platform's answers.
   const title =
     state.kind === "site-not-found" ? "Site not found" : state.kind === "site-unavailable" ? "Site unavailable" : state.kind === "coming-soon" ? site!.name : publicPageTitle(page, site!);
-  // The site's favicon (M6-4), on the pages its theme draws: a 32 px PNG and the 180 px Apple touch icon, from /media.
-  const favicon = state.kind === "live" || state.kind === "coming-soon" ? site!.imagery.favicon : null;
-  return {
-    title: { absolute: title },
-    robots: robotsFor(state.kind),
-    ...(favicon ? { icons: { icon: [{ url: favicon.url32, sizes: "32x32", type: "image/png" }], apple: [{ url: favicon.url180, sizes: "180x180", type: "image/png" }] } } : {}),
-  };
+  return { title: { absolute: title }, robots: robotsFor(state.kind), ...icons };
 }
 
 export default async function SitePage({ params }: Props) {
@@ -61,5 +64,11 @@ export default async function SitePage({ params }: Props) {
     return <ComingSoon context={context} />;
   }
   if (state.kind !== "live" || !page) notFound();
-  return <PublicPageView page={page} site={site!} locator={locator!} />;
+  const data = await publicStructuredData(site!, locator!, page, publicPageSeo(site!, locator!, page));
+  return (
+    <>
+      <JsonLd data={data} />
+      <PublicPageView page={page} site={site!} locator={locator!} />
+    </>
+  );
 }

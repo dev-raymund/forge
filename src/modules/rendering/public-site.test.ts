@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { htmlLang, renderableSite } from "./public-site";
 import type { PublicSite } from "./queries";
+import { SITE_SEO_DEFAULTS } from "@/modules/seo/shared";
 
 /** What reaches a theme, and the page's language (M4-3). */
 
@@ -17,7 +18,7 @@ const site: PublicSite = {
   social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
   analytics: { ga4MeasurementId: "G-ABC1234567" },
   reading: { blogPath: "news", postsPerPage: 5 },
-  imagery: { logo: null, favicon: null },
+  imagery: { logo: null, favicon: null }, seo: SITE_SEO_DEFAULTS, defaultOgImage: null,
 };
 
 describe("the public context", () => {

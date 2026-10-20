@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { fieldErrorsFrom, validationError } from "@/platform/errors";
 import { ENTRY_SLUG_MAX } from "./slugs";
+import { entrySeoSchema } from "@/modules/seo/shared";
 
 /**
  * What the entry services accept (M5-3). Pure and client-safe: the forms of
@@ -60,6 +61,8 @@ export const draftSchema = z.strictObject({
     .max(ENTRY_TERMS_MAX, `Choose at most ${ENTRY_TERMS_MAX}.`)
     .refine((ids) => new Set(ids).size === ids.length, "A term is listed twice.")
     .optional(),
+  /** M8-4: the editor's SEO tab, whole (empty text and false inherit). Its social image is checked by saveDraft. */
+  seo: entrySeoSchema.optional(),
 });
 export type DraftInput = z.input<typeof draftSchema>;
 
