@@ -31,6 +31,10 @@ const taxonomy = z.enum(["category", "tag"]);
 const termSlug = z.string().max(100).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/);
 /** A media item's kind (M6). */
 const mediaKind = z.enum(["image", "document"]);
+/** A redirect's addresses (M8-5): a path of the site, and a path or an http(s) address elsewhere; and its status code. */
+const redirectSource = z.string().min(1).max(1024).startsWith("/");
+const redirectDestination = z.string().min(1).max(2048);
+const redirectStatus = z.union([z.literal(301), z.literal(302), z.literal(307), z.literal(308)]);
 
 export const AUDIT_EVENTS = {
   "organization.created": {
@@ -231,6 +235,25 @@ export const AUDIT_EVENTS = {
     label: "Menu changed",
     metadata: z.object({ name: line(), location: z.enum(["header", "footer"]), items: z.int().min(0).max(100) }),
   },
+  // M8-5 (ADR 0032): redirects made, changed or deleted by hand (those a path change makes are its own record's).
+  "redirect.created": {
+    resourceType: "redirect",
+    label: "Redirect added",
+    metadata: z.object({ name: line(), source: redirectSource, destination: redirectDestination, statusCode: redirectStatus }),
+  },
+  "redirect.updated": {
+    resourceType: "redirect",
+    label: "Redirect changed",
+    metadata: z.object({
+      name: line(), source: redirectSource, destination: redirectDestination, statusCode: redirectStatus, active: z.boolean(),
+      fields: z.array(z.enum(["destination", "status", "active"])).min(1).max(3),
+    }),
+  },
+  "redirect.deleted": {
+    resourceType: "redirect",
+    label: "Redirect deleted",
+    metadata: z.object({ name: line(), source: redirectSource, destination: redirectDestination }),
+  },
   // M6-1: an upload accepted (its file checked). Requested uploads are reservations, not activity; refused ones leave nothing.
   "media.uploaded": {
     resourceType: "media",
@@ -352,6 +375,8 @@ const FIELD_WORDS: Record<string, string> = {
   colors: "colours",
   // M8-4: the "seo" group.
   defaultOgImage: "default social image", searchConsoleToken: "Search Console token",
+  // M8-5: the site's not-found page (recorded in the "seo" group).
+  notFoundPage: "not-found page",
   facebook: "Facebook", instagram: "Instagram", x: "X", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok",
 };
 /** An instant in a sentence: the activity log names it in UTC (the site's zone is the editor's; the log is the organization's). */
@@ -410,6 +435,12 @@ const SENTENCES: { [A in AuditAction]: (actor: string, m: Details<A>) => string 
       : `${actor} changed the ${m.taxonomy} ${m.name}: ${m.fields.join(", ")}.`,
   "term.deleted": (actor, m) => `${actor} deleted the ${m.taxonomy} ${m.name}, which was on ${m.posts} published ${m.posts === 1 ? "post" : "posts"} and ${m.drafts} ${m.drafts === 1 ? "draft" : "drafts"}.`,
   "menu.updated": (actor, m) => `${actor} changed the ${m.location} menu of ${m.name}: ${m.items === 0 ? "no links" : `${m.items} ${m.items === 1 ? "link" : "links"}`}.`,
+  "redirect.created": (actor, m) => `${actor} added a redirect on ${m.name} from ${m.source} to ${m.destination} (${m.statusCode}).`,
+  "redirect.updated": (actor, m) =>
+    m.fields.length === 1 && m.fields[0] === "active"
+      ? `${actor} turned ${m.active ? "on" : "off"} the redirect on ${m.name} from ${m.source}.`
+      : `${actor} changed the redirect on ${m.name} from ${m.source}: it goes to ${m.destination} (${m.statusCode})${m.active ? "" : ", turned off"}.`,
+  "redirect.deleted": (actor, m) => `${actor} deleted the redirect on ${m.name} from ${m.source} to ${m.destination}.`,
   "media.uploaded": (actor, m) => `${actor} uploaded the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}.`,
   "media.updated": (actor, m) => `${actor} changed the ${m.kind === "image" ? "image" : "PDF"} ${m.filename}: ${m.fields.map((f) => (f === "alt" ? "alternative text" : f)).join(", ")}.`,
   "media.moved": (actor, m) =>
@@ -458,6 +489,9 @@ const PLAIN: Record<AuditAction, string> = {
   "term.updated": "changed a category or tag",
   "term.deleted": "deleted a category or tag",
   "menu.updated": "changed a menu",
+  "redirect.created": "added a redirect",
+  "redirect.updated": "changed a redirect",
+  "redirect.deleted": "deleted a redirect",
   "media.uploaded": "uploaded a file",
   "media.updated": "changed a file's details",
   "media.moved": "moved a file",

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import {
-  JsonLd, publicPageFor, publicPageSeo, publicPageTitle, PublicPageView, publicSiteFor, publicStructuredData, renderableSite, renderStateFor, robotsFor, seoMetadata,
+  JsonLd, publicPageFor, publicPageSeo, publicPageTitle, PublicPageView, publicRedirectFor, publicSiteFor, publicStructuredData, renderableSite, renderStateFor,
+  robotsFor, seoMetadata,
 } from "@/modules/rendering";
 import { BUILD_PLACEHOLDER_SITE, decodeSiteLocator } from "@/platform/routing/hosts";
 import { themeFor } from "@/themes/render";
@@ -11,9 +12,12 @@ import { themeFor } from "@/themes/render";
  * anything streams, so the 404s are real 404 statuses:
  *
  *   coming soon            the theme's coming-soon page, at every path, noindex
+ *   live, a redirect       its redirect, first (M8-5): 308 (permanent) or 307 (temporary) to the site's own address
+ *                          or the address elsewhere, while its destination is one the site serves
  *   live, a path it has    the published page or post, the blog index or an archive, in the theme's template
  *                          (`/` with no published Home page: the site's name and tagline)
- *   anything else          notFound(): ./not-found.tsx answers, with the theme or the platform
+ *   anything else          notFound(): ./not-found.tsx answers, with the theme or the platform (or the site's own
+ *                          not-found page, M8-5)
  */
 
 // With Cache Components, reading params outside <Suspense> requires static
@@ -31,16 +35,20 @@ async function stateOf({ params }: Pick<Props, "params">) {
   const locator = decodeSiteLocator(segment);
   const site = locator ? await publicSiteFor(locator) : null;
   const status = renderStateFor(site);
-  // Only a live site's paths are looked up: a coming-soon site shows nothing of its content at any path.
-  const page = status.kind === "live" ? await publicPageFor(site!, path ?? []) : null;
-  const state = status.kind === "live" && !page ? { kind: "page-not-found" as const } : status;
-  return { locator, site, state, page };
+  // Only a live site's paths are looked up: a coming-soon site shows nothing of its content at any path. Its redirects
+  // first (M8-5): no published page or post may sit at a redirect's source, so this shadows nothing.
+  const hop = status.kind === "live" ? await publicRedirectFor(site!, locator!, path ?? []) : null;
+  const page = status.kind === "live" && !hop ? await publicPageFor(site!, path ?? []) : null;
+  const state = status.kind === "live" && !hop && !page ? { kind: "page-not-found" as const } : status;
+  return { locator, site, state, page, hop };
 }
 
 export async function generateMetadata({ params }: Pick<Props, "params">): Promise<Metadata> {
   const resolved = await stateOf({ params });
   if (!resolved) return {};
-  const { locator, site, state, page } = resolved;
+  const { locator, site, state, page, hop } = resolved;
+  // A redirect has no head of its own: the page answers it before anything is drawn.
+  if (hop) return {};
   // The site's favicon (M6-4), on the pages its theme draws: a 32 px PNG and the 180 px Apple touch icon, from /media.
   const favicon = state.kind === "live" || state.kind === "coming-soon" ? site!.imagery.favicon : null;
   const icons: Metadata = favicon
@@ -57,7 +65,9 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
 export default async function SitePage({ params }: Props) {
   const resolved = await stateOf({ params });
   if (!resolved) return null;
-  const { locator, site, state, page } = resolved;
+  const { locator, site, state, page, hop } = resolved;
+  // Before anything streams, so the status is the redirect's and `Location` the destination.
+  if (hop) (hop.status === 308 ? permanentRedirect : redirect)(hop.location);
   if (state.kind === "coming-soon") {
     const { theme, context } = themeFor(renderableSite(site!, locator!));
     const ComingSoon = theme.templates["coming-soon"];

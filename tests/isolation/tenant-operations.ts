@@ -11,6 +11,7 @@ import {
   submitRequestAvatarUpload, submitRequestUploads, submitRestoreMedia, submitTrashMedia, submitUpdateMedia, trashMedia, updateMediaDetails,
 } from "@/modules/media";
 import { submitSaveMenu } from "@/modules/navigation";
+import { submitCreateRedirect, submitDeleteRedirect, submitSetNotFoundPage, submitUpdateRedirect } from "@/modules/seo";
 import {
   listSites, submitAppearancePreview, submitChangeSiteAddress, submitChooseTheme, submitCreateSite, submitDeleteSite, submitSetSiteImage, submitSetSiteStatus,
   submitUpdateAppearance, submitUpdateSeoSettings, submitUpdateSiteSettings,
@@ -70,6 +71,8 @@ export type Foreign = {
   mediaId: string;
   /** A media folder of B's site (M6-3). */
   folderId: string;
+  /** A redirect of B's site (M8-5). */
+  redirectId: string;
 };
 
 export type TenantOperation = {
@@ -367,6 +370,18 @@ export const tenantForms: { name: string; run: (caller: Caller, foreign: Foreign
   { name: "sites.submitUpdateSeoSettings(B's slug, B's site)", run: ({ actor }, b) => submitUpdateSeoSettings(actor, b.orgSlug, b.siteSlug, seoForm()) },
   { name: "sites.submitUpdateSeoSettings(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitUpdateSeoSettings(actor, orgSlug, b.siteSlug, seoForm()) },
   { name: "sites.submitUpdateSeoSettings(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitUpdateSeoSettings(actor, orgSlug, b.siteId, seoForm()) },
+
+  // Redirects (M8-5): B's site's redirects and not-found page, from B's URL, A's, or with B's site id as the slug; B's
+  // redirect, or B's page as the not-found page, from A's own site.
+  { name: "seo.submitCreateRedirect(B's slug, B's site)", run: ({ actor }, b) => submitCreateRedirect(actor, b.orgSlug, b.siteSlug, form({ source: "/hijack", destination: "/" })) },
+  { name: "seo.submitCreateRedirect(A's slug, B's site)", run: ({ actor, orgSlug }, b) => submitCreateRedirect(actor, orgSlug, b.siteSlug, form({ source: "/hijack", destination: "/" })) },
+  { name: "seo.submitCreateRedirect(A's slug, B's site id as the slug)", run: ({ actor, orgSlug }, b) => submitCreateRedirect(actor, orgSlug, b.siteId, form({ source: "/hijack", destination: "/" })) },
+  { name: "seo.submitUpdateRedirect(B's slug, B's site, B's redirect)", run: ({ actor }, b) => submitUpdateRedirect(actor, b.orgSlug, b.siteSlug, b.redirectId, form({ isActive: "false" })) },
+  { name: "seo.submitUpdateRedirect(A's own site, B's redirect)", run: ({ actor, orgSlug, siteSlug }, b) => submitUpdateRedirect(actor, orgSlug, siteSlug, b.redirectId, form({ destination: "https://evil.example/" })) },
+  { name: "seo.submitDeleteRedirect(B's slug, B's site, B's redirect)", run: ({ actor }, b) => submitDeleteRedirect(actor, b.orgSlug, b.siteSlug, b.redirectId, form({})) },
+  { name: "seo.submitDeleteRedirect(A's own site, B's redirect)", run: ({ actor, orgSlug, siteSlug }, b) => submitDeleteRedirect(actor, orgSlug, siteSlug, b.redirectId, form({})) },
+  { name: "seo.submitSetNotFoundPage(B's slug, B's site)", run: ({ actor }, b) => submitSetNotFoundPage(actor, b.orgSlug, b.siteSlug, form({ entryId: "" })) },
+  { name: "seo.submitSetNotFoundPage(A's own site, B's page)", run: ({ actor, orgSlug, siteSlug }, b) => submitSetNotFoundPage(actor, orgSlug, siteSlug, form({ entryId: b.entryId })) },
 
   // Publishing (M4-5): B's site, live or back to Coming soon, from B's URL or A's.
   ...(["live", "coming_soon"] as const).flatMap((status) => [

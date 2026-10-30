@@ -129,3 +129,11 @@ ADR 0024 has the details.
 - **The tree's lock:** trash, restore and purge take the site's settings row lock first, as `setHomepage` and moving pages do.
 - **`createEntry`:** it now share-locks the parent page, so a page cannot be created under a page that is going to the trash.
 - **Unpublishing keeps `published_at`:** publishing again keeps the first date, as this ADR decided for a republish.
+
+## Addendum (M8-5, 2026-10-30): path changes leave redirects
+
+ADR 0032 has the details. In the transaction that changes them:
+- **What makes redirects:** the paths of live entries that change, through `makeLive` (publish, by hand or on schedule), `movePage` and `setHomepage`. Each leaves a 301 from the old address (`redirectPathChanges`), unless something else now serves it: the old Home's `/` stays the site's.
+- **What turns them off:** an address a live entry now has turns off a redirect left there.
+- **What they return:** the services return `redirects` (made, turned off, chains shortened) and `site.configChanged` when anything changed. The forms' success messages say what was made and turned off.
+- **Failure:** a failure in either the content or the redirects fails the whole change.

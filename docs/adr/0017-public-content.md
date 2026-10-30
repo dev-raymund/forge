@@ -136,3 +136,10 @@ ADR 0031 has the details.
 - **Descriptions, canonicals, Open Graph and JSON-LD** are added to live pages, from the published revision.
 - **The sitemap** reads its own cached rows (`loadSitemapRows`: live entries with their published SEO, and terms with live posts) rather than the paginated lists. It is tagged `site`, `routes`, `list:post` and `list:page`, so every change that alters what is live flushes it.
 - **Addresses stay exact:** the sitemap lists page 1 of each list only.
+
+## Addendum (M8-5, 2026-10-30): redirects before the routes
+
+ADR 0032 has the details.
+- **Before the routes:** a live site's redirect map is matched before the routes here. Exact paths, as Next decodes them; a segment holding an encoded `/` matches nothing, as for the routes.
+- **What a new blog path does:** the old index and every archive redirect to the new ones. Posts stay at the paths they were published at, as decided here, until each is published again and gets its own redirect. Later list pages (`…/page/n`) of the old path are not redirected.
+- **Other spellings** (case, `…/page/1`) stay 404s unless a redirect by hand names them.

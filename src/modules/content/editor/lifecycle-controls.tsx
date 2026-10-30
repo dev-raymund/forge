@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { FormAlert } from "@/components/admin/form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,18 +20,41 @@ import type { EditorEntry } from "../queries";
 const messageOf = (state: { message?: string; fieldErrors?: Record<string, string[]> }, fallback: string) =>
   state.message ?? (state.fieldErrors ? Object.values(state.fieldErrors).flat()[0] : undefined) ?? fallback;
 
+/**
+ * Unpublish asks first. Those who manage the site's redirects may also send the address's visitors elsewhere ("redirect
+ * this address to…", plan §9; M8-5): a published page of the site or an address elsewhere. Left empty, the address
+ * answers "not found". A destination the server refuses is said in the dialog, and nothing is unpublished.
+ */
 export function UnpublishButton({
-  orgSlug, siteSlug, entry, title, disabled, onDone,
-}: { orgSlug: string; siteSlug: string; entry: EditorEntry; title: string; disabled: boolean; onDone: (result: { ok: boolean; text: string }) => void }) {
+  orgSlug, siteSlug, entry, title, path, disabled, onDone,
+}: {
+  orgSlug: string;
+  siteSlug: string;
+  entry: EditorEntry;
+  title: string;
+  /** Its live address (`/about`): what visitors would be sent from. */
+  path: string;
+  disabled: boolean;
+  onDone: (result: { ok: boolean; text: string }) => void;
+}) {
+  const fieldId = useId();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const [redirectTo, setRedirectTo] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const noun = entry.type === "page" ? "page" : "post";
+  const offerRedirect = entry.lifecycle.canRedirect && path !== "/";
   async function unpublish() {
     setPending(true);
+    setError(null);
     try {
-      const state = await unpublishEntryAction(orgSlug, siteSlug, entry.id, IDLE, new FormData());
+      const data = new FormData();
+      if (offerRedirect && redirectTo.trim()) data.set("redirectTo", redirectTo.trim());
+      const state = await unpublishEntryAction(orgSlug, siteSlug, entry.id, IDLE, data);
+      if (state.status !== "success" && state.fieldErrors?.redirectTo) return setError(state.fieldErrors.redirectTo[0] ?? "Choose another address.");
       onDone(state.status === "success" ? { ok: true, text: state.message ?? "Unpublished." } : { ok: false, text: messageOf(state, "Not unpublished.") });
       setOpen(false);
+      setRedirectTo("");
     } catch {
       onDone({ ok: false, text: "Not unpublished: the connection failed. Try again." });
     } finally {
@@ -52,6 +75,33 @@ export function UnpublishButton({
               text, history and date are kept: publish it again to bring it back.
             </DialogDescription>
           </DialogHeader>
+          {offerRedirect ? (
+            <div className="grid gap-1" data-testid="unpublish-redirect">
+              <label htmlFor={fieldId} className="text-sm font-medium">
+                Send visitors of {path} to (optional)
+              </label>
+              <input
+                id={fieldId}
+                value={redirectTo}
+                onChange={(event) => setRedirectTo(event.target.value)}
+                placeholder="/another-page or https://…"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="url"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={`${fieldId}-hint`}
+                className="h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-foreground focus-visible:ring-3 focus-visible:ring-foreground/25 aria-invalid:border-destructive md:text-sm"
+              />
+              <p id={`${fieldId}-hint`} className="text-xs text-muted-foreground">
+                A published page of this site, or a full address elsewhere: a permanent redirect, kept under SEO → Redirects. Empty: “not found”.
+              </p>
+              {error ? (
+                <p className="text-sm font-medium text-destructive" role="alert">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" className="h-10 px-4" onClick={() => setOpen(false)}>
               Cancel

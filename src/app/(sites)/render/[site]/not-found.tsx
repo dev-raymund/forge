@@ -1,4 +1,4 @@
-import { isShowable, renderableSite, requestSite, SiteNotFound, SiteUnavailable } from "@/modules/rendering";
+import { isShowable, notFoundPageFor, PublicPageView, renderableSite, requestSite, SiteNotFound, SiteUnavailable } from "@/modules/rendering";
 import { themeFor } from "@/themes/render";
 
 /**
@@ -8,12 +8,15 @@ import { themeFor } from "@/themes/render";
  *
  *   no site at the address   the platform's "Site not found"
  *   a site it cannot show    the platform's "This site is unavailable"
- *   a page the site lacks    the site's theme's not-found template (the layout already drew the theme's frame)
+ *   a page the site lacks    the site's own not-found page (M8-5: a published page chosen on the redirects page), or
+ *                            its theme's not-found template (the layout already drew the theme's frame); a 404 either way
  */
-export default function SiteNotFoundPage() {
+export default async function SiteNotFoundPage() {
   const { locator, site } = requestSite();
   if (!site || !locator) return <SiteNotFound />;
   if (!isShowable(site)) return <SiteUnavailable />;
+  const own = site.status === "live" ? await notFoundPageFor(site) : null;
+  if (own) return <PublicPageView page={own} site={site} locator={locator} />;
   const { theme, context } = themeFor(renderableSite(site, locator));
   const NotFound = theme.templates["not-found"];
   return <NotFound context={context} />;

@@ -4,7 +4,7 @@ import { imagePreviews, type ImagePreview } from "@/modules/media";
 import { readEntrySeo, type EntrySeo, type SiteSeo } from "@/modules/seo/shared";
 import { env, resolveSearchIndexing } from "@/platform/config/env";
 import { siteBasePath } from "@/platform/routing/hosts";
-import { inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
+import { can, inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
 import * as t from "@/platform/db/schema";
 import { forbidden, notFound } from "@/platform/errors";
 import { entryListPath } from "./admin-paths";
@@ -52,9 +52,10 @@ export type EditorEntry = {
   /**
    * The lifecycle (M7-1), for the screen: whether the caller may unpublish it and move it to the trash, and, for a
    * page, the pages below it that would go with it (and those that keep it out of the trash: published ones, the Home
-   * page). The services check all of it again.
+   * page). The services check all of it again. `canRedirect` (M8-5): whether unpublishing may also send its address's
+   * visitors elsewhere (those who manage the site's redirects).
    */
-  lifecycle: { canUnpublish: boolean; canTrash: boolean; below: number; liveBelow: string[]; homeBelow: boolean; trashPath: string };
+  lifecycle: { canUnpublish: boolean; canTrash: boolean; canRedirect: boolean; below: number; liveBelow: string[]; homeBelow: boolean; trashPath: string };
   /**
    * Scheduling (M7-2): when it is scheduled for (an instant), the site's time zone it is typed and shown in, and why the
    * last schedule could not be published (until it is scheduled or published again).
@@ -139,6 +140,7 @@ export async function getEntryForEditor(ctx: SiteContext, entryId: string, type:
       lifecycle: {
         canUnpublish: canPublishEntry(ctx, refOf(entry)),
         canTrash: canTrashEntry(ctx, refOf(entry)),
+        canRedirect: can(ctx, "site.seo.manage"),
         below: below.length,
         liveBelow: below.filter((row) => row.status !== "draft").map((row) => row.title || "Untitled"),
         homeBelow: below.some((row) => row.path === HOME_PATH),

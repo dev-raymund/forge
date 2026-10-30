@@ -5,6 +5,7 @@ import { refusal, resolveSiteContext, type FormOutcome, type RequestMeta } from 
 import { notFound } from "@/platform/errors";
 import { text } from "@/platform/forms";
 import { termListPath } from "./admin-paths";
+import { withRedirects } from "./entry-forms";
 import { createTerm, deleteTerm, updateTerm } from "./term.service";
 
 /**
@@ -30,9 +31,9 @@ export async function submitCreateTerm(actor: Actor, orgSlug: string, siteSlug: 
   const values = { name: text(formData.get("name")), slug: text(formData.get("slug")), description: text(formData.get("description")), parentId: text(formData.get("parentId")) };
   try {
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    const { term, events } = await createTerm(ctx, { taxonomy, name: values.name, slug: values.slug, description: values.description, parentId: values.parentId || null });
+    const { term, redirects, events } = await createTerm(ctx, { taxonomy, name: values.name, slug: values.slug, description: values.description, parentId: values.parentId || null });
     return {
-      state: { status: "success", message: `${NOUNS[term.taxonomy]} ${term.name} created.`, values: { termId: term.id, name: term.name, slug: term.slug, taxonomy: term.taxonomy } },
+      state: { status: "success", message: withRedirects(`${NOUNS[term.taxonomy]} ${term.name} created.`, redirects), values: { termId: term.id, name: term.name, slug: term.slug, taxonomy: term.taxonomy } },
       revalidate: [termListPath(ctx.org.slug, ctx.site.slug, term.taxonomy)],
       invalidate: events,
       ...(fromEditor(formData) ? { refresh: false } : {}),
@@ -49,14 +50,14 @@ export async function submitUpdateTerm(actor: Actor, orgSlug: string, siteSlug: 
   try {
     const id = termIdFrom(termId);
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    const { term, changed, events } = await updateTerm(ctx, id, {
+    const { term, changed, redirects, events } = await updateTerm(ctx, id, {
       ...(values.name !== undefined ? { name: values.name } : {}),
       ...(values.slug !== undefined ? { slug: values.slug } : {}),
       ...(values.description !== undefined ? { description: values.description } : {}),
       ...(values.parentId !== undefined ? { parentId: values.parentId || null } : {}),
     });
     return {
-      state: { status: "success", message: changed ? `${NOUNS[term.taxonomy]} saved.` : "Nothing changed.", values: { termId: term.id, name: term.name, slug: term.slug } },
+      state: { status: "success", message: changed ? withRedirects(`${NOUNS[term.taxonomy]} saved.`, redirects) : "Nothing changed.", values: { termId: term.id, name: term.name, slug: term.slug } },
       revalidate: [termListPath(ctx.org.slug, ctx.site.slug, term.taxonomy)],
       invalidate: events,
     };

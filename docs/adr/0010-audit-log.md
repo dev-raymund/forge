@@ -174,3 +174,16 @@ ADR 0031 has the details.
 - **Example sentence:** "Ada changed the SEO settings of Harbour Bakery: title template, default social image."
 - **It is written** in the save's transaction, and only when something changed. An entry's own SEO is part of its draft and is recorded as the draft and its publishing are.
 - **The writer is unchanged.**
+
+## Addendum (M8-5, 2026-10-30): redirects
+
+ADR 0032 has the details.
+- **A new resource type, `redirect`, and its events:**
+  - `redirect.created`, with the site's name, the source, the destination and the code;
+  - `redirect.updated`, with the same and the fields that changed (`destination`, `status`, `active`);
+  - `redirect.deleted`, with the site's name and both addresses.
+- **Example sentences:** "Ada added a redirect on Harbour Bakery from /old-offer to /offers (301)." and "Ada turned off the redirect on Harbour Bakery from /old-offer."
+- **Unpublish's "redirect this address to…"** writes `redirect.created` too.
+- **Redirects a path change makes** are not recorded one by one: the change's own record is the record.
+- **The site's not-found page** is `site.settings_changed`, group `seo`, field `notFoundPage` ("not-found page").
+- **The writer is unchanged.**

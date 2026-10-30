@@ -218,3 +218,7 @@ Every item also has:
   - **Roles:** an Editor saves; an Author and a Viewer have no Menus link and get the notice; the editor fits a phone.
   - **Mutation check:** without the `routes` tag, the trash test fails.
 - **Manual (dev server):** both demo sites' menus were built through the page. The Journal demo's footer holds a draft that the editor flags and the site leaves out. The Studio demo's header holds a draft page, likewise. Screenshots were taken at 1280 and 360 px; the Studio right-edge panel was found there and fixed.
+
+## Addendum (M8-5, 2026-10-30): typed links and redirects
+
+ADR 0032 has the details. A menu `url` link typed as a site path is still not rewritten when a page moves: the page's old address now redirects to its new one (308), so the link still lands on it. Links to entries and terms by id need no redirect, as before.

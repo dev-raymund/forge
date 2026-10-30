@@ -167,8 +167,13 @@ test("the public archives follow: a renamed slug moves the archive at once, the 
   await edit.getByLabel("Slug").fill("loaves");
   await edit.getByRole("button", { name: "Save" }).click();
   await expect(edit).toBeHidden();
-  expect((await visitor.goto(`/s/${address}/blog/category/bread`))!.status()).toBe(404); // no redirect: M8-5's
-  expect((await visitor.goto(`/s/${address}/blog/category/loaves`))!.status()).toBe(200);
+  // The old archive redirects to the new one (M8-5: a permanent redirect, sent as 308).
+  const old = await visitor.request.get(`/s/${address}/blog/category/bread`, { maxRedirects: 0 });
+  expect(old.status()).toBe(308);
+  // Next 16 may write a fresh render's headers twice: each copy names the same address.
+  expect([...new Set(old.headersArray().filter((header) => header.name.toLowerCase() === "location").map((header) => header.value))]).toEqual([`/s/${address}/blog/category/loaves`]);
+  expect((await visitor.goto(`/s/${address}/blog/category/bread`))!.status()).toBe(200);
+  expect(new URL(visitor.url()).pathname).toBe(`/s/${address}/blog/category/loaves`);
   await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Loaves");
   await expect(visitor.getByRole("main")).toContainText("Rye season");
   await visitor.goto(`/s/${address}/blog/rye-season`);

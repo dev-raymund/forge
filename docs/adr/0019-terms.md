@@ -109,3 +109,11 @@ The integration tests record the tags each public read applies (`resolveRoute`, 
 ## Addendum (M7-3, 2026-10-16): restoring a revision
 
 As this ADR handed off: a revision restored into the draft keeps the term ids that are still terms of the site, of a taxonomy the type uses, and leaves out the others (deleted since). The message says how many ("1 category or tag it had no longer exists and was left out"). The revision itself still names them: history is not rewritten. ADR 0026 §3.
+
+## Addendum (M8-5, 2026-10-30): a renamed archive redirects
+
+ADR 0032 has the details.
+- **A new slug:** the old archive `/{blogPath}/{category|tag}/{old}` 301s to the new one, in `updateTerm`'s transaction. The old slug is still in `term.updated`'s `previousSlug`.
+- **A term made or renamed** turns off a redirect left at its archive's address.
+- **Locks:** both take the site's settings lock first, so the blog path holds still.
+- **A deleted term's archive** answers "not found", with no redirect made: a redirect by hand can send it elsewhere.

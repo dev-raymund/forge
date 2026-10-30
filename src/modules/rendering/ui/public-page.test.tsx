@@ -27,7 +27,7 @@ const site: PublicSite = {
   social: [],
   analytics: { ga4MeasurementId: "G-ABC1234567", plausibleDomain: "acme.example.org" },
   reading: { blogPath: "news", postsPerPage: 2 },
-  imagery: { logo: null, favicon: null }, seo: SITE_SEO_DEFAULTS, defaultOgImage: null,
+  imagery: { logo: null, favicon: null }, seo: SITE_SEO_DEFAULTS, defaultOgImage: null, notFoundEntryId: null,
 };
 const locator = { kind: "address", address: "acme" } as const;
 const TERM_SLUG = "bread";

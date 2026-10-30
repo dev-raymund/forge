@@ -68,6 +68,8 @@ export type PublicSite = {
   /** Its SEO defaults (M8-4), read value by value, and its default social image when it is still usable. */
   seo: SiteSeo;
   defaultOgImage: PublicImage | null;
+  /** The page shown, with a 404 status, at an address the site does not have (M8-5); null for the theme's own. Drawn only while published. */
+  notFoundEntryId: string | null;
 };
 
 /**
@@ -95,6 +97,7 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
         logoMediaId: siteSettings.logoMediaId,
         faviconMediaId: siteSettings.faviconMediaId,
         seo: siteSettings.seo,
+        notFoundEntryId: siteSettings.notFoundEntryId,
       })
       .from(sites)
       .leftJoin(siteSettings, and(eq(siteSettings.siteId, sites.id), eq(siteSettings.organizationId, sites.organizationId)))
@@ -128,6 +131,7 @@ export async function loadPublicSite(orgId: string, siteId: string): Promise<Pub
     imagery,
     seo,
     defaultOgImage,
+    notFoundEntryId: row.notFoundEntryId ?? null,
   };
 }
 

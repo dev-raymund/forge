@@ -561,6 +561,7 @@ export function EntryEditor({ orgSlug, siteSlug, entry, publicPrefix, choices = 
               siteSlug={siteSlug}
               entry={entry}
               title={title}
+              path={live.path}
               disabled={publishing}
               onDone={(result) => {
                 if (result.ok) setLive((current) => ({ ...current, status: "draft" }));

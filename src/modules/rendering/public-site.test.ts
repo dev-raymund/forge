@@ -18,7 +18,7 @@ const site: PublicSite = {
   social: [{ label: "Instagram", href: "https://instagram.com/acme" }],
   analytics: { ga4MeasurementId: "G-ABC1234567" },
   reading: { blogPath: "news", postsPerPage: 5 },
-  imagery: { logo: null, favicon: null }, seo: SITE_SEO_DEFAULTS, defaultOgImage: null,
+  imagery: { logo: null, favicon: null }, seo: SITE_SEO_DEFAULTS, defaultOgImage: null, notFoundEntryId: null,
 };
 
 describe("the public context", () => {

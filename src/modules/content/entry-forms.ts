@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import type { Actor } from "@/modules/auth";
+import { turnedOffNotice, type RedirectChanges } from "@/modules/seo";
 import { sitePath } from "@/modules/sites/shared";
 import { refusal, resolveSiteContext, type FormOutcome, type RequestMeta } from "@/modules/tenancy";
 import { actionOk, asAppError, forbidden, notFound, toActionResult, validationError, type ActionResult } from "@/platform/errors";
@@ -34,6 +35,20 @@ import { versionSchema } from "./validation";
  */
 
 const MODULE = "content";
+
+/**
+ * What a change did to the site's redirects (M8-5), for its success message: the old addresses that now redirect, and
+ * the redirects turned off because the content lives at their addresses now.
+ */
+export function redirectsMessage(changes: RedirectChanges): string | null {
+  const made = changes.made;
+  const parts = [
+    made.length === 1 ? `Its old address ${made[0]!.source} redirects to ${made[0]!.destination}.` : made.length ? `${made.length} old addresses redirect to the new ones.` : null,
+    turnedOffNotice(changes),
+  ].filter((part): part is string => part !== null);
+  return parts.length ? parts.join(" ") : null;
+}
+export const withRedirects = (message: string, changes: RedirectChanges) => [message, redirectsMessage(changes)].filter(Boolean).join(" ");
 
 /** A form's draft field (JSON) may be at most this long before it is even parsed: a little over the 1 MB document limit. */
 export const DRAFT_FIELD_MAX = 1_200_000;
@@ -117,7 +132,7 @@ export async function submitPublishEntry(actor: Actor, orgSlug: string, siteSlug
     return {
       state: {
         status: "success",
-        message: published.changed ? "Published." : "Already published.",
+        message: published.changed ? withRedirects("Published.", published.redirects) : "Already published.",
         values: { path: published.entry.path, revision: String(published.revision) },
       },
       revalidate: [sitePath(ctx.org.slug, ctx.site.slug)],
@@ -133,9 +148,9 @@ export async function submitSetHomepage(actor: Actor, orgSlug: string, siteSlug:
   try {
     const id = entryIdFrom(entryId);
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    const { changed, events } = await setHomepage(ctx, id);
+    const { changed, redirects, events } = await setHomepage(ctx, id);
     return {
-      state: { status: "success", message: changed ? "This page is now the home page." : "This page is already the home page." },
+      state: { status: "success", message: changed ? withRedirects("This page is now the home page.", redirects) : "This page is already the home page." },
       revalidate: [sitePath(ctx.org.slug, ctx.site.slug)],
       invalidate: events,
       // The screen that asked updates itself (the editor keeps its draft and its autosave; the page tree refreshes):
@@ -163,12 +178,14 @@ export async function submitMovePage(actor: Actor, orgSlug: string, siteSlug: st
     const id = entryIdFrom(entryId);
     const parentId = optionalIdFrom(values.parentId, "parentId", "Choose a page of this site.");
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    const { entry, changed, moved, events } = await movePage(ctx, id, parentId);
+    const { entry, changed, moved, redirects, events } = await movePage(ctx, id, parentId);
     const below = moved.filter((page) => page.id !== entry.id).length;
     return {
       state: {
         status: "success",
-        message: !changed ? "The page is already there." : below ? `Page moved, with ${below} ${below === 1 ? "page" : "pages"} below it.` : "Page moved.",
+        message: !changed
+          ? "The page is already there."
+          : withRedirects(below ? `Page moved, with ${below} ${below === 1 ? "page" : "pages"} below it.` : "Page moved.", redirects),
         values: { path: entry.path, parentId: entry.parentId ?? "" },
       },
       revalidate: [sitePath(ctx.org.slug, ctx.site.slug)],
@@ -229,21 +246,33 @@ const pagesBelow = (n: number) => (n ? `, with ${n} ${n === 1 ? "page" : "pages"
 /** The admin pages that list or show entries of the site: its overview, and both lists (a page's trash moves pages only, but a refresh is cheap). */
 const listsOf = (orgSlug: string, siteSlug: string) => [sitePath(orgSlug, siteSlug), entryListPath(orgSlug, siteSlug, "page"), entryListPath(orgSlug, siteSlug, "post")];
 
-/** Takes a published entry off the site; its draft, revisions and date are kept. */
-export async function submitUnpublishEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, _formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+/**
+ * Takes a published entry off the site; its draft, revisions and date are kept. `redirectTo` (optional, M8-5): where
+ * its address sends visitors from now on.
+ */
+export async function submitUnpublishEntry(actor: Actor, orgSlug: string, siteSlug: string, entryId: string, formData: FormData, meta: RequestMeta = {}): Promise<FormOutcome> {
+  const values = { redirectTo: text(formData.get("redirectTo")) };
   try {
     const id = entryIdFrom(entryId);
     const ctx = await resolveSiteContext(actor, orgSlug, siteSlug, meta);
-    const { changed, events } = await unpublishEntry(ctx, id);
+    const { changed, redirects, events } = await unpublishEntry(ctx, id, { redirectTo: values.redirectTo });
+    const sent = redirects.made[0];
     return {
-      state: { status: "success", message: changed ? "Unpublished: it is no longer on the site." : "It is not published." },
+      state: {
+        status: "success",
+        message: !changed
+          ? "It is not published."
+          : sent
+            ? `Unpublished: it is no longer on the site. Visitors of ${sent.source} go to ${sent.destination}.`
+            : "Unpublished: it is no longer on the site.",
+      },
       revalidate: listsOf(ctx.org.slug, ctx.site.slug),
       invalidate: events,
       // The editor that asked updates itself; a refresh under it could hand it an older draft version.
       refresh: false,
     };
   } catch (error) {
-    return refusal(error, meta, {}, sitePath(orgSlug, siteSlug), {}, MODULE);
+    return refusal(error, meta, values, sitePath(orgSlug, siteSlug), {}, MODULE);
   }
 }
 

@@ -472,7 +472,10 @@ describe("publishEntry (criterion 3)", () => {
     expect(published.events).toEqual([
       { type: "entry.published", siteId: ctx.site.id, entryId: about.id, contentType: "page", pathChanged: true },
       { type: "entry.moved", siteId: ctx.site.id, entryId: team.id, contentType: "page" },
+      // M8-5: the live pages' old addresses redirect (the site's redirect map is its config).
+      { type: "site.configChanged", siteId: ctx.site.id },
     ]);
+    expect(published.redirects.made).toEqual([{ source: "/about", destination: "/company" }, { source: "/about/team", destination: "/company/team" }]);
   });
 
   it("an address another entry holds: a Conflict naming it, and nothing is published or moved", async () => {
@@ -595,7 +598,7 @@ describe("setHomepage", () => {
       [["Contact", "/contact", "/home/contact"], ["Home", "/", "/home"], ["Team", "/welcome/team", "/team"], ["Welcome", "/welcome", "/"]].sort(),
     );
     expect(result.events[0]).toEqual({ type: "site.configChanged", siteId: ctx.site.id });
-    expect(result.events.slice(1).map((event) => (event as { entryId: string }).entryId).sort()).toEqual([home, contact.id, welcome.id, team.id].sort());
+    expect(result.events.filter((event) => event.type === "entry.moved").map((event) => (event as { entryId: string }).entryId).sort()).toEqual([home, contact.id, welcome.id, team.id].sort());
     expect((await eventsOf(a.org.id, "site.homepage_changed")).map((e) => [e.resourceType, e.resourceId, e.metadata])).toEqual([
       ["site", ctx.site.id, { name: "Content", title: "Welcome", previousTitle: "Home" }],
     ]);
@@ -608,7 +611,7 @@ describe("setHomepage", () => {
     const a = await newTenant();
     const { ctx, home } = await siteWithTwoTrees(a);
     const before = await contentState(ctx);
-    expect(await setHomepage(ctx, home)).toEqual({ changed: false, moved: [], events: [] });
+    expect(await setHomepage(ctx, home)).toEqual({ changed: false, moved: [], redirects: { made: [], turnedOff: [], repointed: 0 }, events: [] });
     expect(await contentState(ctx)).toEqual(before);
     expect(await eventsOf(a.org.id, "site.homepage_changed")).toEqual([]);
   });
@@ -709,7 +712,11 @@ describe("the forms behind the Server Actions (criterion 4)", () => {
     expect((await submitPublishEntry(a.actor, a.org.slug, site.slug, entryId, form({ version: "2" }))).state.message).toBe("Already published.");
 
     const home = await submitSetHomepage(a.actor, a.org.slug, site.slug, entryId, form({}));
-    expect(home).toMatchObject({ state: { status: "success", message: "This page is now the home page." }, invalidate: expect.arrayContaining([{ type: "site.configChanged", siteId: site.id }]) });
+    // M8-5: its old address, live until now, redirects to `/`.
+    expect(home).toMatchObject({
+      state: { status: "success", message: "This page is now the home page. Its old address /from-a-form redirects to /." },
+      invalidate: expect.arrayContaining([{ type: "site.configChanged", siteId: site.id }]),
+    });
     expect(await contentState(b.ctx)).toEqual(theirs);
   });
 

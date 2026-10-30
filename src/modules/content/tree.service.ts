@@ -1,7 +1,9 @@
 import "server-only";
 import { record } from "@/modules/audit";
+import { redirectEvents, redirectPathChanges, type RedirectChanges } from "@/modules/seo";
 import { inTenant, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
+import type { TenantTx } from "@/platform/db";
 import { forbidden, notFound, validationError } from "@/platform/errors";
 import { refOf, summaryOf, titleForLog, type EntrySummary } from "./entry.service";
 import { HOME_PATH, ParentChainError, pathUnder, reservedPathReason, wouldCreateCycle, type PageNode } from "./paths";
@@ -24,10 +26,13 @@ const PARENT = "Choose a page of this site.";
  * Puts the page under `parentId` (null: the top level). Its path becomes its slug under the parent's path, and every
  * page below follows (`moveSubtree`), in one transaction: a path another entry holds anywhere in the moved tree
  * refuses the whole move with a Conflict naming the address, and nothing has moved. The Home page keeps `/` wherever
- * it sits. Live pages whose address changed are returned as `entry.moved` events; redirects from the old addresses
- * are M8-5's.
+ * it sits. Live pages whose address changed are returned as `entry.moved` events, and each leaves a 301 from its old
+ * address (M8-5, `redirectPathChanges`) in the same transaction; a redirect from an address they now live at is
+ * turned off.
  */
-export async function movePage(ctx: SiteContext, entryId: string, parentId: string | null): Promise<{ entry: EntrySummary; changed: boolean; moved: MovedEntry[]; events: CacheEvent[] }> {
+export async function movePage(
+  ctx: SiteContext, entryId: string, parentId: string | null,
+): Promise<{ entry: EntrySummary; changed: boolean; moved: MovedEntry[]; redirects: RedirectChanges; events: CacheEvent[] }> {
   return inTenant(ctx, async (tx) => {
     const settings = await lockSiteSettings(tx, ctx.org.id, ctx.site.id);
     const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
@@ -35,7 +40,7 @@ export async function movePage(ctx: SiteContext, entryId: string, parentId: stri
     const page = await findEntry(tx, ctx.org.id, ctx.site.id, entryId, { lock: true });
     if (!page) throw notFound();
     if (!canArrangePage(ctx, refOf(page))) throw page.type === "page" ? forbidden() : validationError({ parentId: ["Only pages have a parent page."] });
-    if ((parentId ?? null) === page.parentId) return { entry: summaryOf(page), changed: false, moved: [], events: [] };
+    if ((parentId ?? null) === page.parentId) return { entry: summaryOf(page), changed: false, moved: [], redirects: { made: [], turnedOff: [], repointed: 0 }, events: [] };
 
     let parent: { id: string; title: string; path: string } | null = null;
     if (parentId) {
@@ -71,6 +76,7 @@ export async function movePage(ctx: SiteContext, entryId: string, parentId: stri
     await withPathTaken(path, () => updateEntry(tx, ctx.org.id, ctx.site.id, page.id, { parentId: parent?.id ?? null, path, sortOrder, updatedBy: ctx.actor.userId }));
     const moved: MovedEntry[] = path === page.path ? [] : [{ id: page.id, type: page.type, status: page.status, title: page.title, from: page.path, to: path }];
     moved.push(...(await moveSubtree(tx, ctx, page.id, path)));
+    const redirects = await redirectLiveMoves(tx, ctx, moved);
 
     await record(
       tx,
@@ -80,8 +86,17 @@ export async function movePage(ctx: SiteContext, entryId: string, parentId: stri
       },
       ctx,
     );
-    return { entry: { ...summaryOf(page), parentId: parent?.id ?? null, path }, changed: true, moved, events: movedEvents(ctx.site.id, moved) };
+    return {
+      entry: { ...summaryOf(page), parentId: parent?.id ?? null, path }, changed: true, moved, redirects,
+      events: [...movedEvents(ctx.site.id, moved), ...redirectEvents(ctx.site.id, redirects)],
+    };
   });
+}
+
+/** The live pages among those that moved: each old address redirects to its new one, which no redirect may shadow (M8-5). */
+export function redirectLiveMoves(tx: TenantTx, ctx: SiteContext, moved: readonly MovedEntry[]): Promise<RedirectChanges> {
+  const live = moved.filter((page) => page.status === "published");
+  return redirectPathChanges(tx, ctx, { moves: live.map((page) => ({ from: page.from, to: page.to })), claimed: live.map((page) => page.to) }, ctx.actor.userId);
 }
 
 /**

@@ -96,6 +96,8 @@ describe("registered operations given another tenant's identifiers answer NotFou
     "entries", "entry_drafts", "entry_revisions", "terms", "entry_terms",
     // And B's media (M6-1).
     "media_assets", "media_folders",
+    // And B's redirects (M8-5).
+    "redirects",
   ];
   const fingerprintOf = (orgId: string) =>
     withTenant({ orgId }, async (tx) => {
@@ -120,14 +122,14 @@ describe("registered operations given another tenant's identifiers answer NotFou
     );
     foreign = {
       orgId: B.org.id, orgSlug: B.org.slug, siteId: B.site.id, siteSlug: B.site.slug, memberId: memberOfB.rows[0]!.id, userId: B.user.id, invitationId: B.invitation.id,
-      entryId: B.entry.id, mediaId: B.media.id, folderId: B.folder.id,
+      entryId: B.entry.id, mediaId: B.media.id, folderId: B.folder.id, redirectId: B.redirect.id,
     };
 
     const viewer = await addUser(A.org, await createUser(), "viewer");
     bystander = { actor: viewer.actor, ctx: await resolveOrgContext(viewer.actor, A.org.slug), orgSlug: A.org.slug, siteSlug: A.site.slug };
     const tail = randomBytes(4).toString("hex");
     nowhere = {
-      orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7(), invitationId: uuidv7(), entryId: uuidv7(), mediaId: uuidv7(), folderId: uuidv7(),
+      orgId: uuidv7(), orgSlug: `nobody-${tail}`, siteId: uuidv7(), siteSlug: `nothing-${tail}`, memberId: uuidv7(), userId: uuidv7(), invitationId: uuidv7(), entryId: uuidv7(), mediaId: uuidv7(), folderId: uuidv7(), redirectId: uuidv7(),
     };
   });
 

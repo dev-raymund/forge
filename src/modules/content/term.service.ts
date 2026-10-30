@@ -1,5 +1,7 @@
 import "server-only";
 import { record } from "@/modules/audit";
+import { NO_REDIRECT_CHANGES, redirectEvents, redirectPathChanges, type RedirectChanges } from "@/modules/seo";
+import { archivePath } from "@/modules/seo/shared";
 import { inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
 import { isUniqueViolation, type TenantTx } from "@/platform/db";
@@ -26,6 +28,10 @@ import { createTermSchema, parseInput, updateTermSchema, type CreateTermInput, t
  * Each runs in one transaction with its audit record, and returns the cache events a commit makes true: the archive's
  * address (routes), the published posts that show the term, the lists (`term.changed`). Assigning terms to an entry is
  * not here: it is the draft's (`saveDraft`) and the publish's (`publishEntry`).
+ *
+ * Redirects (M8-5, ADR 0032): a new slug leaves a 301 from the old archive to the new one; an archive that now exists
+ * (made or renamed) turns off a redirect left at its address. A deleted term's archive answers "not found": no
+ * redirect is made (a redirect by hand can send it elsewhere).
  */
 
 export type TermSummary = Pick<TermRow, "id" | "taxonomy" | "name" | "slug" | "description" | "parentId">;
@@ -56,18 +62,18 @@ async function assertParent(tx: TenantTx, ctx: SiteContext, parentId: string, se
   return parent;
 }
 
-export async function createTerm(ctx: SiteContext, input: CreateTermInput): Promise<{ term: TermSummary; events: CacheEvent[] }> {
+export async function createTerm(ctx: SiteContext, input: CreateTermInput): Promise<{ term: TermSummary; redirects: RedirectChanges; events: CacheEvent[] }> {
   const taxonomy = taxonomyOf((input as { taxonomy?: unknown } | null)?.taxonomy);
   if (!canCreateTerm(ctx, taxonomy)) throw forbidden();
   const values = parseInput(createTermSchema, input);
   if (values.parentId && taxonomy !== "category") throw validationError({ parentId: ["Only categories have a parent."] });
 
   return inTenant(ctx, async (tx) => {
-    if (!(await siteFacts(tx, ctx.org.id, ctx.site.id))) throw notFound();
-    if (values.parentId) {
-      await lockSiteSettings(tx, ctx.org.id, ctx.site.id);
-      await assertParent(tx, ctx, values.parentId, null);
-    }
+    // The site's lock first (as `movePage`): its blog path, which the archive's address and its redirects depend on, holds still.
+    await lockSiteSettings(tx, ctx.org.id, ctx.site.id);
+    const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
+    if (!site) throw notFound();
+    if (values.parentId) await assertParent(tx, ctx, values.parentId, null);
     const row = (slug: string) => ({
       organizationId: ctx.org.id, siteId: ctx.site.id, taxonomy, name: values.name, slug, description: values.description, parentId: values.parentId,
     });
@@ -100,17 +106,20 @@ export async function createTerm(ctx: SiteContext, input: CreateTermInput): Prom
       { action: "term.created", resourceType: "term", resourceId: term.id, siteId: ctx.site.id, metadata: { taxonomy, name: term.name, slug: term.slug } },
       ctx,
     );
-    // A cached "no such archive" for its address goes: its archive exists now.
-    return { term: summaryOf(term), events: [changedEvent(ctx.site.id, [])] };
+    // A cached "no such archive" for its address goes: its archive exists now, and a redirect left there is turned off.
+    const redirects = await redirectPathChanges(tx, ctx, { moves: [], claimed: [archivePath(site.blogPath, taxonomy, term.slug)] }, ctx.actor.userId);
+    return { term: summaryOf(term), redirects, events: [changedEvent(ctx.site.id, []), ...redirectEvents(ctx.site.id, redirects)] };
   });
 }
 
-export async function updateTerm(ctx: SiteContext, termId: string, input: UpdateTermInput): Promise<{ term: TermSummary; changed: boolean; events: CacheEvent[] }> {
+export async function updateTerm(
+  ctx: SiteContext, termId: string, input: UpdateTermInput,
+): Promise<{ term: TermSummary; changed: boolean; redirects: RedirectChanges; events: CacheEvent[] }> {
   if (!canManageTerms(ctx)) throw forbidden();
   const values = parseInput(updateTermSchema, input);
   return inTenant(ctx, async (tx) => {
-    // The site's lock first when the hierarchy may change (as `movePage`), then the term.
-    if (values.parentId !== undefined) await lockSiteSettings(tx, ctx.org.id, ctx.site.id);
+    // The site's lock first when the hierarchy or the archive's address may change (as `movePage`), then the term.
+    if (values.parentId !== undefined || values.slug !== undefined) await lockSiteSettings(tx, ctx.org.id, ctx.site.id);
     const term = await findTerm(tx, ctx.org.id, ctx.site.id, termId, { lock: true });
     if (!term) throw notFound();
 
@@ -129,7 +138,7 @@ export async function updateTerm(ctx: SiteContext, termId: string, input: Update
       next.parentId = values.parentId;
     }
     const fields = (["name", "slug", "description", "parentId"] as const).filter((key) => key in next);
-    if (fields.length === 0) return { term: summaryOf(term), changed: false, events: [] };
+    if (fields.length === 0) return { term: summaryOf(term), changed: false, redirects: NO_REDIRECT_CHANGES, events: [] };
 
     try {
       await tx.transaction((savepoint) => updateTermRow(savepoint as TenantTx, ctx.org.id, ctx.site.id, term.id, next));
@@ -149,8 +158,19 @@ export async function updateTerm(ctx: SiteContext, termId: string, input: Update
       },
       ctx,
     );
-    // The posts that show it (their pages list its name and link), and the archive's address. Redirects from an old slug are M8-5's.
-    return { term: summaryOf(updated), changed: true, events: [changedEvent(ctx.site.id, await entriesWithTerm(tx, ctx.org.id, ctx.site.id, term.id))] };
+    // A new slug: the old archive redirects to the new one (M8-5), in this transaction.
+    let redirects = NO_REDIRECT_CHANGES;
+    if (next.slug) {
+      const site = await siteFacts(tx, ctx.org.id, ctx.site.id);
+      if (!site) throw notFound();
+      const [from, to] = [archivePath(site.blogPath, term.taxonomy, term.slug), archivePath(site.blogPath, term.taxonomy, next.slug)];
+      redirects = await redirectPathChanges(tx, ctx, { moves: [{ from, to }], claimed: [to] }, ctx.actor.userId);
+    }
+    // The posts that show it (their pages list its name and link), and the archive's address.
+    return {
+      term: summaryOf(updated), changed: true, redirects,
+      events: [changedEvent(ctx.site.id, await entriesWithTerm(tx, ctx.org.id, ctx.site.id, term.id)), ...redirectEvents(ctx.site.id, redirects)],
+    };
   });
 }
 

@@ -1519,15 +1519,30 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 **Depends on:** M8-4, M7-1
 
 **Acceptance criteria:**
-- [ ] `redirects` table; `/…/seo/redirects` CRUD (exact match; 301/302/307/308; active toggle)
-- [ ] Validation: leading `/`, not reserved, no self-redirect, loop detection (depth 10), chains flattened on write
-- [ ] Auto 301 on published path change (slug, parent, blog path, term slug) in the publish transaction; publishing at a redirected path deactivates that redirect with a notice
-- [ ] Cached redirect map checked first in route resolution
-- [ ] Custom 404 page setting
+- [x] `redirects` table; `/…/seo/redirects` CRUD (exact match; 301/302/307/308; active toggle) *(ADR 0032 §1–2, §7: the M1-1 table, no migration; add (old address, destination, code), change (destination, code), turn off and on, delete, each recorded (`redirect.created/updated/deleted`) and flushed; listed newest first with a search and pages, "Automatic"/"By hand", a warning for a destination not published now; Owner, Admin, Editor (`site.seo.manage`), from the SEO page. Exact match on the decoded path; the four codes stored; sent as 308 (permanent) or 307 (temporary): §5)*
+- [x] Validation: leading `/`, not reserved, no self-redirect, loop detection (depth 10), chains flattened on write *(§1–2: sources decoded, without query, `..` or `%2F`, not `/_forge`, `/sitemap.xml`, `/robots.txt`, and never an address the site serves (content wins); destinations a served path or http(s) on another host, never `javascript:`/`data:`/`//host`/this host; self and loops refused following the site's map up to ten steps; A→B with B→C stored A→C, B→C with X→B rewrites X→C; per-site advisory lock)*
+- [x] Auto 301 on published path change (slug, parent, blog path, term slug) in the publish transaction; publishing at a redirected path deactivates that redirect with a notice *(§3: `makeLive` (publish and scheduled), `movePage`, `setHomepage`, the reading settings' blog path, `updateTerm`; each live old address → its new one, in the change's transaction (a failure fails both); drafts none; the new addresses (and a new term's archive) turn off redirects left there, and the editor, the move, the term and settings forms say so: "The redirect from /x is turned off: the site shows its own content there now.")*
+- [x] Cached redirect map checked first in route resolution *(§5: `loadRedirects`, one `'use cache'` read per site under `site:{id}:config`, matched in memory before the routes on live sites; followed only to a destination the site serves now (cached route), else 404; `Location` from the locator, no query carried; answered before streaming)*
+- [x] Custom 404 page setting *(§6: `site_settings.not_found_entry_id`, a published page (not the Home page, not a post) chosen on the redirects page; drawn in the theme's frame with a real 404 and `noindex` at every address a live site lacks; the theme's page again when it is unpublished; cleared when it is deleted for good)*
 
 **Likely files/modules:** `src/modules/seo/redirects.*`, rendering route resolution
 
-**Testing:** unit loop/flatten cases; E2E rename slug → old URL 301s.
+**Testing:** unit loop/flatten cases; E2E rename slug → old URL 301s. *(Unit: `seo/redirects.test.ts` (58), `rendering/routes.test.ts` (16 cross-checks). Integration: `redirects.test.ts` (16, including rollbacks and a race). Isolation: 9 operations. E2E: `redirects.spec.ts` (4): a renamed slug's old URL answers 308 (a 301 is sent as 308, the method-keeping code a page can send, ADR 0032 §5) with `Location` the new address.)*
+
+**Hand-off (from M8-5, ADR 0032):**
+- **M9-2:** redirects are site paths built under `siteBasePath(locator)` (rendering/redirects.ts). In host mode the primary host replaces `/s/{address}`; a non-primary host's 308 is the domain's, before the redirect map. Exact 301/302 could be sent from a proxy-level map (Vercel routing middleware with a key-value store) if wanted.
+- **M10-1:**
+  - `GET/POST/DELETE /v1/sites/{siteId}/redirects` can call `getRedirects`, `createRedirect`, `updateRedirect` and `deleteRedirect` (seo): the same rules, the stored code (301/302/307/308) as chosen.
+  - The public read rule for destinations is `resolveRoute`.
+- **M11-1:** a site's redirects are capped at 10,000 (`REDIRECTS_MAX`, seo/shared): new ones by hand refused past it, path changes still make theirs. A plan limit replaces it here.
+- **M12-1:**
+  - every redirect write takes `pg_advisory_xact_lock` per site (after the content's own locks);
+  - external destinations are http(s) on another host only (never this host);
+  - include the redirect map in the security pass of what site pages can send visitors to.
+- **M12-2:**
+  - every live page now reads the site's redirect map (one cached read, `config`) before its route; measure with the other public reads;
+  - Next 16 writes an uncached render's headers twice (a fresh redirect's `Location` too); check whether a Next upgrade fixes it.
+- **Not in V1:** prefix/regex redirects, `preserve_query`, hit counts, CSV import, a 404 monitor; redirects for an old blog path's later list pages.
 
 ---
 
@@ -1570,6 +1585,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 
 *From M8-4 (ADR 0031): canonicals, Open Graph, JSON-LD and sitemap addresses all come from `siteBaseUrl(locator)` (`rendering/seo.ts`): give it the primary host there. A `robots.txt` per custom host is new; the app host's lists platform addresses only (`indexable_site_addresses`).*
 
+*From M8-5 (ADR 0032): a site's redirects send visitors to `siteBasePath(locator)` + the destination path (`rendering/redirects.ts`, `publicRedirectFor`); host mode changes the base there. The non-primary host's 308 comes before the redirect map. A page can send 307/308 only; exact 301/302 would need the redirect map in the proxy.*
+
 ---
 
 ## M10 — REST API v1
@@ -1586,6 +1603,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 *From M3-5 (ADR 0010): the same for API keys: an `api_key` actor in the audit writer, with the key's name as the label, added as an explicit caller when the first write endpoint exists (M10-2).*
 
 *From M8-3 (ADR 0030): the menus endpoint's "resolved items" are `loadMenus` (rendering): live destinations only, paths relative to the site, cached under `config` and `routes`. `readMenuItems` (`@/modules/navigation/shared`) reads stored items value by value.*
+
+*From M8-5 (ADR 0032): the redirects endpoints (`/v1/sites/{siteId}/redirects`) are the seo module's `getRedirects`, `createRedirect`, `updateRedirect` and `deleteRedirect`, with their rules (sources free, destinations served or elsewhere, flattened, loops refused), recorded as `redirect.*`.*
 
 **Depends on:** M5-6, M6-2
 
@@ -1626,6 +1645,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 > *Schema delivered early in M1-1: the tables, constraints and RLS exist. This issue's remaining work is its services, UI and tests.*
 
 **Description:** Entitlements without Stripe.
+
+*From M8-5 (ADR 0032): a site's redirects are capped at a fixed 10,000 (`REDIRECTS_MAX`); a plan's limit replaces it (cms-architecture §17.3 suggests 1k / 10k). Automatic ones (path changes) are never refused.*
 
 *From M3-2 (ADR 0009): entitlements are a separate axis from roles. `assertLimit` runs after `requirePermission` and before validation, and knows nothing about roles; the permission catalog has no plan keys and must not gain any. `org.billing.manage` (Owner only) is the permission to open billing, not a statement about the plan.*
 
@@ -1682,6 +1703,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 
 *From M3-5 (ADR 0010): the audit log is never purged in V1 (no `audit_purge_before()`), and platform events (logins, password changes: rows with no organization) still have no reader. Both are this issue's: a definer function or platform policy for staff to read them, and the retention decision. The activity page shows tenants neither the client address nor the request id that every row stores; the staff view is where those are for.*
 
+*From M8-5 (ADR 0032): redirects may send a site's visitors to an http(s) address on another host (never this host): on the shared V1 origin that is the platform's address doing it, so include redirects in the review of what tenant content can do from it. Every redirect write takes a per-site advisory lock after the content's own locks.*
+
 *From M8-4 (ADR 0031): one cross-tenant read was added, `indexable_site_addresses(limit)` (`SECURITY DEFINER`, owned by `forge_lookup`, executable by `forge_app`): the addresses of live, indexable sites, for the host's `robots.txt`. Include it in the security pass. Site pages now carry one inline `<script type="application/ld+json">` (data, `<` escaped): a `script-src` for `/s/*` does not need to allow it, since it is not executed.*
 
 **Depends on:** all feature milestones
@@ -1713,6 +1736,8 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 - *Site pages ship no app client component now (about 200 KB less); `rendering/public-bundle.test.ts` keeps it so.*
 
 *From M8-3 (ADR 0030): every public page reads the site's menus through one cached read (tags `config`, `routes`); a publish re-reads it once. Menus draw two levels without script (a `<details>` disclosure in headers): check them with the launch's accessibility pass on both themes.*
+
+*From M8-5 (ADR 0032): every live page reads the site's redirect map (one cached read) before its route. Next 16 writes a fresh render's headers twice (a redirect's `Location` too, identical): check after a Next upgrade.*
 
 *From M8-4 (ADR 0031): set `SEARCH_INDEXING` deliberately on production (unset, only `VERCEL_ENV=production` lets sites be indexed; staging must stay unindexed). Check a site's share card and its sitemap in Search Console on the production deployment. The social image is the widest stored width, not a 1200 × 630 crop.*
 

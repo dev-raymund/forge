@@ -276,3 +276,10 @@ ADR 0030 has the details. A menu names an entry by id, and the public site draws
 - **Publishing again** brings it back as the entry is now, with no change to the menu.
 - **Purging** leaves the item in the menu, flagged "deleted" in the editor, and drawn nowhere.
 - **The lifecycle is unchanged:** nothing here writes to menus.
+
+## Addendum (M8-5, 2026-10-30): "redirect this address to…"
+
+ADR 0032 has the details.
+- **The prompt:** unpublish takes an optional destination (`redirectTo`), offered in the dialog to those who manage redirects (`site.seo.manage`). It is a redirect by hand (301) from the address the entry was at, in the unpublish's transaction, checked by the redirect rules (a path the site serves, or http(s) elsewhere). A refused destination refuses the unpublish.
+- **Nothing automatic:** no destination is chosen by itself, and the trash, restore and purge make no redirect.
+- **When the address is taken back:** a redirect left at a restored entry's address keeps answering until the entry is published again, which turns it off.

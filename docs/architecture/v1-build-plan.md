@@ -732,6 +732,12 @@ Not in V1: SEO scoring/analysis, hreflang, 404 monitor, prefix/regex redirects, 
   - **The Open Graph image** is the widest stored width of the entry's own image, else a post's featured image, else the site's default. It is never the original, and there is no 1200 × 630 crop.
   - **The sitemap** (`/s/{address}/sitemap.xml`) lists live, indexable entries that are their own canonical, the blog, and terms with live posts. A site that is not live or discourages indexing gets a 404.
   - **`robots.txt`** is the host's, in path mode: `Allow: /s/`, `Disallow: /api/` and `/_forge/`, a sitemap per indexable site (from a `SECURITY DEFINER` lookup of addresses only), and `Disallow: /` off production.
+- **As built (M8-5, ADR 0032):**
+  - **Redirects match exactly:** the decoded path, no query carried. A source must be an address the site does not serve (content wins); a destination must be a path it serves, or http(s) on another host. Chains are flattened and loops refused under a per-site lock.
+  - **Path changes:** a live address that changes leaves a 301 in the same transaction. That covers a publish with a new slug or parent, a moved page and those below it, the Home page, a new blog path (the index and archives; posts stay until published again) and a renamed term. Content that takes a redirected address turns its redirect off, with a notice.
+  - **The public site** checks one cached map per site (`config`) before the routes, and follows a redirect only to a destination it serves now. It sends 308 for a permanent code and 307 for a temporary one (what a page can answer; the same for GET and HEAD).
+  - **Unpublish** can send the address's visitors elsewhere. Nothing is redirected automatically on unpublish, trash or a deleted term.
+  - **The not-found page** is a published page chosen on `/…/seo/redirects`, shown with a real 404.
 
 ---
 

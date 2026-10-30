@@ -38,6 +38,9 @@ const SAMPLES: { [A in AuditAction]: Record<string, unknown> } = {
   "entry.draft_replaced": { type: "page", title: "About", path: "/about", keptRevision: 7 },
   "term.created": { taxonomy: "category", name: "Bread", slug: "bread" },
   "menu.updated": { name: "Acme Bakery", location: "header", items: 5 },
+  "redirect.created": { name: "Acme Bakery", source: "/old-offer", destination: "/offers", statusCode: 301 },
+  "redirect.updated": { name: "Acme Bakery", source: "/old-offer", destination: "https://shop.example.com/", statusCode: 302, active: true, fields: ["destination", "status"] },
+  "redirect.deleted": { name: "Acme Bakery", source: "/old-offer", destination: "/offers" },
   "term.updated": { taxonomy: "tag", name: "Sourdough", slug: "sourdough", fields: ["name", "slug"], previousName: "Rye", previousSlug: "rye" },
   "term.deleted": { taxonomy: "category", name: "Bread", slug: "bread", posts: 3, drafts: 1 },
   "media.uploaded": { kind: "image", filename: "Team photo.jpg", sizeBytes: 482_113 },
@@ -64,6 +67,9 @@ describe("the audit vocabulary", () => {
         "entry.scheduled", "entry.schedule_canceled", "entry.schedule_failed", "entry.revision_restored", "entry.draft_replaced",
         "term.created", "term.updated", "term.deleted",
         "menu.updated",
+        "redirect.created",
+        "redirect.updated",
+        "redirect.deleted",
         "media.uploaded",
         "media.updated", "media.moved", "media.trashed", "media.restored", "media.folder_created", "media.folder_renamed", "media.folder_deleted",
       ].sort(),
@@ -73,7 +79,7 @@ describe("the audit vocabulary", () => {
 
   it("every event is about an organization, a membership, an invitation, a site, an entry, a term, a menu, a media item or a media folder, and has a name for the filter list", () => {
     for (const action of AUDIT_ACTIONS) {
-      expect(["organization", "membership", "invitation", "site", "entry", "term", "menu", "media", "media_folder"], action).toContain(AUDIT_EVENTS[action].resourceType);
+      expect(["organization", "membership", "invitation", "site", "entry", "term", "menu", "redirect", "media", "media_folder"], action).toContain(AUDIT_EVENTS[action].resourceType);
       expect(eventLabel(action), action).toMatch(/^[A-Z][a-z]+( [a-z]+)*$/);
     }
     expect(new Set(AUDIT_ACTIONS.map(eventLabel)).size).toBe(AUDIT_ACTIONS.length);
@@ -289,6 +295,18 @@ describe("an event as a sentence", () => {
     expect(say("menu.updated", { name: "Acme Bakery", location: "header", items: 5 })).toBe("Raymund changed the header menu of Acme Bakery: 5 links.");
     expect(say("menu.updated", { name: "Acme Bakery", location: "footer", items: 1 })).toBe("Raymund changed the footer menu of Acme Bakery: 1 link.");
     expect(say("menu.updated", { name: "Acme Bakery", location: "footer", items: 0 })).toBe("Raymund changed the footer menu of Acme Bakery: no links.");
+    // M8-5: redirects by hand; turning one on or off is said as such. The not-found page is an SEO setting.
+    expect(say("redirect.created", { name: "Acme Bakery", source: "/old-offer", destination: "/offers", statusCode: 301 })).toBe(
+      "Raymund added a redirect on Acme Bakery from /old-offer to /offers (301).",
+    );
+    expect(say("redirect.updated", { name: "Acme Bakery", source: "/old-offer", destination: "/offers", statusCode: 301, active: false, fields: ["active"] })).toBe(
+      "Raymund turned off the redirect on Acme Bakery from /old-offer.",
+    );
+    expect(say("redirect.updated", { name: "Acme Bakery", source: "/old-offer", destination: "https://shop.example.com/", statusCode: 302, active: true, fields: ["destination", "status"] })).toBe(
+      "Raymund changed the redirect on Acme Bakery from /old-offer: it goes to https://shop.example.com/ (302).",
+    );
+    expect(say("redirect.deleted", { name: "Acme Bakery", source: "/old-offer", destination: "/offers" })).toBe("Raymund deleted the redirect on Acme Bakery from /old-offer to /offers.");
+    expect(say("site.settings_changed", { name: "Acme Bakery", group: "seo", fields: ["notFoundPage"] })).toBe("Raymund changed the SEO settings of Acme Bakery: not-found page.");
     expect(say("media.uploaded", { kind: "image", filename: "Team photo.jpg", sizeBytes: 1 })).toBe("Raymund uploaded the image Team photo.jpg.");
     expect(say("media.uploaded", { kind: "document", filename: "Menu.pdf", sizeBytes: 1 })).toBe("Raymund uploaded the PDF Menu.pdf.");
     expect(say("media.updated", { kind: "image", filename: "Team.jpg", fields: ["title", "alt"] })).toBe("Raymund changed the image Team.jpg: title, alternative text.");

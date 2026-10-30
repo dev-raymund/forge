@@ -1,6 +1,7 @@
 import "server-only";
 import { record } from "@/modules/audit";
-import { inTenant, type SiteContext } from "@/modules/tenancy";
+import { NO_REDIRECT_CHANGES, redirectEvents, redirectUnpublished, type RedirectChanges } from "@/modules/seo";
+import { can, inTenant, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
 import type { TenantTx } from "@/platform/db";
 import { conflict, forbidden, notFound } from "@/platform/errors";
@@ -19,7 +20,9 @@ import { withPathTaken } from "./tree";
  * restore, and deleting for good. Each is one transaction with its record; a refusal writes nothing.
  *
  *   unpublish   published → draft. Off the site at once (its path, the lists, the archives, links to it); its
- *               revisions, its date and its draft are kept, so publishing again brings it back as it was.
+ *               revisions, its date and its draft are kept, so publishing again brings it back as it was. Its address
+ *               then answers "not found", unless the person sends its visitors elsewhere ("redirect this address
+ *               to…", plan §9; M8-5): a redirect by hand, in the same transaction, for those who manage redirects.
  *   trash       a draft (never a published or scheduled entry: unpublish first) goes to the trash, its address free.
  *               A page goes with every page below it, all at one moment, or not at all: refused if any of them is
  *               published or scheduled, or is the Home page (make another page the Home page first).
@@ -36,15 +39,21 @@ const PAGE_BELOW = (n: number) => `${n} ${n === 1 ? "page" : "pages"}`;
 
 const visible = (ctx: SiteContext, entry: EntryRow) => canSeeEntry(ctx, refOf(entry));
 
-export type Unpublished = { entry: EntrySummary; changed: boolean; events: CacheEvent[] };
+export type Unpublished = { entry: EntrySummary; changed: boolean; redirects: RedirectChanges; events: CacheEvent[] };
 
-/** Takes a published entry off the site. An entry that is already a draft is left as it is (a repeated request). */
-export async function unpublishEntry(ctx: SiteContext, entryId: string): Promise<Unpublished> {
+/**
+ * Takes a published entry off the site. An entry that is already a draft is left as it is (a repeated request).
+ * `redirectTo` (a path the site serves, or an http(s) address elsewhere) sends visitors of its address there; a
+ * destination the rules refuse refuses the unpublish, keyed `redirectTo`.
+ */
+export async function unpublishEntry(ctx: SiteContext, entryId: string, options: { redirectTo?: string } = {}): Promise<Unpublished> {
+  const redirectTo = options.redirectTo?.trim() || null;
+  if (redirectTo && !can(ctx, "site.seo.manage")) throw forbidden("Only those who manage the site's redirects can send its visitors elsewhere.");
   return inTenant(ctx, async (tx) => {
     const entry = await findEntry(tx, ctx.org.id, ctx.site.id, entryId, { lock: true });
     if (!entry || !visible(ctx, entry)) throw notFound();
     if (!canPublishEntry(ctx, refOf(entry))) throw forbidden();
-    if (entry.status === "draft") return { entry: summaryOf(entry), changed: false, events: [] };
+    if (entry.status === "draft") return { entry: summaryOf(entry), changed: false, redirects: NO_REDIRECT_CHANGES, events: [] };
     const step = transition(stateOf(entry), "unpublish");
     if (!step.ok) throw conflict(step.reason);
 
@@ -56,10 +65,12 @@ export async function unpublishEntry(ctx: SiteContext, entryId: string): Promise
       { action: "entry.unpublished", resourceType: "entry", resourceId: entry.id, siteId: ctx.site.id, metadata: { type: entry.type, title: titleForLog(entry.title), path: entry.path } },
       ctx,
     );
+    const redirects = redirectTo ? await redirectUnpublished(tx, ctx, entry.path, redirectTo) : NO_REDIRECT_CHANGES;
     return {
       entry: { ...summaryOf(entry), status: "draft" },
       changed: true,
-      events: [{ type: "entry.unpublished", siteId: ctx.site.id, entryId: entry.id, contentType: entry.type }],
+      redirects,
+      events: [{ type: "entry.unpublished", siteId: ctx.site.id, entryId: entry.id, contentType: entry.type }, ...redirectEvents(ctx.site.id, redirects)],
     };
   });
 }

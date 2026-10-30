@@ -1,5 +1,6 @@
 import "server-only";
 import { record } from "@/modules/audit";
+import { NO_REDIRECT_CHANGES, redirectEvents, type RedirectChanges } from "@/modules/seo";
 import { inTenant, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
 import { forbidden, notFound, validationError } from "@/platform/errors";
@@ -8,6 +9,7 @@ import { HOME_PATH } from "./paths";
 import { canSetHomepage } from "./policies";
 import { movedEvents } from "./publishing.service";
 import { entryAtPath, findEntry, lockSiteSettings, renameDraftSlug, setHomepageEntry, siteFacts, updateEntry } from "./repository";
+import { redirectLiveMoves } from "./tree.service";
 import { moveSubtree, withPathTaken, type MovedEntry } from "./tree";
 import { insertWithUniqueSlug } from "./unique-slug";
 
@@ -31,7 +33,7 @@ import { insertWithUniqueSlug } from "./unique-slug";
  *
  * Who: `site.settings.manage` (Owner, Admin): the homepage is a website setting.
  */
-export async function setHomepage(ctx: SiteContext, entryId: string): Promise<{ changed: boolean; moved: MovedEntry[]; events: CacheEvent[] }> {
+export async function setHomepage(ctx: SiteContext, entryId: string): Promise<{ changed: boolean; moved: MovedEntry[]; redirects: RedirectChanges; events: CacheEvent[] }> {
   if (!canSetHomepage(ctx)) throw forbidden();
   return inTenant(ctx, async (tx) => {
     const settings = await lockSiteSettings(tx, ctx.org.id, ctx.site.id);
@@ -44,7 +46,7 @@ export async function setHomepage(ctx: SiteContext, entryId: string): Promise<{ 
     if (next.path === HOME_PATH) {
       // Already the Home page. A settings row that lost track of it is put right, and nothing else changes.
       if (settings.homepageEntryId !== next.id) await setHomepageEntry(tx, ctx.org.id, ctx.site.id, next.id);
-      return { changed: false, moved: [], events: settings.homepageEntryId !== next.id ? [{ type: "site.configChanged", siteId: ctx.site.id }] : [] };
+      return { changed: false, moved: [], redirects: NO_REDIRECT_CHANGES, events: settings.homepageEntryId !== next.id ? [{ type: "site.configChanged", siteId: ctx.site.id }] : [] };
     }
 
     const moved: MovedEntry[] = [];
@@ -82,6 +84,11 @@ export async function setHomepage(ctx: SiteContext, entryId: string): Promise<{ 
     const once = new Map<string, MovedEntry>();
     for (const page of moved) once.set(page.id, once.has(page.id) ? { ...page, from: once.get(page.id)!.from } : page);
     const net = [...once.values()].filter((page) => page.from !== page.to);
-    return { changed: true, moved: net, events: [{ type: "site.configChanged", siteId: ctx.site.id }, ...movedEvents(ctx.site.id, net)] };
+    // M8-5: the live pages' old addresses redirect to their new ones; `/` stays the site's (the new Home is there).
+    const redirects = await redirectLiveMoves(tx, ctx, net);
+    return {
+      changed: true, moved: net, redirects,
+      events: [{ type: "site.configChanged", siteId: ctx.site.id }, ...movedEvents(ctx.site.id, net), ...redirectEvents(ctx.site.id, redirects)],
+    };
   });
 }

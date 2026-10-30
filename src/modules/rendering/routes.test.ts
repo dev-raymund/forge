@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dateLabel } from "./dates";
 import { listPageHref, routeFor } from "./routes";
+import { blogRouteOf } from "@/modules/seo/shared";
 
 /** From a public path to what it may name (M5-6, plan §10). */
 
@@ -65,5 +66,19 @@ describe("dateLabel", () => {
     expect(dateLabel("not a date", "en", "UTC")).toBeNull();
     expect(dateLabel("2026-09-30T23:30:00.000Z", "en", "Mars/Olympus")?.label).toBe("September 30, 2026");
     expect(dateLabel("2026-09-30T23:30:00.000Z", "not a language!", "UTC")?.label).toBe("September 30, 2026");
+  });
+});
+
+// M8-5: the redirects' services decide which addresses the blog holds with `blogRouteOf` (seo); it must agree with
+// the router here, or a redirect could be written over a list page, or refused for an address the blog does not have.
+describe("the redirects' view of the blog's routes agrees with routeFor", () => {
+  const paths = [
+    "/blog", "/blog/page/2", "/blog/page/1", "/blog/page/02", "/blog/category/bread", "/blog/tag/rye", "/blog/category/bread/page/3", "/blog/category/bread/page/1",
+    "/blog/rye-season", "/blog/category", "/blog/category/bread/extra", "/news", "/about", "/blog/Category/bread", "/blog/category/bread/page", "/blog/page/100000",
+  ];
+  it.each(paths)("%s", (path) => {
+    const route = routeFor(path.slice(1).split("/"), "blog");
+    const expected = !route || route.kind === "path" ? null : route.kind === "blog-index" ? (route.page === 1 ? "index" : "list-page") : route.page === 1 ? "archive" : "list-page";
+    expect(blogRouteOf(path, "blog")?.kind ?? null).toBe(expected);
   });
 });

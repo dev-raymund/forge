@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { NoAccess, OrganizationSuspended } from "@/components/admin/page-notice";
 import { PageSkeleton } from "@/components/admin/page-skeleton";
+import { siteRedirectsPath } from "@/modules/seo";
 import { canManageSeo, getSeoSettings, SeoSettingsForm, siteSeoPath } from "@/modules/sites";
 import { requireSitePage } from "@/modules/tenancy";
 
@@ -41,6 +43,12 @@ async function Seo({ params }: Pick<PageProps<"/[orgSlug]/sites/[siteSlug]/seo">
       <h1 className="mb-2 text-2xl font-semibold tracking-tight">SEO</h1>
       <p className="mb-8 text-muted-foreground">
         How {ctx.site.name} appears in search results and when it is shared. Each page and post can say more in the SEO tab of its editor; these are what it inherits.
+      </p>
+      <p className="-mt-4 mb-8 text-sm">
+        <Link href={siteRedirectsPath(ctx.org.slug, ctx.site.slug)} className="font-medium underline underline-offset-4">
+          Redirects and the not-found page
+        </Link>
+        <span className="text-muted-foreground">: old addresses sent to new ones, and what visitors see at an address the site does not have.</span>
       </p>
       <SeoSettingsForm
         orgSlug={ctx.org.slug}

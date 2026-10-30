@@ -1,5 +1,6 @@
 import "server-only";
 import { record } from "@/modules/audit";
+import { NO_REDIRECT_CHANGES, redirectEvents, redirectPathChanges, type RedirectChanges } from "@/modules/seo";
 import { inTenant, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
 import type { TenantTx } from "@/platform/db";
@@ -28,8 +29,10 @@ import { versionSchema, parseInput } from "./validation";
  *      a newer save exists → Conflict
  *   3. a `publish` revision: a snapshot of the draft, numbered after the entry's last
  *   4. the projection: status, title, slug, path, excerpt, image, the revision, the dates;
- *      the pages below it follow a path change (redirects are M8-5's)
+ *      the pages below it follow a path change
  *   5. `entry_terms` replaced by the draft's terms (checked again: the draft's list has no foreign key)
+ *   5½. redirects (M8-5, ADR 0032): a live address that changed (its own, and the live pages' below it) leaves a 301
+ *      to the new one; a redirect from an address it now lives at is turned off, and said so
  *   6. `entry.published` recorded
  *   7. the cache events returned, for the Server Action to flush after the commit
  *
@@ -43,7 +46,7 @@ import { versionSchema, parseInput } from "./validation";
  * changes once set.
  */
 
-export type Published = { entry: EntrySummary; revision: number; changed: boolean; moved: MovedEntry[]; events: CacheEvent[] };
+export type Published = { entry: EntrySummary; revision: number; changed: boolean; moved: MovedEntry[]; redirects: RedirectChanges; events: CacheEvent[] };
 
 /**
  * What is published (M7-2): the draft, when someone presses Publish or schedules it, or the frozen `scheduled`
@@ -99,11 +102,12 @@ export async function prepareForPublish(tx: TenantTx, scope: SiteScope, entry: E
  * The entry made live at a revision (written before it, as the table requires): the projection, the pages below it if
  * its path changed, and the published terms. `published_at` is the entry's date at its first publish (now; or the
  * time it was scheduled for, `by.publishedAt`) and is kept after; `first_published_at` is when it really first went live.
- * Returns what the public site must stop serving.
+ * Its live addresses that changed get their redirects (M8-5), in the same transaction. Returns what the public site must
+ * stop serving.
  */
 export async function makeLive(
   tx: TenantTx, scope: SiteScope, entry: EntryRow, prepared: Prepared, snapshot: Snapshot, revision: { id: string }, by: { userId: string | null; publishedAt?: Date },
-): Promise<{ path: string; moved: MovedEntry[]; events: CacheEvent[] }> {
+): Promise<{ path: string; moved: MovedEntry[]; redirects: RedirectChanges; events: CacheEvent[] }> {
   const { definition, path } = prepared;
   // One reading of the clock: a first publish by hand has the same date and first date, to the millisecond.
   const now = new Date();
@@ -117,11 +121,27 @@ export async function makeLive(
   const moved = path !== entry.path && definition.hierarchical ? await moveSubtree(tx, scope, entry.id, path) : [];
   await replaceEntryTerms(tx, scope.org.id, scope.site.id, entry.id, prepared.termIds);
   const wasLive = entry.status === "published";
+  const redirects = await redirectsForPublish(tx, scope, { from: wasLive ? entry.path : null, to: path }, moved, by.userId);
   const events: CacheEvent[] = [
     { type: "entry.published", siteId: scope.site.id, entryId: entry.id, contentType: definition.key, pathChanged: wasLive && path !== entry.path },
     ...movedEvents(scope.site.id, moved),
+    ...redirectEvents(scope.site.id, redirects),
   ];
-  return { path, moved, events };
+  return { path, moved, redirects, events };
+}
+
+/**
+ * The redirects of a publish (M8-5): the entry's own address if it was live and changed, and each live page below it
+ * that moved with it; every address now live (its own, theirs) takes over from a redirect left there.
+ */
+function redirectsForPublish(tx: TenantTx, scope: SiteScope, self: { from: string | null; to: string }, moved: readonly MovedEntry[], by: string | null) {
+  const live = moved.filter((page) => page.status === "published");
+  return redirectPathChanges(
+    tx,
+    scope,
+    { moves: [...(self.from !== null ? [{ from: self.from, to: self.to }] : []), ...live.map((page) => ({ from: page.from, to: page.to }))], claimed: [self.to, ...live.map((page) => page.to)] },
+    by,
+  );
 }
 
 export async function publishEntry(ctx: SiteContext, entryId: string, expectedDraftVersion: number): Promise<Published> {
@@ -137,7 +157,7 @@ export async function publishEntry(ctx: SiteContext, entryId: string, expectedDr
     // 2. Idempotency: a retry of a publish that already happened answers as it did, and writes nothing.
     if (entry.status === "published" && entry.publishedRevisionId) {
       const live = await revisionById(tx, ctx.org.id, ctx.site.id, entry.id, entry.publishedRevisionId);
-      if (live?.sourceDraftVersion === expected) return { entry: summaryOf(entry), revision: live.number, changed: false, moved: [], events: [] };
+      if (live?.sourceDraftVersion === expected) return { entry: summaryOf(entry), revision: live.number, changed: false, moved: [], redirects: NO_REDIRECT_CHANGES, events: [] };
     }
     // A scheduled entry is published by its schedule, or its schedule is canceled first (M7-2, ./lifecycle.ts).
     const step = transition(stateOf(entry), "publish");
@@ -152,7 +172,7 @@ export async function publishEntry(ctx: SiteContext, entryId: string, expectedDr
     const revision = await insertRevision(tx, revisionValues(ctx, entry, prepared, snapshot, number, "publish", ctx.actor.userId));
 
     // 4–5. The projection, the pages below it if its path changed, the published terms.
-    const { path, moved, events } = await makeLive(tx, ctx, entry, prepared, snapshot, revision, { userId: ctx.actor.userId });
+    const { path, moved, redirects, events } = await makeLive(tx, ctx, entry, prepared, snapshot, revision, { userId: ctx.actor.userId });
 
     // 6. The record.
     await record(
@@ -165,7 +185,7 @@ export async function publishEntry(ctx: SiteContext, entryId: string, expectedDr
     );
 
     // 7. What the public site must stop serving from cache.
-    return { entry: { ...summaryOf(entry), status: "published", title: snapshot.title, slug: snapshot.slug, path }, revision: number, changed: true, moved, events };
+    return { entry: { ...summaryOf(entry), status: "published", title: snapshot.title, slug: snapshot.slug, path }, revision: number, changed: true, moved, redirects, events };
   });
 }
 

@@ -34,6 +34,9 @@ export { indexableNotice, publicPageSeo, publicStructuredData, searchIndexingAll
 export { JsonLd } from "./ui/json-ld";
 // M8-3: the site's menus, as its visitors see them (ADR 0030).
 export { loadMenus, menuNavItems, publicMenusFor } from "./menus";
+// M8-5: redirects and the site's not-found page.
+export { loadRedirects, notFoundPageFor, publicRedirectFor } from "./redirects";
+export type { PublicRedirect, RedirectMap } from "./redirects";
 export type { PublicMenuLink, PublicMenus } from "./menus";
 // M8-1: the appearance editor's live preview (ADR 0028).
 export { loadAppearancePreview } from "./appearance-preview";

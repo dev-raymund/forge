@@ -141,3 +141,10 @@ ADR 0031 has the details.
 - **One JSON-LD block** comes before the page's content.
 - **Coming soon, unavailable and not-found pages** keep the head this ADR gave them.
 - **Robots:** a live page says `index, follow` only where the deployment allows indexing (`SEARCH_INDEXING`). Elsewhere it says `noindex`.
+
+## Addendum (M8-5, 2026-10-30): redirects first, and the site's own not-found page
+
+ADR 0032 has the details.
+- **Redirects first:** a live site's page looks its redirect map up before the routes (`publicRedirectFor`: one cached read per site under `site:{id}:config`). It answers before anything streams with 308 (permanent) or 307 (temporary), and a `Location` built from the locator. A redirect whose destination the site does not serve now answers 404 instead.
+- **A coming-soon site redirects nothing.**
+- **`not-found.tsx`** draws the site's chosen not-found page (a published page) inside the theme's frame, still with a 404, and falls back to the theme's template.

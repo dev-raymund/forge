@@ -11,6 +11,7 @@ import {
 } from "@/modules/content";
 import { completeUpload, createFolder, deleteFolder, moveMedia, renameFolder, requestUploads, restoreMedia, trashMedia, updateMediaDetails } from "@/modules/media";
 import { saveMenu } from "@/modules/navigation";
+import { createRedirect, deleteRedirect, updateRedirect } from "@/modules/seo";
 import { changeSiteAddress, chooseTheme, createSite as createSiteFor, deleteSite, getSiteSettings, setSiteStatus, updateSiteSettings } from "@/modules/sites";
 import type { Actor } from "@/modules/auth/shared";
 import {
@@ -233,7 +234,7 @@ describe("every change writes its line, in the same transaction", () => {
     expect(rows.map((row) => row.actorId)).toEqual([user.id, user.id, user.id, invitee.id]);
   });
 
-  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3, the lifecycle of M7-1, scheduling of M7-2, the history of M7-3, the menus of M8-3)", async () => {
+  it("every event is covered by a mutation: the catalog has no event nothing writes (M3, the sites of M4-1, M4-4, M4-2 and M4-5, the entries of M5-3 and M5-7, the terms of M5-8, the uploads of M6-1, the library of M6-3, the lifecycle of M7-1, scheduling of M7-2, the history of M7-3, the menus of M8-3, the redirects of M8-5)", async () => {
     const a = await newTenant();
     const ctx = a.ctx;
     const one = await addUser(a.org, await createUser(), "editor");
@@ -296,6 +297,10 @@ describe("every change writes its line, in the same transaction", () => {
     await deleteTerm(siteCtx, term.id);
     // M8-3: a menu (its own tests are tests/integration/menus.test.ts).
     await saveMenu(siteCtx, "header", [{ id: uuidv7(), kind: "archive", contentType: "post", label: "", newTab: false }], 0);
+    // M8-5: a redirect by hand, turned off, deleted (its own tests are tests/integration/redirects.test.ts).
+    const { redirect } = await createRedirect(siteCtx, { source: "/covered-old", destination: "/", statusCode: 301 });
+    await updateRedirect(siteCtx, redirect.id, { isActive: false });
+    await deleteRedirect(siteCtx, redirect.id);
     // M6-1: an upload, the browser's PUT played by a direct write (its own tests are tests/integration/media-uploads.test.ts).
     const storageRoot = mkdtempSync(path.join(os.tmpdir(), "forge-audit-"));
     setStorageDriverForTests(new LocalStorageDriver({ root: storageRoot, appOrigin: () => "http://localhost:3000", publicBaseUrl: () => "" }));

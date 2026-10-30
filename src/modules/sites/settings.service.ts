@@ -1,5 +1,6 @@
 import "server-only";
 import { record } from "@/modules/audit";
+import { NO_REDIRECT_CHANGES, redirectBlogPath, redirectEvents, type RedirectChanges } from "@/modules/seo";
 import { inTenant, requirePermission, type SiteContext } from "@/modules/tenancy";
 import type { CacheEvent } from "@/platform/cache";
 import { conflict, notFound } from "@/platform/errors";
@@ -56,7 +57,8 @@ function flat(group: SettingsGroup, view: SiteSettingsView): Record<string, stri
   return { ga4MeasurementId: view.analytics.ga4MeasurementId ?? "", plausibleDomain: view.analytics.plausibleDomain ?? "" };
 }
 
-export type SettingsChange = { changed: string[]; version: number; settings: SiteSettingsView; events: CacheEvent[] };
+/** `redirects`: what a new blog path did (M8-5): its old index and archives redirect to the new ones. */
+export type SettingsChange = { changed: string[]; version: number; settings: SiteSettingsView; redirects: RedirectChanges; events: CacheEvent[] };
 
 /**
  * Saves one group. `version` is the one the person's page was rendered with:
@@ -99,16 +101,21 @@ export async function updateSiteSettings(ctx: SiteContext, group: SettingsGroup,
 
     const [was, now] = [flat(group, before), flat(group, after)];
     const changed = Object.keys(now).filter((key) => was[key] !== now[key]);
-    if (changed.length === 0) return { changed, version: row.version, settings: before, events: [] };
+    if (changed.length === 0) return { changed, version: row.version, settings: before, redirects: NO_REDIRECT_CHANGES, events: [] };
 
     const saved = await saveSettings(tx, ctx.org.id, site.id, version, patch, ctx.actor.userId);
     if (saved === null) throw conflict(SETTINGS_CONFLICT);
     if (group === "general") await updateSiteColumns(tx, ctx.org.id, site.id, after.general);
+    // A new blog path (M8-5): the old index and archives redirect to the new ones, in this transaction; posts stay where they are.
+    const redirects =
+      group === "reading" && before.reading.blogPath !== after.reading.blogPath
+        ? await redirectBlogPath(tx, ctx, before.reading.blogPath, after.reading.blogPath, ctx.actor.userId)
+        : NO_REDIRECT_CHANGES;
     await record(
       tx,
       { action: "site.settings_changed", resourceType: "site", resourceId: site.id, siteId: site.id, metadata: { name: after.general.name, group, fields: changed } },
       ctx,
     );
-    return { changed, version: saved, settings: { ...after, version: saved }, events: [{ type: "site.configChanged", siteId: site.id }] };
+    return { changed, version: saved, settings: { ...after, version: saved }, redirects, events: [{ type: "site.configChanged", siteId: site.id }, ...redirectEvents(site.id, redirects)] };
   });
 }

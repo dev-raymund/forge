@@ -188,9 +188,13 @@ export async function submitUpdateSiteSettings(
     // The version is a whole number as the page wrote it, or no version at all: a save without one cannot win.
     const raw = text(formData.get("version"));
     const version = /^\d{1,9}$/.test(raw) ? Number(raw) : -1;
-    const { changed, events } = await updateSiteSettings(ctx, group, values, version);
+    const { changed, redirects, events } = await updateSiteSettings(ctx, group, values, version);
+    // A new blog path (M8-5): say where its old addresses go.
+    const moved = redirects.made.length
+      ? ` The blog's old address ${redirects.made[0]!.source} and its archives redirect to the new ones; each post stays at its address until it is published again.`
+      : "";
     return {
-      state: { status: "success", message: changed.length > 0 ? SAVED[group] : "Nothing to save: these are already the site’s settings.", values },
+      state: { status: "success", message: changed.length > 0 ? `${SAVED[group]}${moved}` : "Nothing to save: these are already the site’s settings.", values },
       ...(changed.length > 0 ? { revalidate: pagesOfSite(ctx.org.slug, ctx.site.slug), invalidate: events } : {}),
     };
   } catch (error) {

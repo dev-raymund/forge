@@ -148,3 +148,9 @@ Publishing (M4-5); the pages, menus and SEO the checklist points to (M5, M8); lo
 ADR 0031 has the details.
 - **The SEO defaults** (`site_settings.seo`) are saved on `/…/seo` at the same settings `version` as the other groups. A page opened before someone else saved any of them is refused with the same Conflict message.
 - **"Set up search engine details"** links to `/…/seo` for those who may manage SEO. It is done once anything differs from the defaults.
+
+## Addendum (M8-5, 2026-10-30): a new blog path redirects; the not-found page
+
+ADR 0032 has the details.
+- **A new blog path:** saving one in the reading settings redirects the old index and archives in the same transaction. The success message says so.
+- **The not-found page** (`site_settings.not_found_entry_id`) is chosen on `/…/seo/redirects`. It does not bump the settings version, as the home page does not.
