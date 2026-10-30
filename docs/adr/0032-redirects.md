@@ -156,6 +156,7 @@ Only a live site's paths are looked up: a coming-soon site redirects nothing.
 - **Redirect limits by plan** (M11): one fixed cap of 10,000 for now.
 - **A redirects API** (M10): `GET/POST/DELETE /v1/sites/{siteId}/redirects`.
 - **A 404 monitor** suggesting redirects (LATER).
+- **A request in flight during a change:** a visitor's request that read the map just before a change committed can be stored by Next's page cache after the change's flush, and keep the old answer until the site's config is flushed again or the cache's lifetime ends. This is true of every public change since M5-6, not only redirects. CI showed it once, when a test asked for an address while its redirect was still being saved; the tests now wait for the change's answer, as an editor does. M12-2 measures the cache.
 
 ## Why, and what it costs
 

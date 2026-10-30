@@ -93,6 +93,7 @@ test("a post's new slug and a moved page leave 308s from their old addresses (no
   await page.getByTestId("entry-settings").getByLabel("Slug").fill("rye-loaf");
   await expect(page.getByTestId("autosave-status")).toHaveText(/^Saved at/, { timeout: 15_000 });
   await page.getByRole("button", { name: "Publish changes" }).click();
+  await expect(page.getByText("Its old address /blog/rye-bread redirects to /blog/rye-loaf.")).toBeVisible({ timeout: 15_000 });
   await answers(request, `${siteBase}/blog/rye`, { status: 308, location: `${siteBase}/blog/rye-loaf` });
   await answers(request, `${siteBase}/blog/rye-bread`, { status: 308, location: `${siteBase}/blog/rye-loaf` });
 
@@ -146,6 +147,8 @@ test("redirects by hand on the SEO page: permanent (308) and temporary (307), to
   await expect(addForm.locator("[data-form-alert]")).toHaveText("Redirect added: /old-offer now goes to /offers.");
   await answers(request, `${siteBase}/old-offer`, { status: 308, location: `${siteBase}/offers` });
   await addRedirect("/shop", "https://shop.example.com/rye", "302");
+  // The server's answer first: a visitor's request still in flight when the change commits may keep the old answer.
+  await expect(addForm.locator("[data-form-alert]")).toHaveText("Redirect added: /shop now goes to https://shop.example.com/rye.");
   await answers(request, `${siteBase}/shop`, { status: 307, location: "https://shop.example.com/rye" });
   // A redirect to a redirected address goes straight to the end.
   await addRedirect("/older-offer", "/old-offer");

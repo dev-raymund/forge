@@ -1542,6 +1542,7 @@ Deployment checks (R2 CORS, CDN, timings, PDF in browsers): runbook §4 step 6, 
 - **M12-2:**
   - every live page now reads the site's redirect map (one cached read, `config`) before its route; measure with the other public reads;
   - Next 16 writes an uncached render's headers twice (a fresh redirect's `Location` too); check whether a Next upgrade fixes it.
+  - A request in flight while a change commits can be stored by Next's page cache after the flush, keeping the old answer until the next flush of that tag or the cache's lifetime (seen once in CI for a redirect just added). This is true of every public change; measure it with the cache work.
 - **Not in V1:** prefix/regex redirects, `preserve_query`, hit counts, CSV import, a 404 monitor; redirects for an old blog path's later list pages.
 
 ---
